@@ -7,9 +7,10 @@ interface Props {
   thread: Thread
   onChanged: () => Promise<void>
   onClose: () => void
+  readOnly: boolean
 }
 
-export function ThreadCard({ thread, onChanged, onClose }: Props) {
+export function ThreadCard({ thread, onChanged, onClose, readOnly }: Props) {
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -45,29 +46,33 @@ export function ThreadCard({ thread, onChanged, onClose }: Props) {
           </li>
         ))}
       </ol>
-      <textarea
-        aria-label="Reply"
-        placeholder="Reply…"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-      />
-      {error && <p className="error">{error}</p>}
-      <div className="actions">
-        <button
-          disabled={!draft.trim()}
-          onClick={() =>
-            act(async () => {
-              await replyTo(thread.id, draft)
-              setDraft('')
-            })
-          }
-        >
-          Reply
-        </button>
-        <button onClick={() => act(() => setResolved(thread.id, !thread.resolved))}>
-          {thread.resolved ? 'Reopen' : 'Resolve'}
-        </button>
-      </div>
+      {!readOnly && (
+        <>
+          <textarea
+            aria-label="Reply"
+            placeholder="Reply…"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          {error && <p className="error">{error}</p>}
+          <div className="actions">
+            <button
+              disabled={!draft.trim()}
+              onClick={() =>
+                act(async () => {
+                  await replyTo(thread.id, draft)
+                  setDraft('')
+                })
+              }
+            >
+              Reply
+            </button>
+            <button onClick={() => act(() => setResolved(thread.id, !thread.resolved))}>
+              {thread.resolved ? 'Reopen' : 'Resolve'}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

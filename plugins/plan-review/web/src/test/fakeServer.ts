@@ -12,6 +12,7 @@ export interface Call {
 export class FakeServer {
   plan: unknown = example
   threads: Thread[] = []
+  approved = false
   calls: Call[] = []
 
   install() {
@@ -26,6 +27,13 @@ export class FakeServer {
     this.calls.push({ method, url, body })
     const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status })
     if (url === '/api/plan') return json(this.plan)
+    if (url === '/api/approve' && method === 'GET') return json({ approved: this.approved })
+    if (url === '/api/approve' && method === 'POST') {
+      const open = this.threads.filter((t) => !t.resolved).length
+      if (open) return json({ errors: [`${open} unresolved thread(s): resolve them first`] }, 409)
+      this.approved = true
+      return json({ approved_at: '2026-11-02T12:00:00Z', plan_sha256: 'abc' })
+    }
     if (url === '/api/threads' && method === 'GET') return json({ threads: this.threads })
     if (url === '/api/threads' && method === 'POST') {
       const { anchor, text } = body as { anchor: string; text: string }

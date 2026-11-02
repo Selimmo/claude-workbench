@@ -31,11 +31,27 @@ async function send(url: string, body?: object): Promise<void> {
 }
 
 export async function fetchThreads(): Promise<Thread[]> {
-  const response = await fetch('/api/threads')
-  return ((await response.json()) as { threads: Thread[] }).threads
+  // Threads are secondary to the plan: if they can't be loaded, show none rather than fail.
+  try {
+    const response = await fetch('/api/threads')
+    return ((await response.json()) as { threads?: Thread[] }).threads ?? []
+  } catch {
+    return []
+  }
 }
 
 export const createThread = (anchor: string, text: string) => send('/api/threads', { anchor, text })
 export const replyTo = (id: string, text: string) => send(`/api/threads/${id}/replies`, { text })
 export const setResolved = (id: string, resolved: boolean) =>
   send(`/api/threads/${id}/${resolved ? 'resolve' : 'reopen'}`)
+
+export async function fetchApproval(): Promise<boolean> {
+  try {
+    const response = await fetch('/api/approve')
+    return ((await response.json()) as { approved: boolean }).approved === true
+  } catch {
+    return false
+  }
+}
+
+export const approve = () => send('/api/approve')
