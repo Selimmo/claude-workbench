@@ -41,3 +41,10 @@ def test_it_delegates_to_the_agents_and_deterministic_helpers(required: str) -> 
     _, body = parts()
 
     assert required in body
+
+
+def test_project_agents_take_precedence_over_the_plugins() -> None:
+    _, body = parts()
+
+    assert "`.claude/agents/<name>.md`" in body
+    assert "otherwise `plan-review:<name>`" in body

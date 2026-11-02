@@ -48,3 +48,9 @@ def test_reviewers_cannot_use_edit_tools(name: str) -> None:
 def test_no_agent_can_start_other_agents(name: str) -> None:
     # Only /ship orchestrates; an agent spawning agents would bypass the review loop.
     assert "Agent" in listed(frontmatter(name)["disallowedTools"])
+
+
+@pytest.mark.parametrize("name", ["architect", "implementer", "test-reviewer", "code-reviewer"])
+def test_agents_work_unchanged_when_copied_into_a_project(name: str) -> None:
+    # ${CLAUDE_PLUGIN_ROOT} is only substituted for the plugin's own copy (#30).
+    assert "${CLAUDE_PLUGIN_ROOT}" not in (AGENTS / f"{name}.md").read_text()

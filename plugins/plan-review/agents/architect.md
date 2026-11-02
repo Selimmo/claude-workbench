@@ -23,7 +23,7 @@ Your prompt gives you the issue number and one of two modes.
 
 ## What a good plan contains
 
-Run `plan-review schema` for the exact format; `${CLAUDE_PLUGIN_ROOT}/examples/plan.json` shows every part of it. In short:
+Run `plan-review schema` for the exact format. In short:
 
 - **summary**: one paragraph: what changes and why.
 - **classes** and **relations**: the classes, protocols, functions and modules the change adds, modifies or removes, with public members as signatures. Include unchanged neighbours only when they make the picture readable.
