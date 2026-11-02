@@ -18,7 +18,7 @@ def test_only_the_owner_can_start_it_with_an_issue() -> None:
 
     assert meta["name"] == "ship"
     assert meta["disable-model-invocation"] == "true"  # side effects: branches, commits
-    assert meta["argument-hint"] == "<issue number or URL>"
+    assert meta["argument-hint"].startswith("<issue number or URL>")
 
 
 @pytest.mark.parametrize(
@@ -48,3 +48,11 @@ def test_project_agents_take_precedence_over_the_plugins() -> None:
 
     assert "`.claude/agents/<name>.md`" in body
     assert "otherwise `plan-review:<name>`" in body
+
+
+def test_it_starts_with_a_grilling_session_that_feeds_the_architect() -> None:
+    meta, body = parts()
+
+    assert "--no-grill" in meta["argument-hint"]
+    for required in ["`grilling` skill", "decisions.md", "--no-grill", "github.com/mattpocock/skills"]:
+        assert required in body
