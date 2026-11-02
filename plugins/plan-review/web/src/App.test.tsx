@@ -93,3 +93,32 @@ test('an unreachable server is reported, not left loading', async () => {
     "Can't reach the plan-review server. Is `plan-review serve` still running?",
   )
 })
+
+function element(id: string): HTMLElement {
+  const found = document.querySelector<HTMLElement>(`[data-element-id="${CSS.escape(id)}"]`)
+  if (!found) throw new Error(`no element ${id}`)
+  return found
+}
+
+test('Classes draws a card per class with members coloured by their own status', async () => {
+  await loaded()
+
+  await screen.findByText('HintPolicy')
+  expect(element('class:Orchestrator')).toHaveAttribute('data-status', 'modified')
+  expect(element('class:Orchestrator.parse_command')).toHaveAttribute('data-status', 'removed')
+  expect(element('class:Orchestrator.give_hint')).toHaveTextContent(
+    'give_hint() -> AsyncIterator[str]',
+  )
+  expect(element('rel:orch-policy')).toHaveAttribute('data-status', 'added')
+  expect(screen.getByRole('list', { name: 'Legend' })).toHaveTextContent(
+    'addedmodifiedremovedunchanged',
+  )
+})
+
+test('Architecture draws its components and labelled connections', async () => {
+  await loaded()
+  fireEvent.click(screen.getByRole('tab', { name: 'Architecture' }))
+
+  await screen.findByText('Ollama')
+  expect(element('arch:agent-ollama')).toHaveTextContent('HTTP')
+})

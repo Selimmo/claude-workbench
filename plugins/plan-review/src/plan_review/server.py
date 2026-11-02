@@ -1,12 +1,12 @@
 """The local viewer server: the page, the plan, and live updates."""
 
 import asyncio
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from plan_review.approval import approval_routes
@@ -90,6 +90,15 @@ def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5)
     store = ThreadStore(plan_file.parent / "comments.json")
     app.include_router(thread_routes(store, plan_file, events))
     app.include_router(approval_routes(store, plan_file, events))
+
+    @app.middleware("http")
+    async def revalidate(  # pyright: ignore[reportUnusedFunction]
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        # Browsers otherwise cache index.html heuristically and keep an old viewer.
+        response = await call_next(request)
+        response.headers.setdefault("cache-control", "no-cache")
+        return response
 
     # Mounted last so /api routes win; html=True serves index.html at "/".
     app.mount("/", StaticFiles(directory=static_dir, html=True))
