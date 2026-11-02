@@ -4,6 +4,7 @@ import {
   MIN_WIDTH,
   PADDING,
   ROW_HEIGHT,
+  TITLE_CHAR_WIDTH,
   layoutDiagram,
   nodeSize,
 } from './layout'
@@ -49,10 +50,27 @@ test('layout positions every node and routes every edge', async () => {
   expect(laid.height).toBeGreaterThan(0)
 })
 
-test('title and subtitle share the header line, so both count towards the width', () => {
-  const header = { ...node([], 'Agent worker'), subtitle: 'worker' }
+test('the header line (bold title, then subtitle) is measured with the wider title font', () => {
+  const header = { ...node([], 'hints_given < max_hints?'), subtitle: 'step' }
 
   expect(nodeSize(header).width).toBe(
-    ('Agent worker'.length + 'worker'.length + 2) * CHAR_WIDTH + 2 * PADDING,
+    'hints_given < max_hints?'.length * TITLE_CHAR_WIDTH +
+      ('step'.length + 2) * CHAR_WIDTH +
+      2 * PADDING,
   )
+})
+
+test('layout can run top to bottom', async () => {
+  const diagram: Diagram = {
+    nodes: [
+      { ...node([]), id: 'a' },
+      { ...node([]), id: 'b' },
+    ],
+    edges: [{ id: 'e', source: 'a', target: 'b', label: null, status: 'added' }],
+  }
+
+  const [a, b] = (await layoutDiagram(diagram, 'DOWN')).nodes
+
+  expect(b.y).toBeGreaterThan(a.y)
+  expect(b.x).toBe(a.x)
 })

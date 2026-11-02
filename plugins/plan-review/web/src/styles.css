@@ -344,3 +344,84 @@ marker path {
 .card-head strong {
   white-space: nowrap;
 }
+
+/* Flows */
+
+.flow h2 {
+  font-size: 1rem;
+  margin: 24px 0 10px;
+}
+
+.flow h2 .kind {
+  font-size: 0.75rem;
+  font-weight: normal;
+  color: var(--muted);
+}
+
+.sequence-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.sequence {
+  display: block;
+  font-size: 13px;
+}
+
+.participant rect {
+  fill: var(--surface);
+  stroke: var(--line);
+}
+
+.participant line {
+  stroke: var(--line);
+  stroke-dasharray: 4 4;
+}
+
+.participant text {
+  fill: var(--text);
+  font-weight: 600;
+}
+
+.participant[data-status='added'] rect {
+  stroke: var(--added);
+}
+
+.participant[data-status='modified'] rect {
+  stroke: var(--modified);
+}
+
+.participant[data-status='removed'] rect {
+  stroke: var(--removed);
+}
+
+.message line {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+.message text {
+  fill: var(--text);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+}
+
+.message[data-status='added'] line {
+  stroke: var(--added);
+}
+
+.message[data-status='modified'] line {
+  stroke: var(--modified);
+}
+
+.message[data-status='removed'] line {
+  stroke: var(--removed);
+  stroke-dasharray: 5 4;
+}
+
+.message[data-status='removed'] text {
+  text-decoration: line-through;
+  fill: var(--removed);
+}
