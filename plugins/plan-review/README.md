@@ -4,6 +4,25 @@ Review an agent's implementation plan as interactive diagrams, comment on any el
 
 > Status: v0.1 in development. Not yet published.
 
+## Install (local, v0.1)
+
+Not published yet: install from a local clone of [claude-workbench](https://github.com/Selimmo/claude-workbench).
+
+```bash
+git clone git@github.com:Selimmo/claude-workbench.git ~/src/claude-workbench
+cd ~/src/claude-workbench/plugins/plan-review
+npm install --prefix web && npm --prefix web run build   # builds the viewer page
+uv sync                                                  # the CLI's environment
+
+# in Claude Code, inside the project you want to use it in:
+/plugin marketplace add ~/src/claude-workbench
+/plugin install plan-review@claude-workbench
+```
+
+A local marketplace is read in place, so a `git pull` (plus a rebuild if `web/` changed) updates it. The plugin's `bin/plan-review` goes on Claude Code's PATH and runs the CLI from that source with `uv`. To use the CLI outside Claude Code: `uvx --from ~/src/claude-workbench/plugins/plan-review plan-review --help`.
+
+Then, in your project, optionally add `.claude/pipeline.json` (see below), make sure `.claude/work/` is gitignored, and run `/plan-review:ship <issue>`.
+
 ## Commands
 
 ```bash
