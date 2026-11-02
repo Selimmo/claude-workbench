@@ -35,6 +35,8 @@ claude-workbench/
             └── src/
                 ├── plan.ts             # plan.json types (mirror plan.py)
                 ├── viewModels.ts       # pure plan → view functions (tested)
+                ├── diagram.ts          # plan → boxes-and-arrows model (classes, architecture)
+                ├── layout.ts           # ELK layout (loaded lazily); DiagramView renders it as DOM
                 ├── api.ts, App.tsx, PlanView.tsx
                 └── tabs/               # one component per tab
 ```
@@ -61,7 +63,7 @@ npm --prefix web run dev   # viewer page with hot reload
 |---|---|
 | CLI and server | Python 3.12+, uv, argparse, pydantic 2, FastAPI, uvicorn, websockets |
 | Python checks | ruff, pyright, pytest |
-| Viewer page | React 19, TypeScript 6, Vite 8 |
+| Viewer page | React 19, TypeScript 6, Vite 8, elkjs (diagram layout) |
 | Web checks | vitest 4 (jsdom, Testing Library), oxlint, prettier |
 | CI | GitHub Actions |
 

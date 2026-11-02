@@ -226,3 +226,11 @@ def test_approve_is_refused_for_an_invalid_plan(plan_file: Path, static_dir: Pat
 
     assert response.status_code == 422
     assert not (plan_file.parent / "approved.json").exists()
+
+
+def test_page_is_revalidated_so_an_upgraded_viewer_is_never_served_stale(
+    plan_file: Path, static_dir: Path
+) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+
+    assert client.get("/").headers["cache-control"] == "no-cache"

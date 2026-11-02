@@ -206,3 +206,141 @@ code {
 .empty {
   color: var(--muted);
 }
+
+/* Diagrams */
+
+.legend {
+  display: flex;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px;
+  font-size: 0.8rem;
+}
+
+.legend li {
+  padding: 2px 8px;
+  border-radius: 4px;
+  border-left: 3px solid var(--line);
+}
+
+.viewport {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle, var(--line) 1px, transparent 1px) 0 0 / 18px 18px,
+    var(--surface);
+  cursor: grab;
+  touch-action: none;
+}
+
+.viewport:active {
+  cursor: grabbing;
+}
+
+.canvas {
+  position: relative;
+  transform-origin: 0 0;
+}
+
+.edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.edge path {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+.edge[data-status='added'] path {
+  stroke: var(--added);
+}
+
+.edge[data-status='modified'] path {
+  stroke: var(--modified);
+}
+
+.edge[data-status='removed'] path {
+  stroke: var(--removed);
+  stroke-dasharray: 5 4;
+}
+
+.edge text {
+  font-size: 12px;
+  fill: var(--muted);
+}
+
+marker path {
+  fill: var(--muted);
+}
+
+.card {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: var(--surface);
+  overflow: hidden;
+  cursor: default;
+}
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  height: 44px;
+  box-sizing: border-box;
+  padding: 12px 12px 0;
+}
+
+.card-head .kind {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.card ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.card li {
+  height: 22px;
+  line-height: 22px;
+  padding: 0 12px;
+  border-left: 3px solid transparent;
+  white-space: nowrap;
+}
+
+.card li code {
+  font-size: 13px;
+}
+
+.card[data-status='removed'] strong {
+  text-decoration: line-through;
+}
+
+.reset {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.card-head strong {
+  white-space: nowrap;
+}
