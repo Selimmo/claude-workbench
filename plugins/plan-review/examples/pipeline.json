@@ -1,0 +1,13 @@
+{
+  "checks": [
+    { "name": "backend", "run": "backend/check.sh" },
+    { "name": "frontend", "run": "npm --prefix frontend run check" }
+  ],
+  "review_rules": [
+    "Provider-specific formats never leak outside backend/providers/.",
+    "Every change to commands, structure or versions updates README.md."
+  ],
+  "branch": "{issue}-{slug}",
+  "viewer": { "open": "browser" },
+  "max_review_rounds": 3
+}
