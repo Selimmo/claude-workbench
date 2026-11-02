@@ -245,3 +245,15 @@ def test_pages_are_told_when_comment_threads_change_on_disk(
         ThreadStore(plan_file.parent / "comments.json").create("risk:1", "via the CLI")
 
         assert updates.receive_json() == {"type": "threads_changed"}
+
+
+def test_approval_state_can_be_read(plan_file: Path, static_dir: Path) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+
+    before = client.get("/api/approve").json()
+    client.post("/api/approve")
+    after = client.get("/api/approve").json()
+
+    assert before == {"approved": False}
+    assert after["approved"] is True
+    assert after["plan_sha256"] == hashlib.sha256(plan_file.read_bytes()).hexdigest()

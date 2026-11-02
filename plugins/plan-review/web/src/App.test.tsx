@@ -1,6 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 
-import example from '../../examples/plan.json'
 import { App } from './App'
 import { FakeServer } from './test/fakeServer'
 
@@ -14,7 +13,7 @@ function serve(status: number, body: unknown) {
 afterEach(() => vi.unstubAllGlobals())
 
 test('shows loading, then the issue and its summary', async () => {
-  serve(200, example)
+  new FakeServer().install()
   render(<App />)
 
   expect(screen.getByText('Loading plan…')).toBeInTheDocument()

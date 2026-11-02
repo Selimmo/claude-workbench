@@ -702,3 +702,80 @@ button.icon {
   display: flex;
   gap: 8px;
 }
+
+/* Approval and revisions */
+
+.approval {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.approval.approved {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--added-bg);
+  color: var(--added);
+  font-weight: 600;
+}
+
+button.primary {
+  font: inherit;
+  font-weight: 600;
+  padding: 7px 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--added);
+  color: var(--surface);
+  cursor: pointer;
+}
+
+button.primary:disabled {
+  background: var(--line);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.approval .hint {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.revised-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 8px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  color: var(--text);
+}
+
+.revised-banner button {
+  font: inherit;
+  font-size: 0.85rem;
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+[data-revised='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+g[data-revised='true'] {
+  outline: none;
+}
+
+g[data-revised='true'] path,
+g[data-revised='true'] line {
+  stroke-width: 3;
+}

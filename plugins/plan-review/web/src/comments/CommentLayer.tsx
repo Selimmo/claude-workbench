@@ -23,6 +23,7 @@ interface Props {
   tab: TabId
   threads: Thread[]
   refresh: () => Promise<void>
+  readOnly: boolean
   children: ReactNode
 }
 
@@ -83,7 +84,7 @@ function ThreadList({
   )
 }
 
-export function CommentLayer({ plan, tab, threads, refresh, children }: Props) {
+export function CommentLayer({ plan, tab, threads, refresh, readOnly, children }: Props) {
   const [commenting, setCommenting] = useState(false)
   const [open, setOpen] = useState<Open>(null)
   const groups = threadsFor(threads, plan, tab)
@@ -109,14 +110,16 @@ export function CommentLayer({ plan, tab, threads, refresh, children }: Props) {
   const close = () => setOpen(null)
   return (
     <>
-      <div className="comment-bar">
-        <button aria-pressed={commenting} onClick={() => setCommenting((on) => !on)}>
-          {commenting ? 'Click an element… (Esc to cancel)' : 'Add comment'}
-        </button>
-        <button onClick={() => setOpen({ kind: 'new', anchor: `tab:${tab}` })}>
-          Comment on this tab
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="comment-bar">
+          <button aria-pressed={commenting} onClick={() => setCommenting((on) => !on)}>
+            {commenting ? 'Click an element… (Esc to cancel)' : 'Add comment'}
+          </button>
+          <button onClick={() => setOpen({ kind: 'new', anchor: `tab:${tab}` })}>
+            Comment on this tab
+          </button>
+        </div>
+      )}
       <ThreadList
         title="Orphaned comments"
         threads={groups.orphaned}
@@ -138,7 +141,7 @@ export function CommentLayer({ plan, tab, threads, refresh, children }: Props) {
       ))}
       {openThread && (
         <Floating anchor={openThread.anchor}>
-          <ThreadCard thread={openThread} onChanged={refresh} onClose={close} />
+          <ThreadCard thread={openThread} onChanged={refresh} onClose={close} readOnly={readOnly} />
         </Floating>
       )}
       {open?.kind === 'new' && (

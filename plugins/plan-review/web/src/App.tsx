@@ -1,8 +1,6 @@
-import { useEffect, useState } from 'react'
-
-import { fetchPlan, type PlanResult } from './api'
 import { PlanView } from './PlanView'
 import { ThemeSwitch } from './ThemeSwitch'
+import { useLive } from './useLive'
 
 export function App() {
   return (
@@ -16,11 +14,8 @@ export function App() {
 }
 
 function Content() {
-  const [result, setResult] = useState<PlanResult | null>(null)
-
-  useEffect(() => {
-    void fetchPlan().then(setResult)
-  }, [])
+  const live = useLive()
+  const { result } = live
 
   if (result === null) return <p className="status">Loading plan…</p>
   if (!result.ok)
@@ -34,5 +29,5 @@ function Content() {
         </ul>
       </div>
     )
-  return <PlanView plan={result.plan} />
+  return <PlanView plan={result.plan} live={live} />
 }

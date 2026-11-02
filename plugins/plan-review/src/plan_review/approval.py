@@ -16,6 +16,14 @@ from plan_review.threads import ThreadStore
 def approval_routes(store: ThreadStore, plan_file: Path, events: Subscribers) -> APIRouter:
     router = APIRouter()
 
+    record_file = plan_file.parent / "approved.json"
+
+    @router.get("/api/approve")
+    def approval() -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
+        if not record_file.is_file():
+            return JSONResponse({"approved": False})
+        return JSONResponse({"approved": True, **json.loads(record_file.read_text())})
+
     @router.post("/api/approve")
     async def approve() -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
         try:
@@ -31,7 +39,7 @@ def approval_routes(store: ThreadStore, plan_file: Path, events: Subscribers) ->
             # Pins exactly which plan was approved, should the file change afterwards.
             "plan_sha256": hashlib.sha256(plan_file.read_bytes()).hexdigest(),
         }
-        (plan_file.parent / "approved.json").write_text(json.dumps(record, indent=2))
+        record_file.write_text(json.dumps(record, indent=2))
         await events.send({"type": "approved"})
         return JSONResponse(record)
 
