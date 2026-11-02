@@ -206,13 +206,14 @@ def load_plan(path: Path) -> Plan:
     try:
         return Plan.model_validate_json(path.read_text())
     except ValidationError as error:
-        raise PlanFileError(_readable(error)) from error
+        raise PlanFileError(readable_errors(error)) from error
 
 
-def _readable(error: ValidationError) -> list[str]:
-    """One `location: message` line per error; plan-wide checks have no location."""
+def readable_errors(error: ValidationError) -> list[str]:
+    """One `location: message` line per error; whole-model checks have no location."""
     lines: list[str] = []
     for e in error.errors():
         where = ".".join(str(part) for part in e["loc"])
-        lines.append(f"{where}: {e['msg']}" if where else e["msg"])
+        message = e["msg"].removeprefix("Value error, ")  # pydantic's wrapper adds nothing
+        lines.append(f"{where}: {message}" if where else message)
     return lines

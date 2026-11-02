@@ -12,6 +12,7 @@ plan-review schema               # print the plan.json JSON Schema
 plan-review validate plan.json   # check a plan; exit 0 = valid, 1 = invalid, 2 = file not found
 plan-review serve 42             # open the viewer for .claude/work/42/plan.json
 plan-review serve 42 --open none # only print the URL (e.g. over SSH)
+plan-review config               # this project's pipeline settings, defaults filled in
 plan-review threads 42           # open comment threads, as JSON (for Claude)
 plan-review reply 42 t-1a2b3c4d "Because ..."   # answer a thread as Claude
 ```
@@ -72,7 +73,7 @@ Threads live in `.claude/work/<issue>/comments.json`, next to the plan. Each thr
 ```
 issue.number: Input should be a valid integer, unable to parse string as an integer
 sumary: Extra inputs are not permitted
-Value error, rel:orch-llm: 'to' points at unknown class id 'class:LLM'
+rel:orch-llm: 'to' points at unknown class id 'class:LLM'
 ```
 
 ## The plan format (`plan.json`)
@@ -97,3 +98,30 @@ Rules:
 - **Every element has an `id`, unique across the whole plan.** Comment threads attach to ids, so keep an element's id stable when revising a plan. Prefixes such as `class:`, `flow:`, `test:` are a convention, not a rule.
 - **References must exist:** relation ends, flow step and edge ends (within their own flow), architecture edge ends, and test targets.
 - **Unknown fields are errors**, so typos are caught rather than ignored.
+
+## The agents
+
+The plugin ships four subagents. Claude Code lists them as `plan-review:<name>`.
+
+| Agent | Model | Can edit files? | Job |
+|---|---|---|---|
+| `architect` | Opus | writes only `plan.json` | Reads the issue, `decisions.md` (if any), the project's rules and code; writes or revises `.claude/work/<issue>/plan.json` and validates it. In revise mode it keeps element ids stable so comment threads stay attached. |
+| `implementer` | Sonnet | yes | Works through the plan's `tests` in order with strict TDD (red for the right reason, minimal green, refactor), runs the checks, and writes `impl-report.md` with the evidence of each red run. Fixes review findings in later rounds. Never commits. |
+| `test-reviewer` | Opus | no | Checks the plan's tests exist, one behaviour per test, the red evidence, no untested code, edge cases. Ends with `VERDICT: PASS` or `VERDICT: FINDINGS`. |
+| `code-reviewer` | Opus | no | Checks correctness, scope against the issue and plan, the project's rules, docs, and runs every configured check. Same verdict line. |
+
+No agent can start other agents. The reviewers have no edit tools; because they keep Bash to run tests, the orchestrator also compares the working tree before and after each review and discards a review that changed anything.
+
+Every project-specific rule comes from the project itself: its `CLAUDE.md` (or `AGENTS.md`) and `.claude/pipeline.json`.
+
+## Project settings (`.claude/pipeline.json`)
+
+All fields are optional. `plan-review config` prints the resolved settings, and reports mistakes such as unknown keys. See [`examples/pipeline.json`](examples/pipeline.json):
+
+| Field | Default | Meaning |
+|---|---|---|
+| `checks` | `[]` | `{"name", "run"}` commands the implementer and code reviewer run from the project root; each must pass |
+| `review_rules` | `[]` | extra rules the code reviewer enforces, in plain words |
+| `branch` | `"{issue}-{slug}"` | the branch name for an issue; must contain `{issue}` |
+| `viewer.open` | `"browser"` | `"none"` to only print the viewer's URL |
+| `max_review_rounds` | `3` | review rounds before the orchestrator stops and asks you |

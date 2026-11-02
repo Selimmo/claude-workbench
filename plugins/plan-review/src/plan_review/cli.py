@@ -11,6 +11,7 @@ from pathlib import Path
 import uvicorn
 from fastapi import FastAPI
 
+from plan_review.pipeline import PipelineConfigError, load_pipeline
 from plan_review.plan import Plan, PlanFileError, load_plan
 from plan_review.server import create_app
 from plan_review.threads import BlankComment, ThreadNotFound, ThreadStore
@@ -35,6 +36,7 @@ def _parser() -> argparse.ArgumentParser:
         help="open the default browser, or only print the URL "
         "(default: viewer.open in .claude/pipeline.json, else browser)",
     )
+    commands.add_parser("config", help="print this project's pipeline settings, defaults filled in")
     threads = commands.add_parser("threads", help="list an issue's open comment threads as JSON")
     threads.add_argument("issue", type=int)
     reply = commands.add_parser("reply", help="answer a comment thread as Claude")
@@ -52,12 +54,27 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(Plan.model_json_schema(), indent=2))
     elif args.command == "validate":
         return _validate(args.file)
+    elif args.command == "config":
+        return _config()
     elif args.command == "serve":
-        return _serve(args.issue, args.open or _configured_open())
+        return _serve(args.issue, args.open)
     elif args.command == "threads":
         return _threads(args.issue)
     elif args.command == "reply":
         return _reply(args.issue, args.thread_id, args.text)
+    return 0
+
+
+PIPELINE_FILE = Path(".claude", "pipeline.json")
+
+
+def _config() -> int:
+    try:
+        config = load_pipeline(PIPELINE_FILE)
+    except PipelineConfigError as error:
+        print("\n".join(error.errors), file=sys.stderr)
+        return 1
+    print(config.model_dump_json(indent=2))
     return 0
 
 
@@ -76,7 +93,12 @@ def _validate(file: Path) -> int:
     return 0
 
 
-def _serve(issue: int, open_mode: str) -> int:
+def _serve(issue: int, open_flag: str | None) -> int:
+    try:
+        open_mode = open_flag or load_pipeline(PIPELINE_FILE).viewer.open
+    except PipelineConfigError as error:
+        print("\n".join(error.errors), file=sys.stderr)
+        return 1
     if not (STATIC_DIR / "index.html").is_file():
         print(
             f"{STATIC_DIR}: viewer page not built; run `npm --prefix web run build`",
@@ -122,13 +144,6 @@ def _reply(issue: int, thread_id: str, text: str) -> int:
         return 1
     print(f"replied to {thread_id}")
     return 0
-
-
-def _configured_open() -> str:
-    config = Path(".claude", "pipeline.json")
-    if not config.is_file():
-        return "browser"
-    return json.loads(config.read_text()).get("viewer", {}).get("open", "browser")
 
 
 def run_server(app: FastAPI, sock: socket.socket) -> None:

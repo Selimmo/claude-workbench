@@ -25,8 +25,9 @@ claude-workbench/
         ├── .claude-plugin/plugin.json  # plugin manifest
         ├── pyproject.toml              # Python package `plan-review`
         ├── check.sh                    # every check for this plugin
-        ├── README.md                   # commands and the plan.json format
-        ├── examples/plan.json          # sample plan using every part of the format
+        ├── README.md                   # commands, plan.json, agents, pipeline.json
+        ├── agents/                     # architect, implementer, test-reviewer, code-reviewer
+        ├── examples/                   # plan.json and pipeline.json samples
         ├── src/plan_review/            # CLI, plan schema, server, comment threads
         │   └── static/                 # built viewer page (generated, gitignored)
         ├── tests/                      # pytest

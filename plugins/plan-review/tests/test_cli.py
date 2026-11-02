@@ -248,3 +248,27 @@ def test_blank_reply_exits_1_with_a_message(
 
     assert exit_code == 1
     assert "comment text is empty" in capsys.readouterr().err
+
+
+def test_config_prints_the_resolved_pipeline_settings(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_pipeline(project, {"checks": [{"name": "all", "run": "./check.sh"}]})
+
+    exit_code = main(["config"])
+
+    config = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert config["checks"] == [{"name": "all", "run": "./check.sh"}]
+    assert config["max_review_rounds"] == 3
+
+
+def test_config_with_a_bad_file_exits_1_with_readable_errors(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_pipeline(project, {"viewer": {"open": "tab"}})
+
+    exit_code = main(["config"])
+
+    assert exit_code == 1
+    assert "viewer.open: Input should be 'browser' or 'none'" in capsys.readouterr().err
