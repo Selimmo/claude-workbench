@@ -21,6 +21,7 @@ dev = [
     "ruff>=0.15",
     "pyright>=1.1.408",
     "httpx2>=2.16.0",
+    "pytest-timeout>=2.4",
 ]
 
 [build-system]
@@ -30,6 +31,7 @@ build-backend = "uv_build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--strict-markers"]
+timeout = 10  # a WebSocket test waiting for an event that never comes fails instead of hanging
 
 [tool.ruff]
 line-length = 100

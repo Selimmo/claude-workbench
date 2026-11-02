@@ -4,35 +4,16 @@ import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
-from typing import Any
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from plan_review.approval import approval_routes
+from plan_review.events import Subscribers
 from plan_review.plan import PlanFileError, load_plan
 from plan_review.thread_routes import thread_routes
 from plan_review.threads import BlankComment, ThreadNotFound, ThreadStore
-
-
-class Subscribers:
-    """The pages connected to /api/updates."""
-
-    def __init__(self) -> None:
-        self._sockets: set[WebSocket] = set()
-
-    def add(self, socket: WebSocket) -> None:
-        self._sockets.add(socket)
-
-    def remove(self, socket: WebSocket) -> None:
-        self._sockets.discard(socket)
-
-    async def send(self, message: dict[str, Any]) -> None:
-        for socket in list(self._sockets):
-            try:
-                await socket.send_json(message)
-            except (WebSocketDisconnect, RuntimeError):
-                self.remove(socket)
 
 
 def _signature(path: Path) -> tuple[int, int] | None:
@@ -55,8 +36,20 @@ async def _watch(path: Path, interval: float, subscribers: Subscribers) -> None:
             await subscribers.send({"type": "plan_changed"})
 
 
+async def _listen(socket: WebSocket, subscribers: Subscribers) -> None:
+    """Hold a push-only socket open until the other side disconnects."""
+    await socket.accept()
+    subscribers.add(socket)
+    try:
+        while True:  # listeners never send; this just waits for the disconnect
+            await socket.receive_text()
+    except WebSocketDisconnect:
+        subscribers.remove(socket)
+
+
 def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5) -> FastAPI:
-    subscribers = Subscribers()
+    subscribers = Subscribers()  # viewer pages, on /api/updates
+    events = Subscribers()  # Claude (through Monitor), on /events
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
@@ -79,13 +72,11 @@ def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5)
 
     @app.websocket("/api/updates")
     async def updates(socket: WebSocket) -> None:  # pyright: ignore[reportUnusedFunction]
-        await socket.accept()
-        subscribers.add(socket)
-        try:
-            while True:  # pages never send; this just waits for the disconnect
-                await socket.receive_text()
-        except WebSocketDisconnect:
-            subscribers.remove(socket)
+        await _listen(socket, subscribers)
+
+    @app.websocket("/events")
+    async def claude_events(socket: WebSocket) -> None:  # pyright: ignore[reportUnusedFunction]
+        await _listen(socket, events)
 
     @app.exception_handler(ThreadNotFound)
     async def not_found(_: Request, error: ThreadNotFound) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
@@ -96,7 +87,9 @@ def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5)
         return JSONResponse({"errors": [str(error)]}, status_code=422)
 
     # comments.json sits next to the plan it comments on.
-    app.include_router(thread_routes(ThreadStore(plan_file.parent / "comments.json"), plan_file))
+    store = ThreadStore(plan_file.parent / "comments.json")
+    app.include_router(thread_routes(store, plan_file, events))
+    app.include_router(approval_routes(store, plan_file, events))
 
     # Mounted last so /api routes win; html=True serves index.html at "/".
     app.mount("/", StaticFiles(directory=static_dir, html=True))
