@@ -35,7 +35,8 @@ claude-workbench/
             └── src/
                 ├── plan.ts             # plan.json types (mirror plan.py)
                 ├── viewModels.ts       # pure plan → view functions (tested)
-                ├── diagram.ts          # plan → boxes-and-arrows model (classes, architecture)
+                ├── diagram.ts          # plan → boxes-and-arrows model (classes, architecture, flowcharts)
+                ├── sequence.ts         # sequence-diagram geometry
                 ├── layout.ts           # ELK layout (loaded lazily); DiagramView renders it as DOM
                 ├── api.ts, App.tsx, PlanView.tsx
                 └── tabs/               # one component per tab

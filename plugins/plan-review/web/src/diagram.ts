@@ -1,6 +1,6 @@
 // A box-and-arrow diagram, independent of what it depicts: classes, architecture, flowcharts.
 
-import type { Plan, Status } from './plan'
+import type { Edge, Flowchart, Plan, Status } from './plan'
 
 export interface DiagramRow {
   id: string
@@ -48,6 +48,10 @@ export function classDiagram(plan: Plan): Diagram {
   }
 }
 
+function edgeOf(e: Edge): DiagramEdge {
+  return { id: e.id, source: e.from, target: e.to, label: e.label ?? null, status: e.status }
+}
+
 export function architectureDiagram(plan: Plan): Diagram {
   const architecture = plan.architecture ?? { nodes: [], edges: [] }
   return {
@@ -58,12 +62,19 @@ export function architectureDiagram(plan: Plan): Diagram {
       status: n.status,
       rows: [],
     })),
-    edges: architecture.edges.map((e) => ({
-      id: e.id,
-      source: e.from,
-      target: e.to,
-      label: e.label ?? null,
-      status: e.status,
+    edges: architecture.edges.map(edgeOf),
+  }
+}
+
+export function flowchartDiagram(flow: Flowchart): Diagram {
+  return {
+    nodes: flow.nodes.map((n) => ({
+      id: n.id,
+      title: n.name,
+      subtitle: null,
+      status: n.status,
+      rows: [],
     })),
+    edges: flow.edges.map(edgeOf),
   }
 }

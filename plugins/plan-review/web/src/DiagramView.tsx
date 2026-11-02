@@ -35,19 +35,25 @@ export function Legend() {
   )
 }
 
-export function DiagramView({ diagram, empty }: { diagram: Diagram; empty: string }) {
+interface Props {
+  diagram: Diagram
+  empty: string
+  direction?: 'RIGHT' | 'DOWN'
+}
+
+export function DiagramView({ diagram, empty, direction = 'RIGHT' }: Props) {
   const [laid, setLaid] = useState<LaidDiagram | null>(null)
 
   useEffect(() => {
     let current = true
     // ELK is large; load it only when a diagram is first shown.
     void import('./layout')
-      .then(({ layoutDiagram }) => layoutDiagram(diagram))
+      .then(({ layoutDiagram }) => layoutDiagram(diagram, direction))
       .then((result) => current && setLaid(result))
     return () => {
       current = false
     }
-  }, [diagram])
+  }, [diagram, direction])
 
   if (diagram.nodes.length === 0) return <p className="empty">{empty}</p>
   if (laid === null) return <p className="status">Laying out…</p>

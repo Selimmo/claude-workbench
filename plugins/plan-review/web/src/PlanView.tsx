@@ -4,6 +4,7 @@ import { architectureDiagram, classDiagram } from './diagram'
 import { DiagramView } from './DiagramView'
 import type { Plan } from './plan'
 import { FilesTab } from './tabs/FilesTab'
+import { FlowsTab } from './tabs/FlowsTab'
 import { RisksTab } from './tabs/RisksTab'
 import { TestsTab } from './tabs/TestsTab'
 import { type TabId, tabsFor } from './viewModels'
@@ -39,7 +40,7 @@ export function PlanView({ plan }: { plan: Plan }) {
       </nav>
       <section role="tabpanel" id="panel" aria-labelledby={`tab-${active}`}>
         {active === 'classes' && <DiagramView diagram={classes} empty="No classes in this plan." />}
-        {active === 'flows' && <p className="empty">Flow diagrams are not built yet.</p>}
+        {active === 'flows' && <FlowsTab plan={plan} />}
         {active === 'architecture' && (
           <DiagramView diagram={architecture} empty="No architecture in this plan." />
         )}

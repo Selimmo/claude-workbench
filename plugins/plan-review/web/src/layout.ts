@@ -6,6 +6,7 @@ import ELK, { type ElkNode } from 'elkjs/lib/elk.bundled.js'
 import type { Diagram, DiagramEdge, DiagramNode } from './diagram'
 
 export const CHAR_WIDTH = 7.8 // px per character at the diagram's 13px monospace font
+export const TITLE_CHAR_WIDTH = 9.2 // bold proportional titles run wider per character
 export const PADDING = 12
 export const HEADER_HEIGHT = 44
 export const ROW_HEIGHT = 22
@@ -34,24 +35,28 @@ export interface LaidDiagram {
 }
 
 export function nodeSize(node: DiagramNode): { width: number; height: number } {
-  // The header shows title and subtitle on one line, about two characters apart.
-  const header = node.subtitle ? `${node.title}  ${node.subtitle}` : node.title
-  const lines = [header, ...node.rows.map((r) => r.text)]
-  const longest = Math.max(...lines.map((line) => line.length))
+  // The header shows the title, then the subtitle about two characters further on.
+  const header =
+    node.title.length * TITLE_CHAR_WIDTH +
+    (node.subtitle ? (node.subtitle.length + 2) * CHAR_WIDTH : 0)
+  const rows = node.rows.map((r) => r.text.length * CHAR_WIDTH)
   return {
-    width: Math.max(MIN_WIDTH, longest * CHAR_WIDTH + 2 * PADDING),
+    width: Math.max(MIN_WIDTH, Math.max(header, ...rows) + 2 * PADDING),
     height: HEADER_HEIGHT + node.rows.length * ROW_HEIGHT,
   }
 }
 
 const elk = new ELK()
 
-export async function layoutDiagram(diagram: Diagram): Promise<LaidDiagram> {
+export async function layoutDiagram(
+  diagram: Diagram,
+  direction: 'RIGHT' | 'DOWN' = 'RIGHT',
+): Promise<LaidDiagram> {
   const input: ElkNode = {
     id: 'root',
     layoutOptions: {
       'elk.algorithm': 'layered',
-      'elk.direction': 'RIGHT',
+      'elk.direction': direction,
       'elk.edgeRouting': 'ORTHOGONAL',
       'elk.spacing.nodeNode': '40',
       'elk.layered.spacing.nodeNodeBetweenLayers': '80',

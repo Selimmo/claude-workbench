@@ -122,3 +122,15 @@ test('Architecture draws its components and labelled connections', async () => {
   await screen.findByText('Ollama')
   expect(element('arch:agent-ollama')).toHaveTextContent('HTTP')
 })
+
+test('Flows draws each flow: sequences as messages between participants, flowcharts as boxes', async () => {
+  await loaded()
+  fireEvent.click(screen.getByRole('tab', { name: 'Flows' }))
+
+  expect(element('flow:hint')).toHaveTextContent('Candidate requests a hint')
+  expect(element('flow:hint/orch')).toHaveTextContent('Orchestrator')
+  expect(element('flow:hint/5')).toHaveAttribute('data-status', 'removed')
+  expect(element('flow:hint/5')).toHaveTextContent("chat '/hint'")
+  await screen.findByText('hints_given < max_hints?')
+  expect(element('flow:level/e2')).toHaveTextContent('yes')
+})
