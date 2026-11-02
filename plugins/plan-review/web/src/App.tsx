@@ -2,8 +2,20 @@ import { useEffect, useState } from 'react'
 
 import { fetchPlan, type PlanResult } from './api'
 import { PlanView } from './PlanView'
+import { ThemeSwitch } from './ThemeSwitch'
 
 export function App() {
+  return (
+    <>
+      <div className="top-bar">
+        <ThemeSwitch />
+      </div>
+      <Content />
+    </>
+  )
+}
+
+function Content() {
   const [result, setResult] = useState<PlanResult | null>(null)
 
   useEffect(() => {
