@@ -4,7 +4,7 @@ Claude Code plugins for taking an issue to a reviewed commit with agents.
 
 | Plugin | What it does |
 |---|---|
-| [plan-review](plugins/plan-review) | Agents plan an issue; you review the plan as interactive diagrams (classes, flows, architecture, files, tests, risks), comment on any element, and approve it; agents then implement it with TDD and review it. |
+| [plan-review](plugins/plan-review/README.md) | Agents plan an issue; you review the plan as interactive diagrams (classes, flows, architecture, files, tests, risks), comment on any element, and approve it; agents then implement it with TDD and review it. |
 
 > Status: v0.1 in development. Not yet published.
 
@@ -25,7 +25,9 @@ claude-workbench/
         ├── .claude-plugin/plugin.json  # plugin manifest
         ├── pyproject.toml              # Python package `plan-review`
         ├── check.sh                    # every check for this plugin
-        ├── src/plan_review/            # CLI and server
+        ├── README.md                   # commands and the plan.json format
+        ├── examples/plan.json          # sample plan using every part of the format
+        ├── src/plan_review/            # CLI, plan schema (plan.py), server
         │   └── static/                 # built viewer page (generated, gitignored)
         ├── tests/                      # pytest
         └── web/                        # viewer page: React + TypeScript + Vite
@@ -41,6 +43,8 @@ uv sync                    # once
 ./check.sh                 # everything: web lint, format, tests, build; then ruff, pyright, pytest
 
 uv run plan-review --version
+uv run plan-review schema
+uv run plan-review validate examples/plan.json
 npm --prefix web run dev   # viewer page with hot reload
 ```
 
@@ -48,7 +52,7 @@ npm --prefix web run dev   # viewer page with hot reload
 
 | Area | Tech |
 |---|---|
-| CLI and server | Python 3.12+, uv, argparse |
+| CLI and server | Python 3.12+, uv, argparse, pydantic 2 |
 | Python checks | ruff, pyright, pytest |
 | Viewer page | React 19, TypeScript 6, Vite 8 |
 | Web checks | vitest 4 (jsdom, Testing Library), oxlint, prettier |

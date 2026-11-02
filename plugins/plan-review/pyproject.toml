@@ -2,9 +2,12 @@
 name = "plan-review"
 version = "0.1.0"
 description = "A visual, commentable plan viewer for Claude Code agent pipelines"
+readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic>=2.12",
+]
 
 [project.scripts]
 plan-review = "plan_review.cli:main"
