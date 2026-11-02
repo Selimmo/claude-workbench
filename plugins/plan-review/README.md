@@ -38,7 +38,30 @@ While it runs:
 | `POST /api/threads/<id>/replies` | `{"text"}`: owner reply |
 | `POST /api/threads/<id>/resolve`, `/reopen` | close or reopen a thread |
 
+| `POST /api/approve` | approve the plan: 409 while any thread is unresolved, 422 if the plan is invalid; otherwise writes `approved.json` (`approved_at`, `plan_sha256`) |
+| `WS /events` | the owner's actions, for Claude (below) |
+
 Errors come back as `{"errors": [...]}`: 404 for an unknown thread, 422 for blank text.
+
+### Events for Claude (`WS /events`)
+
+One JSON message per owner action:
+
+```json
+{"type": "comment", "thread_id": "t-1a2b3c4d", "anchor": "class:HintPolicy", "text": "Why a class?"}
+{"type": "reply",   "thread_id": "t-1a2b3c4d", "anchor": "class:HintPolicy", "text": "Thanks"}
+{"type": "approved"}
+```
+
+`comment` is a new thread and `reply` an owner reply in an existing one. Claude's own replies go through the CLI, not the server, so they never produce an event and Claude is never woken by itself.
+
+In Claude Code, subscribe with the `Monitor` tool's WebSocket source. Each message becomes one notification:
+
+```
+Monitor({ ws: { url: "ws://127.0.0.1:<port>/events" }, description: "plan-review #42", timeout_ms: 1800000 })
+```
+
+A Monitor expires after at most 30 minutes, so re-arm it until `approved` arrives.
 
 ### Comment threads
 

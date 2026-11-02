@@ -1,3 +1,4 @@
+import hashlib
 import json
 import shutil
 import socket
@@ -10,6 +11,7 @@ from fastapi.testclient import TestClient
 from websockets.sync.client import connect
 
 from plan_review.server import create_app
+from plan_review.threads import ThreadStore
 
 EXAMPLE = Path(__file__).parents[1] / "examples" / "plan.json"
 
@@ -154,3 +156,73 @@ def test_thread_on_an_element_removed_from_the_plan_is_listed_as_orphaned(
     (thread,) = client.get("/api/threads").json()["threads"]
 
     assert thread["orphaned"] is True
+
+
+def test_owners_new_thread_is_announced_on_events(plan_file: Path, static_dir: Path) -> None:
+    with (
+        TestClient(create_app(plan_file, static_dir)) as client,
+        client.websocket_connect("/events") as events,
+    ):
+        thread = client.post("/api/threads", json={"anchor": "risk:1", "text": "Agree?"}).json()
+
+        assert events.receive_json() == {
+            "type": "comment",
+            "thread_id": thread["id"],
+            "anchor": "risk:1",
+            "text": "Agree?",
+        }
+
+
+def test_owner_replies_are_announced_but_claudes_are_not(plan_file: Path, static_dir: Path) -> None:
+    store = ThreadStore(plan_file.parent / "comments.json")
+    thread = store.create("risk:1", "Agree?")
+    with (
+        TestClient(create_app(plan_file, static_dir)) as client,
+        client.websocket_connect("/events") as events,
+    ):
+        store.reply(thread.id, "Yes, see mitigation.", author="claude")  # as the CLI does
+        client.post(f"/api/threads/{thread.id}/replies", json={"text": "Thanks"})
+
+        assert events.receive_json() == {
+            "type": "reply",
+            "thread_id": thread.id,
+            "anchor": "risk:1",
+            "text": "Thanks",
+        }
+
+
+def test_approve_is_refused_while_a_thread_is_unresolved(plan_file: Path, static_dir: Path) -> None:
+    ThreadStore(plan_file.parent / "comments.json").create("risk:1", "Open question")
+    client = TestClient(create_app(plan_file, static_dir))
+
+    response = client.post("/api/approve")
+
+    assert response.status_code == 409
+    assert response.json() == {"errors": ["1 unresolved thread(s): resolve them first"]}
+    assert not (plan_file.parent / "approved.json").exists()
+
+
+def test_approve_records_approval_and_announces_it(plan_file: Path, static_dir: Path) -> None:
+    store = ThreadStore(plan_file.parent / "comments.json")
+    store.set_resolved(store.create("risk:1", "Q").id, True)
+    with (
+        TestClient(create_app(plan_file, static_dir)) as client,
+        client.websocket_connect("/events") as events,
+    ):
+        response = client.post("/api/approve")
+
+        assert response.status_code == 200
+        assert events.receive_json() == {"type": "approved"}
+    record = json.loads((plan_file.parent / "approved.json").read_text())
+    assert record["plan_sha256"] == hashlib.sha256(plan_file.read_bytes()).hexdigest()
+    assert "approved_at" in record
+
+
+def test_approve_is_refused_for_an_invalid_plan(plan_file: Path, static_dir: Path) -> None:
+    plan_file.write_text("{}")
+    client = TestClient(create_app(plan_file, static_dir))
+
+    response = client.post("/api/approve")
+
+    assert response.status_code == 422
+    assert not (plan_file.parent / "approved.json").exists()
