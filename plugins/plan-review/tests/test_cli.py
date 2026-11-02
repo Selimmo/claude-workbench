@@ -1,9 +1,12 @@
 import json
+import select
+import socket
 import subprocess
 from pathlib import Path
 
 import pytest
 
+from plan_review import cli
 from plan_review.cli import main
 
 
@@ -80,3 +83,120 @@ def test_validate_malformed_json_is_reported_not_raised(
 
     assert exit_code == 1
     assert "Invalid JSON" in capsys.readouterr().err
+
+
+class FakeServer:
+    """Stands in for uvicorn and the browser so serve() can be tested without either."""
+
+    def __init__(self) -> None:
+        self.addresses: list[tuple[str, int]] = []
+        self.opened: list[str] = []
+
+    def run(self, app: object, sock: socket.socket) -> None:
+        self.addresses.append(sock.getsockname())
+
+
+@pytest.fixture
+def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A project root (the cwd) with a valid plan for issue 7 and a built page."""
+    monkeypatch.chdir(tmp_path)
+    work = tmp_path / ".claude" / "work" / "7"
+    work.mkdir(parents=True)
+    (work / "plan.json").write_text(json.dumps(VALID_PLAN))
+    static = tmp_path / "static"
+    static.mkdir()
+    (static / "index.html").write_text("<h1>plan-review</h1>")
+    monkeypatch.setattr(cli, "STATIC_DIR", static)
+    return tmp_path
+
+
+@pytest.fixture
+def server(monkeypatch: pytest.MonkeyPatch) -> FakeServer:
+    fake = FakeServer()
+    monkeypatch.setattr(cli, "run_server", fake.run)
+    monkeypatch.setattr(cli.webbrowser, "open", fake.opened.append)
+    return fake
+
+
+def test_serve_without_a_plan_exits_2_and_starts_nothing(
+    project: Path, server: FakeServer, capsys: pytest.CaptureFixture[str]
+) -> None:
+    exit_code = main(["serve", "8"])
+
+    assert exit_code == 2
+    assert ".claude/work/8/plan.json: file not found" in capsys.readouterr().err
+    assert server.addresses == []
+
+
+def test_serve_binds_localhost_on_a_free_port_and_opens_the_browser(
+    project: Path, server: FakeServer
+) -> None:
+    exit_code = main(["serve", "7"])
+
+    host, port = server.addresses[0]
+    assert exit_code == 0
+    assert host == "127.0.0.1"
+    assert port > 0
+    assert server.opened == [f"http://127.0.0.1:{port}/"]
+
+
+def test_serve_open_none_prints_the_url_instead_of_opening_a_browser(
+    project: Path, server: FakeServer, capsys: pytest.CaptureFixture[str]
+) -> None:
+    main(["serve", "7", "--open", "none"])
+
+    _, port = server.addresses[0]
+    assert server.opened == []
+    assert f"http://127.0.0.1:{port}/" in capsys.readouterr().out
+
+
+def write_pipeline(project: Path, config: object) -> None:
+    (project / ".claude" / "pipeline.json").write_text(json.dumps(config))
+
+
+def test_serve_follows_viewer_open_from_pipeline_json(project: Path, server: FakeServer) -> None:
+    write_pipeline(project, {"viewer": {"open": "none"}})
+
+    main(["serve", "7"])
+
+    assert server.opened == []
+
+
+def test_serve_open_flag_overrides_pipeline_json(project: Path, server: FakeServer) -> None:
+    write_pipeline(project, {"viewer": {"open": "none"}})
+
+    main(["serve", "7", "--open", "browser"])
+
+    assert len(server.opened) == 1
+
+
+def test_serve_without_a_built_page_says_how_to_build_it(
+    project: Path,
+    server: FakeServer,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli, "STATIC_DIR", project / "missing")
+
+    exit_code = main(["serve", "7"])
+
+    assert exit_code == 2
+    assert "npm --prefix web run build" in capsys.readouterr().err
+    assert server.addresses == []
+
+
+def test_serve_prints_its_url_immediately_when_stdout_is_a_pipe(project: Path) -> None:
+    # How /ship runs it: in the background, reading the URL from a pipe.
+    proc = subprocess.Popen(
+        ["plan-review", "serve", "7", "--open", "none"],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert proc.stdout is not None
+        ready, _, _ = select.select([proc.stdout], [], [], 10)
+        assert ready, "no output within 10s: is stdout buffered?"
+        assert "http://127.0.0.1:" in proc.stdout.readline()
+    finally:
+        proc.terminate()
+        proc.wait(timeout=5)

@@ -10,7 +10,27 @@ Review an agent's implementation plan as interactive diagrams, comment on any el
 plan-review --version
 plan-review schema               # print the plan.json JSON Schema
 plan-review validate plan.json   # check a plan; exit 0 = valid, 1 = invalid, 2 = file not found
+plan-review serve 42             # open the viewer for .claude/work/42/plan.json
+plan-review serve 42 --open none # only print the URL (e.g. over SSH)
 ```
+
+### `serve`
+
+Run it from the project root. It reads `.claude/work/<issue>/plan.json`, refuses to start if the plan is missing or invalid, and serves the viewer on `127.0.0.1` (never other interfaces) on a free port. It prints `plan-review: issue #42 at http://127.0.0.1:<port>/` and opens your default browser.
+
+`--open browser|none` decides whether the browser opens. Without it, `viewer.open` in the project's `.claude/pipeline.json` decides, and the default is `browser`:
+
+```json
+{ "viewer": { "open": "none" } }
+```
+
+While it runs:
+
+| Endpoint | What |
+|---|---|
+| `GET /` | the viewer page |
+| `GET /api/plan` | the plan (200); `{"errors": [...]}` with 404 if missing, 422 if invalid |
+| `WS /api/updates` | sends `{"type": "plan_changed"}` whenever `plan.json` changes on disk |
 
 `validate` prints one line per problem, as `location: message`:
 
