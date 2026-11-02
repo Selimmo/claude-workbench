@@ -13,6 +13,7 @@ from fastapi import FastAPI
 
 from plan_review.plan import Plan, PlanFileError, load_plan
 from plan_review.server import create_app
+from plan_review.threads import BlankComment, ThreadNotFound, ThreadStore
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -34,6 +35,12 @@ def _parser() -> argparse.ArgumentParser:
         help="open the default browser, or only print the URL "
         "(default: viewer.open in .claude/pipeline.json, else browser)",
     )
+    threads = commands.add_parser("threads", help="list an issue's open comment threads as JSON")
+    threads.add_argument("issue", type=int)
+    reply = commands.add_parser("reply", help="answer a comment thread as Claude")
+    reply.add_argument("issue", type=int)
+    reply.add_argument("thread_id")
+    reply.add_argument("text")
     return parser
 
 
@@ -47,7 +54,16 @@ def main(argv: list[str] | None = None) -> int:
         return _validate(args.file)
     elif args.command == "serve":
         return _serve(args.issue, args.open or _configured_open())
+    elif args.command == "threads":
+        return _threads(args.issue)
+    elif args.command == "reply":
+        return _reply(args.issue, args.thread_id, args.text)
     return 0
+
+
+def _work_dir(issue: int) -> Path:
+    """Where an issue's plan, comments and reports live, relative to the project root."""
+    return Path(".claude", "work", str(issue))
 
 
 def _validate(file: Path) -> int:
@@ -67,7 +83,7 @@ def _serve(issue: int, open_mode: str) -> int:
             file=sys.stderr,
         )
         return 2
-    plan_file = Path(".claude", "work", str(issue), "plan.json")
+    plan_file = _work_dir(issue) / "plan.json"
     try:
         load_plan(plan_file)
     except PlanFileError as error:
@@ -84,6 +100,27 @@ def _serve(issue: int, open_mode: str) -> int:
         if open_mode == "browser":
             webbrowser.open(url)
         run_server(create_app(plan_file, STATIC_DIR), sock)
+    return 0
+
+
+def _threads(issue: int) -> int:
+    open_threads = [
+        t for t in ThreadStore(_work_dir(issue) / "comments.json").all() if not t.resolved
+    ]
+    print(json.dumps([t.model_dump(mode="json") for t in open_threads], indent=2))
+    return 0
+
+
+def _reply(issue: int, thread_id: str, text: str) -> int:
+    try:
+        ThreadStore(_work_dir(issue) / "comments.json").reply(thread_id, text, author="claude")
+    except ThreadNotFound:
+        print(f"no thread '{thread_id}' for issue #{issue}", file=sys.stderr)
+        return 1
+    except BlankComment as error:
+        print(error, file=sys.stderr)
+        return 1
+    print(f"replied to {thread_id}")
     return 0
 
 

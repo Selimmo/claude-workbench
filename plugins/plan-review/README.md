@@ -12,6 +12,8 @@ plan-review schema               # print the plan.json JSON Schema
 plan-review validate plan.json   # check a plan; exit 0 = valid, 1 = invalid, 2 = file not found
 plan-review serve 42             # open the viewer for .claude/work/42/plan.json
 plan-review serve 42 --open none # only print the URL (e.g. over SSH)
+plan-review threads 42           # open comment threads, as JSON (for Claude)
+plan-review reply 42 t-1a2b3c4d "Because ..."   # answer a thread as Claude
 ```
 
 ### `serve`
@@ -31,6 +33,16 @@ While it runs:
 | `GET /` | the viewer page |
 | `GET /api/plan` | the plan (200); `{"errors": [...]}` with 404 if missing, 422 if invalid |
 | `WS /api/updates` | sends `{"type": "plan_changed"}` whenever `plan.json` changes on disk |
+| `GET /api/threads` | all comment threads, each with `orphaned: true` if its element left the plan |
+| `POST /api/threads` | `{"anchor", "text"}`: new thread, written as the owner (201) |
+| `POST /api/threads/<id>/replies` | `{"text"}`: owner reply |
+| `POST /api/threads/<id>/resolve`, `/reopen` | close or reopen a thread |
+
+Errors come back as `{"errors": [...]}`: 404 for an unknown thread, 422 for blank text.
+
+### Comment threads
+
+Threads live in `.claude/work/<issue>/comments.json`, next to the plan. Each thread is anchored to a plan element id (such as `class:HintPolicy`) or to a whole tab (`tab:classes`, `tab:flows`, `tab:architecture`, `tab:files`, `tab:tests`, `tab:risks`), and holds ordered messages from `owner` or `claude` plus a `resolved` flag. The page writes as the owner; Claude answers with `plan-review reply`, never by editing the file. A thread whose element disappears from a revised plan is **orphaned**: kept, and shown separately. Tab threads never orphan.
 
 `validate` prints one line per problem, as `location: message`:
 
