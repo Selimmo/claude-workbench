@@ -5,12 +5,14 @@ import json
 import socket
 import sys
 import webbrowser
+from collections.abc import Callable
 from importlib.metadata import version
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
 
+from plan_review.orchestration import MalformedReview, slugify, tree_hash, verdict
 from plan_review.pipeline import PipelineConfigError, load_pipeline
 from plan_review.plan import Plan, PlanFileError, load_plan
 from plan_review.server import create_app
@@ -19,16 +21,37 @@ from plan_review.threads import BlankComment, ThreadNotFound, ThreadStore
 STATIC_DIR = Path(__file__).parent / "static"
 
 
+def _schema() -> int:
+    print(json.dumps(Plan.model_json_schema(), indent=2))
+    return 0
+
+
+def _tree_hash() -> int:
+    print(tree_hash(Path.cwd()))
+    return 0
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="plan-review")
     # Handled here rather than with action="version", which calls sys.exit():
     # main() returns its exit code so callers (and tests) stay in control.
     parser.add_argument("--version", action="store_true", help="print the version and exit")
     commands = parser.add_subparsers(dest="command")
-    commands.add_parser("schema", help="print the plan.json JSON Schema")
-    validate = commands.add_parser("validate", help="check a plan.json file")
-    validate.add_argument("file", type=Path)
-    serve = commands.add_parser("serve", help="open the viewer for an issue's plan")
+
+    def command(
+        name: str, help: str, run: Callable[[argparse.Namespace], int]
+    ) -> argparse.ArgumentParser:
+        sub = commands.add_parser(name, help=help)
+        sub.set_defaults(run=run)
+        return sub
+
+    command("schema", "print the plan.json JSON Schema", lambda a: _schema())
+    command("validate", "check a plan.json file", lambda a: _validate(a.file)).add_argument(
+        "file", type=Path
+    )
+    serve = command(
+        "serve", "open the viewer for an issue's plan", lambda a: _serve(a.issue, a.open)
+    )
     serve.add_argument("issue", type=int)
     serve.add_argument(
         "--open",
@@ -36,13 +59,27 @@ def _parser() -> argparse.ArgumentParser:
         help="open the default browser, or only print the URL "
         "(default: viewer.open in .claude/pipeline.json, else browser)",
     )
-    commands.add_parser("config", help="print this project's pipeline settings, defaults filled in")
-    threads = commands.add_parser("threads", help="list an issue's open comment threads as JSON")
-    threads.add_argument("issue", type=int)
-    reply = commands.add_parser("reply", help="answer a comment thread as Claude")
+    command(
+        "config", "print this project's pipeline settings, defaults filled in", lambda a: _config()
+    )
+    command(
+        "threads", "list an issue's open comment threads as JSON", lambda a: _threads(a.issue)
+    ).add_argument("issue", type=int)
+    reply = command(
+        "reply", "answer a comment thread as Claude", lambda a: _reply(a.issue, a.thread_id, a.text)
+    )
     reply.add_argument("issue", type=int)
     reply.add_argument("thread_id")
     reply.add_argument("text")
+    command(
+        "branch", "the branch name for an issue, from its plan", lambda a: _branch(a.issue)
+    ).add_argument("issue", type=int)
+    command(
+        "verdict",
+        "a review's verdict: exit 0 PASS, 1 FINDINGS, 2 malformed",
+        lambda a: _verdict(a.file),
+    ).add_argument("file", type=Path)
+    command("tree-hash", "fingerprint of uncommitted changes (git)", lambda a: _tree_hash())
     return parser
 
 
@@ -50,19 +87,9 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.version:
         print(f"plan-review {version('plan-review')}")
-    elif args.command == "schema":
-        print(json.dumps(Plan.model_json_schema(), indent=2))
-    elif args.command == "validate":
-        return _validate(args.file)
-    elif args.command == "config":
-        return _config()
-    elif args.command == "serve":
-        return _serve(args.issue, args.open)
-    elif args.command == "threads":
-        return _threads(args.issue)
-    elif args.command == "reply":
-        return _reply(args.issue, args.thread_id, args.text)
-    return 0
+        return 0
+    run: Callable[[argparse.Namespace], int] | None = getattr(args, "run", None)
+    return run(args) if run else 0
 
 
 PIPELINE_FILE = Path(".claude", "pipeline.json")
@@ -148,3 +175,24 @@ def _reply(issue: int, thread_id: str, text: str) -> int:
 
 def run_server(app: FastAPI, sock: socket.socket) -> None:
     uvicorn.Server(uvicorn.Config(app, log_level="warning")).run(sockets=[sock])
+
+
+def _verdict(file: Path) -> int:
+    try:
+        result = verdict(file)
+    except MalformedReview as error:
+        print(error, file=sys.stderr)
+        return 2
+    print(result)
+    return 0 if result == "PASS" else 1
+
+
+def _branch(issue: int) -> int:
+    try:
+        plan = load_plan(_work_dir(issue) / "plan.json")
+        pattern = load_pipeline(PIPELINE_FILE).branch
+    except (PlanFileError, PipelineConfigError) as error:
+        print("\n".join(error.errors), file=sys.stderr)
+        return 1
+    print(pattern.format(issue=issue, slug=slugify(plan.issue.title)))
+    return 0

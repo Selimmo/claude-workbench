@@ -27,8 +27,9 @@ claude-workbench/
         ├── check.sh                    # every check for this plugin
         ├── README.md                   # commands, plan.json, agents, pipeline.json
         ├── agents/                     # architect, implementer, test-reviewer, code-reviewer
+        ├── skills/ship/SKILL.md        # /plan-review:ship — the orchestrator
         ├── examples/                   # plan.json and pipeline.json samples
-        ├── src/plan_review/            # CLI, plan schema, server, comment threads
+        ├── src/plan_review/            # CLI, plan schema, server, comment threads, /ship helpers
         │   └── static/                 # built viewer page (generated, gitignored)
         ├── tests/                      # pytest
         └── web/                        # viewer page: React + TypeScript + Vite

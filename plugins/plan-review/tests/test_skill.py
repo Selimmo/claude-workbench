@@ -1,0 +1,43 @@
+"""The /ship skill's contract: who may start it, and what it must delegate."""
+
+from pathlib import Path
+
+import pytest
+
+SKILL = Path(__file__).parents[1] / "skills" / "ship" / "SKILL.md"
+
+
+def parts() -> tuple[dict[str, str], str]:
+    _, header, body = SKILL.read_text().split("---\n", 2)
+    pairs = (line.split(":", 1) for line in header.splitlines() if line.strip())
+    return {k.strip(): v.strip() for k, v in pairs}, body
+
+
+def test_only_the_owner_can_start_it_with_an_issue() -> None:
+    meta, _ = parts()
+
+    assert meta["name"] == "ship"
+    assert meta["disable-model-invocation"] == "true"  # side effects: branches, commits
+    assert meta["argument-hint"] == "<issue number or URL>"
+
+
+@pytest.mark.parametrize(
+    "required",
+    [
+        "plan-review:architect",
+        "plan-review:implementer",
+        "plan-review:test-reviewer",
+        "plan-review:code-reviewer",
+        "plan-review serve",
+        "plan-review reply",
+        "plan-review verdict",
+        "plan-review tree-hash",
+        "plan-review branch",
+        "Monitor",
+        "max_review_rounds",
+    ],
+)
+def test_it_delegates_to_the_agents_and_deterministic_helpers(required: str) -> None:
+    _, body = parts()
+
+    assert required in body
