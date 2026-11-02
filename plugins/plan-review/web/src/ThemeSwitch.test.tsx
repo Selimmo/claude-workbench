@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 
-import { STORAGE_KEY, ThemeSwitch, applyStoredTheme } from './ThemeSwitch'
+import { ThemeSwitch } from './ThemeSwitch'
+import { STORAGE_KEY, applyStoredTheme } from './theme'
 
 const root = document.documentElement
 

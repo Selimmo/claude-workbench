@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 
 import example from '../../examples/plan.json'
 import { App } from './App'
+import { FakeServer } from './test/fakeServer'
 
 function serve(status: number, body: unknown) {
   vi.stubGlobal(
@@ -33,7 +34,7 @@ test('an invalid plan shows its errors', async () => {
 })
 
 async function loaded() {
-  serve(200, example)
+  new FakeServer().install()
   render(<App />)
   await screen.findByRole('tablist')
 }

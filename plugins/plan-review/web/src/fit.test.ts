@@ -1,4 +1,4 @@
-import { fitView } from './PanZoom'
+import { fitView } from './fit'
 
 test('content larger than the viewport is shrunk to fit, keeping its aspect ratio', () => {
   expect(fitView({ width: 500, height: 400 }, { width: 1000, height: 200 })).toEqual({

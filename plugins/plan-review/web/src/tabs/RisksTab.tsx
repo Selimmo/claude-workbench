@@ -10,7 +10,7 @@ function RiskList({ title, items }: { title: string; items: Risk[] }) {
       ) : (
         <ul className="rows">
           {items.map((risk) => (
-            <li key={risk.id} data-severity={risk.severity}>
+            <li key={risk.id} data-element-id={risk.id} data-severity={risk.severity}>
               <span className="severity">{risk.severity}</span>
               <span>{risk.text}</span>
               {risk.mitigation && <span className="reason">Mitigation: {risk.mitigation}</span>}

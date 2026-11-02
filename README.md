@@ -39,6 +39,7 @@ claude-workbench/
                 ├── sequence.ts         # sequence-diagram geometry
                 ├── layout.ts           # ELK layout (loaded lazily); DiagramView renders it as DOM
                 ├── api.ts, App.tsx, PlanView.tsx
+                ├── comments/           # pins, thread cards, composer, comment mode
                 └── tabs/               # one component per tab
 ```
 

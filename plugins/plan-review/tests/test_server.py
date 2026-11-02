@@ -234,3 +234,14 @@ def test_page_is_revalidated_so_an_upgraded_viewer_is_never_served_stale(
     client = TestClient(create_app(plan_file, static_dir))
 
     assert client.get("/").headers["cache-control"] == "no-cache"
+
+
+def test_pages_are_told_when_comment_threads_change_on_disk(
+    plan_file: Path, static_dir: Path
+) -> None:
+    app = create_app(plan_file, static_dir, poll_interval=0.01)
+
+    with TestClient(app) as client, client.websocket_connect("/api/updates") as updates:
+        ThreadStore(plan_file.parent / "comments.json").create("risk:1", "via the CLI")
+
+        assert updates.receive_json() == {"type": "threads_changed"}
