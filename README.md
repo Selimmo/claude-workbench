@@ -32,6 +32,11 @@ claude-workbench/
         │   └── static/                 # built viewer page (generated, gitignored)
         ├── tests/                      # pytest
         └── web/                        # viewer page: React + TypeScript + Vite
+            └── src/
+                ├── plan.ts             # plan.json types (mirror plan.py)
+                ├── viewModels.ts       # pure plan → view functions (tested)
+                ├── api.ts, App.tsx, PlanView.tsx
+                └── tabs/               # one component per tab
 ```
 
 ## Development (plan-review)
