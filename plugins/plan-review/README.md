@@ -128,12 +128,25 @@ Rules:
 - **References must exist:** relation ends, flow step and edge ends (within their own flow), architecture edge ends, and test targets.
 - **Unknown fields are errors**, so typos are caught rather than ignored.
 
+## Just the viewer
+
+The viewer works on its own, with no agents or pipeline. Any valid `plan.json` will do, whether you wrote it, another tool or agent generated it, or it came from `plan-review schema`:
+
+```bash
+mkdir -p .claude/work/7 && cp my-plan.json .claude/work/7/plan.json
+plan-review validate .claude/work/7/plan.json
+plan-review serve 7        # review, comment, approve in the browser
+plan-review threads 7      # read the comments from scripts or other agents
+```
+
+Use as much or as little of the rest as you like.
+
 ## The pipeline: `/plan-review:ship <issue>`
 
 One command takes an issue to a reviewed commit:
 
-0. **Settle decisions.** `/ship` first runs Matt Pocock's [`grilling`](https://github.com/mattpocock/skills) skill on the issue: facts are looked up, and every open decision is put to you until none is left. When you confirm, the decisions are saved to `.claude/work/<issue>/decisions.md`. This is skipped when that file already exists or you pass `--no-grill`, and if the skill isn't installed, `/ship` says so and continues.
-1. **Plan.** The `architect` writes `.claude/work/<issue>/plan.json`, treating `decisions.md` as settled.
+0. **Settle decisions (optional).** Anything already decided can go in `.claude/work/<issue>/decisions.md`: notes, a doc, the outcome of any discussion. The architect treats it as settled. With `/ship <issue> --grill`, `/ship` first runs Matt Pocock's [`grilling`](https://github.com/mattpocock/skills) skill, if you have it, and saves the outcome there.
+1. **Plan.** The `architect` writes `.claude/work/<issue>/plan.json`.
 2. **Review.** The viewer opens. Your comments wake Claude through the `/events` socket: questions are answered in the thread, change requests go back to the architect, and the page updates live. Approve when every thread is resolved.
 3. **Branch.** Named by `plan-review branch`.
 4. **Implement and review the tests.** `implementer` ⇄ `test-reviewer` until `VERDICT: PASS`.

@@ -50,9 +50,10 @@ def test_project_agents_take_precedence_over_the_plugins() -> None:
     assert "otherwise `plan-review:<name>`" in body
 
 
-def test_it_starts_with_a_grilling_session_that_feeds_the_architect() -> None:
+def test_grilling_is_opt_in_and_the_hand_off_is_a_plain_file() -> None:
     meta, body = parts()
 
-    assert "--no-grill" in meta["argument-hint"]
-    for required in ["`grilling` skill", "decisions.md", "--no-grill", "github.com/mattpocock/skills"]:
+    assert meta["argument-hint"] == "<issue number or URL> [--grill]"
+    assert "--no-grill" not in body  # never on by default
+    for required in ["--grill", "`grilling` skill", "decisions.md", "github.com/mattpocock/skills"]:
         assert required in body

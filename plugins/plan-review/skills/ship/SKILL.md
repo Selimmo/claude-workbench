@@ -1,7 +1,7 @@
 ---
 name: ship
 description: Take one issue from plan to reviewed commit. The architect plans it, the owner reviews and approves the plan in the plan-review viewer, then the implementer builds it with TDD while a test reviewer and a code reviewer check the result.
-argument-hint: <issue number or URL> [--no-grill]
+argument-hint: <issue number or URL> [--grill]
 disable-model-invocation: true
 ---
 
@@ -11,20 +11,20 @@ You are the **orchestrator**. You run the steps below for issue `$ARGUMENTS`, de
 
 **Which agents.** For each role (`architect`, `implementer`, `test-reviewer`, `code-reviewer`), use the project's own agent when `.claude/agents/<name>.md` exists in the project, otherwise `plan-review:<name>` from this plugin. Check once at the start and say which ones you are using. Below, `plan-review:<name>` means "the agent chosen for that role".
 
-Throughout, `N` is the issue number (take it from `$ARGUMENTS`, which may be `42`, `#42` or an issue URL, optionally followed by `--no-grill`) and `W` is `.claude/work/N/`. Hand-offs between steps are files in `W`. Pass agents paths, not file contents, and keep your own context small.
+Throughout, `N` is the issue number (take it from `$ARGUMENTS`, which may be `42`, `#42` or an issue URL, optionally followed by `--grill`) and `W` is `.claude/work/N/`. Hand-offs between steps are files in `W`. Pass agents paths, not file contents, and keep your own context small.
 
 ## 0. Preconditions
 
 1. Run `plan-review config`. If it fails, show the errors and stop.
 2. Run `git status --porcelain`. If there are uncommitted changes, stop and ask the owner: the reviewers' read-only check needs a clean starting point.
 
-## 1. Settle the decisions (grilling)
+## 1. Settle the decisions (only with `--grill`)
 
-Skip this step if `W/decisions.md` already exists (say so) or the arguments include `--no-grill`.
+If `W/decisions.md` already exists, the architect will use it, whatever produced it (a grilling session, the owner's notes, a doc). Mention it.
 
-Otherwise, run the `grilling` skill on issue N with the Skill tool. It is Matt Pocock's interview skill: facts are looked up, and every open decision is put to the owner in rounds until none is left. Follow it fully, including waiting for the owner to confirm that you have reached a shared understanding.
+Run this step only when the arguments include `--grill`. Then run the `grilling` skill on issue N with the Skill tool. It is Matt Pocock's interview skill: facts are looked up, and every open decision is put to the owner in rounds until none is left. Follow it fully, including waiting for the owner to confirm that you have reached a shared understanding.
 
-If no `grilling` skill is available, tell the owner in one line that grilling is optional and comes from https://github.com/mattpocock/skills (`grill-me` and `grilling`), then continue without it.
+If `--grill` was given but no `grilling` skill is available, tell the owner in one line that it comes from https://github.com/mattpocock/skills (`grill-me` and `grilling`), then continue without it.
 
 Once the owner confirms, write `W/decisions.md`. Write only what was settled, in the owner's terms, so the architect can follow it without the conversation:
 
