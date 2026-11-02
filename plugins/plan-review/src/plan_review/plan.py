@@ -1,9 +1,10 @@
 """The plan format: the contract between the architect agent and the viewer."""
 
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 Status = Literal["added", "modified", "removed", "unchanged"]
 
@@ -188,3 +189,30 @@ def _check_ends(edges: Sequence[_Edge], known: set[str], what: str) -> None:
         for end, ref in (("from", edge.source), ("to", edge.target)):
             if ref not in known:
                 raise ValueError(f"{edge.id}: '{end}' points at unknown {what} id '{ref}'")
+
+
+class PlanFileError(Exception):
+    """A plan file that is missing or invalid, with one readable line per problem."""
+
+    def __init__(self, errors: list[str], *, missing: bool = False) -> None:
+        super().__init__("\n".join(errors))
+        self.errors = errors
+        self.missing = missing
+
+
+def load_plan(path: Path) -> Plan:
+    if not path.is_file():
+        raise PlanFileError([f"{path}: file not found"], missing=True)
+    try:
+        return Plan.model_validate_json(path.read_text())
+    except ValidationError as error:
+        raise PlanFileError(_readable(error)) from error
+
+
+def _readable(error: ValidationError) -> list[str]:
+    """One `location: message` line per error; plan-wide checks have no location."""
+    lines: list[str] = []
+    for e in error.errors():
+        where = ".".join(str(part) for part in e["loc"])
+        lines.append(f"{where}: {e['msg']}" if where else e["msg"])
+    return lines

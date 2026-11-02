@@ -27,7 +27,7 @@ claude-workbench/
         ├── check.sh                    # every check for this plugin
         ├── README.md                   # commands and the plan.json format
         ├── examples/plan.json          # sample plan using every part of the format
-        ├── src/plan_review/            # CLI, plan schema (plan.py), server
+        ├── src/plan_review/            # CLI (cli.py), plan schema (plan.py), server (server.py)
         │   └── static/                 # built viewer page (generated, gitignored)
         ├── tests/                      # pytest
         └── web/                        # viewer page: React + TypeScript + Vite
@@ -52,7 +52,7 @@ npm --prefix web run dev   # viewer page with hot reload
 
 | Area | Tech |
 |---|---|
-| CLI and server | Python 3.12+, uv, argparse, pydantic 2 |
+| CLI and server | Python 3.12+, uv, argparse, pydantic 2, FastAPI, uvicorn, websockets |
 | Python checks | ruff, pyright, pytest |
 | Viewer page | React 19, TypeScript 6, Vite 8 |
 | Web checks | vitest 4 (jsdom, Testing Library), oxlint, prettier |
