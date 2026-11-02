@@ -27,7 +27,7 @@ claude-workbench/
         ├── check.sh                    # every check for this plugin
         ├── README.md                   # commands and the plan.json format
         ├── examples/plan.json          # sample plan using every part of the format
-        ├── src/plan_review/            # CLI (cli.py), plan schema (plan.py), server (server.py)
+        ├── src/plan_review/            # CLI, plan schema, server, comment threads
         │   └── static/                 # built viewer page (generated, gitignored)
         ├── tests/                      # pytest
         └── web/                        # viewer page: React + TypeScript + Vite
@@ -45,6 +45,7 @@ uv sync                    # once
 uv run plan-review --version
 uv run plan-review schema
 uv run plan-review validate examples/plan.json
+uv run plan-review threads 42 && uv run plan-review reply 42 <thread-id> "text"
 npm --prefix web run dev   # viewer page with hot reload
 ```
 

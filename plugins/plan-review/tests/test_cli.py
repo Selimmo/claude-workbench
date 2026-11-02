@@ -8,6 +8,7 @@ import pytest
 
 from plan_review import cli
 from plan_review.cli import main
+from plan_review.threads import ThreadStore
 
 
 def test_version_flag_prints_version_and_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
@@ -200,3 +201,50 @@ def test_serve_prints_its_url_immediately_when_stdout_is_a_pipe(project: Path) -
     finally:
         proc.terminate()
         proc.wait(timeout=5)
+
+
+def comments(project: Path) -> ThreadStore:
+    return ThreadStore(project / ".claude" / "work" / "7" / "comments.json")
+
+
+def test_reply_posts_as_claude(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    thread = comments(project).create("tab:files", "Why touch the config?")
+
+    exit_code = main(["reply", "7", thread.id, "For max_hints."])
+
+    (saved,) = comments(project).all()
+    assert exit_code == 0
+    assert (saved.messages[-1].author, saved.messages[-1].text) == ("claude", "For max_hints.")
+
+
+def test_reply_to_unknown_thread_exits_1(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = main(["reply", "7", "t-nope", "hi"])
+
+    assert exit_code == 1
+    assert "no thread 't-nope'" in capsys.readouterr().err
+
+
+def test_threads_lists_open_threads_as_json(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    open_thread = comments(project).create("tab:files", "Open")
+    done = comments(project).create("tab:risks", "Done")
+    comments(project).set_resolved(done.id, True)
+
+    exit_code = main(["threads", "7"])
+
+    listed = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert [t["id"] for t in listed] == [open_thread.id]
+    assert listed[0]["messages"][0]["text"] == "Open"
+
+
+def test_blank_reply_exits_1_with_a_message(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    thread = comments(project).create("tab:files", "Q")
+
+    exit_code = main(["reply", "7", thread.id, " "])
+
+    assert exit_code == 1
+    assert "comment text is empty" in capsys.readouterr().err

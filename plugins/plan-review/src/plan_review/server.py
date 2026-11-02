@@ -6,11 +6,13 @@ from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from plan_review.plan import PlanFileError, load_plan
+from plan_review.thread_routes import thread_routes
+from plan_review.threads import BlankComment, ThreadNotFound, ThreadStore
 
 
 class Subscribers:
@@ -84,6 +86,17 @@ def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5)
                 await socket.receive_text()
         except WebSocketDisconnect:
             subscribers.remove(socket)
+
+    @app.exception_handler(ThreadNotFound)
+    async def not_found(_: Request, error: ThreadNotFound) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
+        return JSONResponse({"errors": [f"no thread '{error.args[0]}'"]}, status_code=404)
+
+    @app.exception_handler(BlankComment)
+    async def blank(_: Request, error: BlankComment) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
+        return JSONResponse({"errors": [str(error)]}, status_code=422)
+
+    # comments.json sits next to the plan it comments on.
+    app.include_router(thread_routes(ThreadStore(plan_file.parent / "comments.json"), plan_file))
 
     # Mounted last so /api routes win; html=True serves index.html at "/".
     app.mount("/", StaticFiles(directory=static_dir, html=True))

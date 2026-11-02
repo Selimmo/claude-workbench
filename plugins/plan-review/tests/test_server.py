@@ -103,3 +103,54 @@ def test_real_uvicorn_server_pushes_plan_changes_over_websocket(
         server.should_exit = True
         thread.join(timeout=5)
         sock.close()
+
+
+def test_owner_can_create_list_reply_resolve_and_reopen_threads(
+    plan_file: Path, static_dir: Path
+) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+
+    created = client.post("/api/threads", json={"anchor": "class:HintPolicy", "text": "Why?"})
+    thread_id = created.json()["id"]
+    client.post(f"/api/threads/{thread_id}/replies", json={"text": "More detail"})
+    client.post(f"/api/threads/{thread_id}/resolve")
+    client.post(f"/api/threads/{thread_id}/reopen")
+    listed = client.get("/api/threads").json()["threads"]
+
+    assert created.status_code == 201
+    assert len(listed) == 1
+    assert [(m["author"], m["text"]) for m in listed[0]["messages"]] == [
+        ("owner", "Why?"),
+        ("owner", "More detail"),
+    ]
+    assert listed[0]["resolved"] is False
+    assert listed[0]["orphaned"] is False
+
+
+def test_reply_to_unknown_thread_is_404(plan_file: Path, static_dir: Path) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+
+    response = client.post("/api/threads/t-nope/replies", json={"text": "hi"})
+
+    assert response.status_code == 404
+    assert response.json() == {"errors": ["no thread 't-nope'"]}
+
+
+def test_blank_comment_is_422(plan_file: Path, static_dir: Path) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+
+    response = client.post("/api/threads", json={"anchor": "risk:1", "text": "  "})
+
+    assert response.status_code == 422
+    assert response.json() == {"errors": ["comment text is empty"]}
+
+
+def test_thread_on_an_element_removed_from_the_plan_is_listed_as_orphaned(
+    plan_file: Path, static_dir: Path
+) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+    client.post("/api/threads", json={"anchor": "class:Gone", "text": "?"})
+
+    (thread,) = client.get("/api/threads").json()["threads"]
+
+    assert thread["orphaned"] is True
