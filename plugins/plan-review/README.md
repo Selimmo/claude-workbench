@@ -15,6 +15,9 @@ plan-review serve 42 --open none # only print the URL (e.g. over SSH)
 plan-review config               # this project's pipeline settings, defaults filled in
 plan-review threads 42           # open comment threads, as JSON (for Claude)
 plan-review reply 42 t-1a2b3c4d "Because ..."   # answer a thread as Claude
+plan-review branch 42            # branch name from pipeline.json's pattern and the plan title
+plan-review verdict review.md    # a review's last line: exit 0 PASS, 1 FINDINGS, 2 malformed
+plan-review tree-hash            # fingerprint of uncommitted changes (gitignored files excluded)
 ```
 
 ### `serve`
@@ -105,6 +108,19 @@ Rules:
 - **Every element has an `id`, unique across the whole plan.** Comment threads attach to ids, so keep an element's id stable when revising a plan. Prefixes such as `class:`, `flow:`, `test:` are a convention, not a rule.
 - **References must exist:** relation ends, flow step and edge ends (within their own flow), architecture edge ends, and test targets.
 - **Unknown fields are errors**, so typos are caught rather than ignored.
+
+## The pipeline: `/plan-review:ship <issue>`
+
+One command takes an issue to a reviewed commit:
+
+1. **Plan.** The `architect` writes `.claude/work/<issue>/plan.json`, using `decisions.md` if a grilling session left one.
+2. **Review.** The viewer opens. Your comments wake Claude through the `/events` socket: questions are answered in the thread, change requests go back to the architect, and the page updates live. Approve when every thread is resolved.
+3. **Branch.** Named by `plan-review branch`.
+4. **Implement and review the tests.** `implementer` ⇄ `test-reviewer` until `VERDICT: PASS`.
+5. **Review the code.** `implementer` ⇄ `code-reviewer` until `VERDICT: PASS`. Each loop stops and asks you after `max_review_rounds`, and a review that changed files (detected by `plan-review tree-hash` before and after) is discarded.
+6. **Hand back.** You get a summary. Claude commits with `Closes #<issue>` only after your OK, and posts the approved plan on the issue. Nothing is pushed or merged unless you ask.
+
+Every pass or fail decision goes through `plan-review verdict` and `tree-hash`, not Claude's own reading.
 
 ## The agents
 
