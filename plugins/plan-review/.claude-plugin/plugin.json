@@ -1,0 +1,12 @@
+{
+  "name": "plan-review",
+  "version": "0.1.0",
+  "description": "Review an agent's implementation plan as interactive diagrams, comment on any element, and approve it before agents implement and review the code.",
+  "author": {
+    "name": "Selimmo",
+    "url": "https://github.com/Selimmo"
+  },
+  "repository": "https://github.com/Selimmo/claude-workbench",
+  "license": "MIT",
+  "keywords": ["planning", "code-review", "tdd", "agents", "diagrams"]
+}
