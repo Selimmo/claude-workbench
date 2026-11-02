@@ -9,6 +9,8 @@ disable-model-invocation: true
 
 You are the **orchestrator**. You run the steps below for issue `$ARGUMENTS`, delegate the real work to the plugin's agents, and talk to the owner. You never write the plan or the code yourself, and you decide pass or fail with `plan-review` helpers, never by your own reading.
 
+**Which agents.** For each role (`architect`, `implementer`, `test-reviewer`, `code-reviewer`), use the project's own agent when `.claude/agents/<name>.md` exists in the project, otherwise `plan-review:<name>` from this plugin. Check once at the start and say which ones you are using. Below, `plan-review:<name>` means "the agent chosen for that role".
+
 Throughout, `N` is the issue number (take it from `$ARGUMENTS`, which may be `42`, `#42` or an issue URL) and `W` is `.claude/work/N/`. Hand-offs between steps are files in `W`. Pass agents paths, not file contents, and keep your own context small.
 
 ## 0. Preconditions

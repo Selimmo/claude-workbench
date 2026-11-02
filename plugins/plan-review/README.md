@@ -154,6 +154,8 @@ The plugin ships four subagents. Claude Code lists them as `plan-review:<name>`.
 
 No agent can start other agents. The reviewers have no edit tools; because they keep Bash to run tests, the orchestrator also compares the working tree before and after each review and discards a review that changed anything.
 
+**Your own copies.** To commit the agents in a project and adapt them, copy them in: `cp <clone>/plugins/plan-review/agents/*.md .claude/agents/`. `/ship` then uses the project's `architect`, `implementer`, `test-reviewer` and `code-reviewer` in place of the plugin's, role by role, for any role whose file exists. Keep each file's frontmatter `name` the same as its file name, and keep the reviewers' last-line verdict format, because `/ship` reads it with `plan-review verdict`.
+
 Every project-specific rule comes from the project itself: its `CLAUDE.md` (or `AGENTS.md`) and `.claude/pipeline.json`.
 
 ## Project settings (`.claude/pipeline.json`)
