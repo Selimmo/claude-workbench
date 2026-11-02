@@ -1,0 +1,36 @@
+[project]
+name = "plan-review"
+version = "0.1.0"
+description = "A visual, commentable plan viewer for Claude Code agent pipelines"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+plan-review = "plan_review.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=9", "ruff>=0.15", "pyright>=1.1.408"]
+
+[build-system]
+requires = ["uv_build>=0.11.6,<0.12"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-markers"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C90"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.pyright]
+include = ["src", "tests"]
+strict = ["src"]
+venvPath = "."
+venv = ".venv"

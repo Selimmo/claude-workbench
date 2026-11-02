@@ -1,0 +1,17 @@
+{
+  "name": "claude-workbench",
+  "owner": {
+    "name": "Selimmo",
+    "url": "https://github.com/Selimmo"
+  },
+  "description": "Claude Code plugins for taking an issue to a reviewed commit with agents.",
+  "plugins": [
+    {
+      "name": "plan-review",
+      "source": "./plugins/plan-review",
+      "description": "Review an agent's implementation plan as interactive diagrams, comment on any element, and approve it before agents implement and review the code.",
+      "category": "engineering",
+      "keywords": ["planning", "code-review", "tdd", "agents", "diagrams"]
+    }
+  ]
+}
