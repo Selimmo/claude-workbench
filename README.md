@@ -23,6 +23,7 @@ claude-workbench/
 └── plugins/
     └── plan-review/
         ├── .claude-plugin/plugin.json  # plugin manifest
+        ├── bin/plan-review             # on Claude Code's PATH: runs the CLI from this source
         ├── pyproject.toml              # Python package `plan-review`
         ├── check.sh                    # every check for this plugin
         ├── README.md                   # commands, plan.json, agents, pipeline.json
@@ -43,6 +44,10 @@ claude-workbench/
                 ├── comments/           # pins, thread cards, composer, comment mode
                 └── tabs/               # one component per tab
 ```
+
+## Install
+
+See [plan-review's install section](plugins/plan-review/README.md#install-local-v01).
 
 ## Development (plan-review)
 
