@@ -64,6 +64,8 @@ Monitor({ ws: { url: "ws://127.0.0.1:<port>/events" }, description: "plan-review
 
 A Monitor expires after at most 30 minutes, so re-arm it until `approved` arrives.
 
+The page has a theme switch (top right): **Auto** follows your OS, or pick **Light** or **Dark**. Your choice is remembered in the browser. Text and status colours meet WCAG AA contrast (at least 4.5:1) in both themes.
+
 ### Comment threads
 
 Threads live in `.claude/work/<issue>/comments.json`, next to the plan. Each thread is anchored to a plan element id (such as `class:HintPolicy`) or to a whole tab (`tab:classes`, `tab:flows`, `tab:architecture`, `tab:files`, `tab:tests`, `tab:risks`), and holds ordered messages from `owner` or `claude` plus a `resolved` flag. The page writes as the owner; Claude answers with `plan-review reply`, never by editing the file. A thread whose element disappears from a revised plan is **orphaned**: kept, and shown separately. Tab threads never orphan.
