@@ -1,0 +1,45 @@
+import example from '../../examples/plan.json'
+import type { Plan } from './plan'
+import type { Thread } from './threads'
+import { threadsFor } from './threadGroups'
+
+const plan = example as Plan
+
+const thread = (id: string, anchor: string, orphaned = false): Thread => ({
+  id,
+  anchor,
+  messages: [{ author: 'owner', text: id, at: '2026-11-02T10:00:00Z' }],
+  resolved: false,
+  orphaned,
+})
+
+const threads = [
+  thread('member', 'class:HintPolicy.next_level'),
+  thread('edge', 'rel:orch-policy'),
+  thread('step', 'flow:hint/2'),
+  thread('tab', 'tab:classes'),
+  thread('other-tab', 'tab:files'),
+  thread('gone', 'class:Gone', true),
+]
+
+test('on a tab: threads pinned to its elements, threads on the tab itself, and all orphans', () => {
+  const groups = threadsFor(threads, plan, 'classes')
+
+  expect(groups.pinned.map((t) => t.id)).toEqual(['member', 'edge'])
+  expect(groups.onTab.map((t) => t.id)).toEqual(['tab'])
+  expect(groups.orphaned.map((t) => t.id)).toEqual(['gone'])
+})
+
+test('another tab gets its own pins and tab threads, and the same orphans', () => {
+  const groups = threadsFor(threads, plan, 'flows')
+
+  expect(groups.pinned.map((t) => t.id)).toEqual(['step'])
+  expect(groups.onTab).toEqual([])
+  expect(groups.orphaned.map((t) => t.id)).toEqual(['gone'])
+})
+
+test('unresolved count covers every thread, wherever it is', () => {
+  const resolved = { ...thread('done', 'risk:1'), resolved: true }
+
+  expect(threadsFor([...threads, resolved], plan, 'risks').unresolved).toBe(threads.length)
+})

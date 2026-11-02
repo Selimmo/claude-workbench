@@ -7,7 +7,7 @@ export function FilesTab({ plan }: { plan: Plan }) {
       <h2>{group.label}</h2>
       <ul className="rows">
         {group.files.map((file) => (
-          <li key={file.id} data-status={file.change}>
+          <li key={file.id} data-element-id={file.id} data-status={file.change}>
             <code>{file.path}</code>
             <span className="reason">{file.reason}</span>
           </li>

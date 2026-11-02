@@ -497,3 +497,208 @@ marker path {
   opacity: 0;
   pointer-events: none;
 }
+
+/* Comments */
+
+.comment-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.comment-bar button,
+.thread-card .actions button {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.comment-bar button[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.thread-card .actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.commenting [data-element-id] {
+  cursor: crosshair !important;
+}
+
+.commenting [data-element-id]:hover {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+}
+
+.thread-list {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: var(--surface);
+}
+
+.thread-list h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+
+.thread-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.thread-list button.link {
+  margin: 0;
+  font-family: inherit;
+  text-align: left;
+  color: var(--text);
+}
+
+.thread-list [data-resolved='true'] {
+  opacity: 0.6;
+}
+
+.thread-card[data-resolved='true'] .card-top code::after {
+  content: ' · resolved';
+  color: var(--added);
+}
+
+.pin-spot {
+  position: fixed;
+  z-index: 10;
+  transform: translate(-50%, -50%);
+}
+
+.pin {
+  width: 22px;
+  height: 22px;
+  border-radius: 11px 11px 11px 2px;
+  border: 2px solid var(--surface);
+  background: var(--accent);
+  color: var(--surface);
+  font:
+    600 11px/1 system-ui,
+    sans-serif;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.3);
+}
+
+.pin[data-resolved='true'] {
+  background: var(--muted);
+}
+
+.pin-tip {
+  position: absolute;
+  top: 26px;
+  left: 0;
+  width: max-content;
+  max-width: 260px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.floating {
+  position: fixed;
+  z-index: 20;
+}
+
+.thread-card {
+  width: 320px;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.25);
+}
+
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-top code {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+button.icon {
+  font-size: 1.2rem;
+  line-height: 1;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.messages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.messages li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.messages li[data-author='claude'] {
+  border-left: 3px solid var(--accent);
+}
+
+.messages .author {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.messages .text {
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+
+.thread-card textarea {
+  font: inherit;
+  min-height: 60px;
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.thread-card .actions {
+  display: flex;
+  gap: 8px;
+}

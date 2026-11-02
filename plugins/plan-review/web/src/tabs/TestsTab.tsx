@@ -12,7 +12,7 @@ export function TestsTab({ plan, onShow }: Props) {
       {plan.tests.map((test) => {
         const targetTab = tabOf(plan, test.target)
         return (
-          <li key={test.id}>
+          <li key={test.id} data-element-id={test.id}>
             <code>{test.name}</code>
             <span className="reason">{test.behaviour}</span>
             <button

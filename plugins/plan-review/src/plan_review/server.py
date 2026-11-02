@@ -25,15 +25,19 @@ def _signature(path: Path) -> tuple[int, int] | None:
     return stat.st_mtime_ns, stat.st_size
 
 
-async def _watch(path: Path, interval: float, subscribers: Subscribers) -> None:
-    # Polling rather than OS file events: no extra dependency, and plans change rarely.
-    last = _signature(path)
+async def _watch(files: dict[Path, str], interval: float, subscribers: Subscribers) -> None:
+    """Announce `files[path]` whenever that file changes.
+
+    Polling rather than OS file events: no extra dependency, and these files change rarely.
+    """
+    last = {path: _signature(path) for path in files}
     while True:
         await asyncio.sleep(interval)
-        current = _signature(path)
-        if current != last:
-            last = current
-            await subscribers.send({"type": "plan_changed"})
+        for path, event in files.items():
+            current = _signature(path)
+            if current != last[path]:
+                last[path] = current
+                await subscribers.send({"type": event})
 
 
 async def _listen(socket: WebSocket, subscribers: Subscribers) -> None:
@@ -48,12 +52,14 @@ async def _listen(socket: WebSocket, subscribers: Subscribers) -> None:
 
 
 def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5) -> FastAPI:
+    comments_file = plan_file.parent / "comments.json"  # sits next to the plan it comments on
     subscribers = Subscribers()  # viewer pages, on /api/updates
     events = Subscribers()  # Claude (through Monitor), on /events
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
-        watcher = asyncio.create_task(_watch(plan_file, poll_interval, subscribers))
+        watched = {plan_file: "plan_changed", comments_file: "threads_changed"}
+        watcher = asyncio.create_task(_watch(watched, poll_interval, subscribers))
         yield
         watcher.cancel()
         with suppress(asyncio.CancelledError):
@@ -86,8 +92,7 @@ def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5)
     async def blank(_: Request, error: BlankComment) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
         return JSONResponse({"errors": [str(error)]}, status_code=422)
 
-    # comments.json sits next to the plan it comments on.
-    store = ThreadStore(plan_file.parent / "comments.json")
+    store = ThreadStore(comments_file)
     app.include_router(thread_routes(store, plan_file, events))
     app.include_router(approval_routes(store, plan_file, events))
 

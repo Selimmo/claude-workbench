@@ -33,7 +33,7 @@ While it runs:
 |---|---|
 | `GET /` | the viewer page |
 | `GET /api/plan` | the plan (200); `{"errors": [...]}` with 404 if missing, 422 if invalid |
-| `WS /api/updates` | sends `{"type": "plan_changed"}` whenever `plan.json` changes on disk |
+| `WS /api/updates` | sends `{"type": "plan_changed"}` / `{"type": "threads_changed"}` whenever `plan.json` / `comments.json` changes on disk |
 | `GET /api/threads` | all comment threads, each with `orphaned: true` if its element left the plan |
 | `POST /api/threads` | `{"anchor", "text"}`: new thread, written as the owner (201) |
 | `POST /api/threads/<id>/replies` | `{"text"}`: owner reply |
@@ -63,6 +63,8 @@ Monitor({ ws: { url: "ws://127.0.0.1:<port>/events" }, description: "plan-review
 ```
 
 A Monitor expires after at most 30 minutes, so re-arm it until `approved` arrives.
+
+**Commenting in the viewer.** Press **Add comment**, then click any element: a class, a member row, an arrow, a flow step, a file, a test or a risk. **Comment on this tab** comments on the tab as a whole. Each thread shows as a numbered pin on its element: hover it for a preview, click it for the whole conversation, where you can reply, resolve or reopen it (Esc or × closes it). Claude's replies appear without a reload. Threads whose element left the plan are listed under **Orphaned comments** on every tab.
 
 The page has a theme switch (top right): **Auto** follows your OS, or pick **Light** or **Dark**. Your choice is remembered in the browser. Text and status colours meet WCAG AA contrast (at least 4.5:1) in both themes.
 
