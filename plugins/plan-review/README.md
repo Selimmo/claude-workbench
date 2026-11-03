@@ -2,7 +2,7 @@
 
 Review an agent's implementation plan as interactive diagrams, comment on any element, and approve it before agents implement and review the code.
 
-> Status: v0.1. The repo stays private until install and upgrade are proven with test releases; the install command works once it is public.
+> Status: v0.1, installable with the command below. See the [changelog](../../CHANGELOG.md) for what each release changed.
 
 ## Install
 
@@ -26,7 +26,7 @@ plan-review upgrade
 
 It refreshes the marketplace and updates the plugin (`claude plugin marketplace update claude-workbench`, then `claude plugin update plan-review@claude-workbench`); run `/reload-plugins` or start a new session to load the new version. Or let Claude Code do it: in `/plugin`, open **Marketplaces**, select `claude-workbench` and choose **Enable auto-update**. It then updates the plugin in the background after a session starts, and the new version loads on your next launch.
 
-Claude Code keeps a copy of each installed version and only fetches a new one when a new version is released, so editing a clone of this repo never changes your installed plugin. To work on the plugin itself, see [Development](../../README.md#development-plan-review).
+Claude Code keeps a copy of each installed version and only fetches a new one when a new version is released, so editing a clone of this repo never changes your installed plugin. To work on the plugin itself, see [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ## Commands
 
