@@ -1,0 +1,16 @@
+{
+  "name": "claude-workbench",
+  "plugins": [
+    {
+      "name": "plan-review",
+      "source": {
+        "source": "archive",
+        "url": "https://api.github.com/repos/Selimmo/claude-workbench/releases/assets/4242",
+        "sha256": "283e134189b5b423912b4b9d5db06323390f1b708df4d08e857def42d0bb4fee"
+      },
+      "version": "0.1.2",
+      "strict": false,
+      "headersHelper": "/Users/selim/src/claude-workbench/plugins/plan-review/dir/headers.sh"
+    }
+  ]
+}

@@ -15,6 +15,10 @@ jobs:
         working-directory: plugins/plan-review
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # the version guard compares against release tags
+      - name: Version guard (shipped files changed => version bumped)
+        run: scripts/version-guard.sh
       - uses: astral-sh/setup-uv@v7
       - uses: actions/setup-node@v5
         with:

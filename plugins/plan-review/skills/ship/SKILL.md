@@ -17,6 +17,7 @@ Throughout, `N` is the issue number (take it from `$ARGUMENTS`, which may be `42
 
 1. Run `plan-review config`. If it fails, show the errors and stop.
 2. Run `git status --porcelain`. If there are uncommitted changes, stop and ask the owner: the reviewers' read-only check needs a clean starting point.
+3. Run `plan-review init N`. It creates `W`, and on first use `.claude/work/.gitignore`, so nothing in `.claude/work/` is ever committed and the project needs no gitignore entry.
 
 ## 1. Settle the decisions (only with `--grill`)
 

@@ -9,7 +9,7 @@ A Claude Code plugin marketplace. Each tool lives in `plugins/<tool>/` and is it
 3. **Owner involvement.** The owner tests finished tools rather than reviewing each step. Work through issues end to end, and only ask about real product decisions or blockers.
 4. **Keep the README current.** Any change to prerequisites, structure, commands, tech or versions updates `README.md` in the same issue.
 5. **Git.** One branch per issue (`<issue#>-short-slug`). Commit when the issue is done, referencing it (`Closes #N`).
-6. **Not published yet.** v0.1 is local only: the repo is private and nothing goes to PyPI until the owner says so.
+6. **Private until proven.** The repo stays private until install and upgrade are proven with test releases; only the owner makes it public (see README, Releasing). Nothing goes to PyPI.
 
 ## Conventions
 
