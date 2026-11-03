@@ -18,6 +18,8 @@ from plan_review.plan import Plan, PlanFileError, load_plan
 from plan_review.server import create_app
 from plan_review.status import StatusStore
 from plan_review.threads import BlankComment, ThreadNotFound, ThreadStore
+from plan_review.upgrade import upgrade
+from plan_review.workdir import ensure_work_dir, work_dir
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -47,6 +49,9 @@ def _parser() -> argparse.ArgumentParser:
         return sub
 
     command("schema", "print the plan.json JSON Schema", lambda a: _schema())
+    command(
+        "init", "create an issue's .claude/work/<issue>/ folder", lambda a: _init(a.issue)
+    ).add_argument("issue", type=int)
     command("validate", "check a plan.json file", lambda a: _validate(a.file)).add_argument(
         "file", type=Path
     )
@@ -89,6 +94,7 @@ def _parser() -> argparse.ArgumentParser:
         "a review's verdict: exit 0 PASS, 1 FINDINGS, 2 malformed",
         lambda a: _verdict(a.file),
     ).add_argument("file", type=Path)
+    command("upgrade", "update the installed plugin to its newest release", lambda a: upgrade())
     command("tree-hash", "fingerprint of uncommitted changes (git)", lambda a: _tree_hash())
     return parser
 
@@ -117,7 +123,12 @@ def _config() -> int:
 
 def _work_dir(issue: int) -> Path:
     """Where an issue's plan, comments and reports live, relative to the project root."""
-    return Path(".claude", "work", str(issue))
+    return work_dir(Path(), issue)
+
+
+def _init(issue: int) -> int:
+    print(ensure_work_dir(Path(), issue))
+    return 0
 
 
 def _validate(file: Path) -> int:
@@ -148,6 +159,7 @@ def _serve(issue: int, open_flag: str | None) -> int:
     except PlanFileError as error:
         print("\n".join(error.errors), file=sys.stderr)
         return 2 if error.missing else 1
+    ensure_work_dir(Path(), issue)  # the page writes comments and drafts there
     # Bind and listen before opening the browser: its first request then waits in the
     # socket's queue until uvicorn accepts it, instead of racing the server's startup.
     # Port 0 lets the OS pick a free port.

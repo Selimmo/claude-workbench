@@ -1,7 +1,8 @@
 #!/bin/sh
 # The plan-review CLI from this plugin's own source, for Claude Code's PATH.
-# uv creates the plugin's virtualenv on first use; the caller's directory stays the
-# working directory, because that is the project whose .claude/ the CLI reads.
+# uv creates the plugin's virtualenv on first use, without the dev tools; the caller's
+# directory stays the working directory, because that is the project whose .claude/ the
+# CLI reads.
 set -eu
 plugin="$(cd "$(dirname "$0")/.." && pwd)"
-exec uv run --quiet --frozen --project "$plugin" plan-review "$@"
+exec uv run --quiet --frozen --no-dev --project "$plugin" plan-review "$@"

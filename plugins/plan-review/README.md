@@ -2,33 +2,38 @@
 
 Review an agent's implementation plan as interactive diagrams, comment on any element, and approve it before agents implement and review the code.
 
-> Status: v0.1 in development. Not yet published.
+> Status: v0.1. The repo stays private until install and upgrade are proven with test releases; the install command works once it is public.
 
-## Install (local, v0.1)
+## Install
 
-Not published yet: install from a local clone of [claude-workbench](https://github.com/Selimmo/claude-workbench).
-
-Runs on macOS and Linux (files are locked with POSIX `flock`); Windows is not supported, WSL works.
+Runs on macOS and Linux (files are locked with POSIX `flock`); Windows is not supported, WSL works. You need [Claude Code](https://claude.com/claude-code) v2.1.292 or later, `git` (Claude Code clones the marketplace from GitHub), [uv](https://docs.astral.sh/uv/) and [`gh`](https://cli.github.com/), logged in (`/plan-review:ship` reads the issue and posts the approved plan); nothing else: no clone, no build, no Node.js.
 
 ```bash
-git clone git@github.com:Selimmo/claude-workbench.git ~/src/claude-workbench
-cd ~/src/claude-workbench/plugins/plan-review
-npm install --prefix web && npm --prefix web run build   # builds the viewer page
-uv sync                                                  # the CLI's environment
-
-# in Claude Code, inside the project you want to use it in:
-/plugin marketplace add ~/src/claude-workbench
-/plugin install plan-review@claude-workbench
+claude plugin install plan-review --marketplace Selimmo/claude-workbench
 ```
 
-A local marketplace is read in place, so a `git pull` (plus a rebuild if `web/` changed) updates it. The plugin's `bin/plan-review` goes on Claude Code's PATH and runs the CLI from that source with `uv`. To use the CLI outside Claude Code: `uvx --from ~/src/claude-workbench/plugins/plan-review plan-review --help`.
+This adds the `claude-workbench` marketplace and installs the latest release: a zip attached to a GitHub release, holding the skill, the agents, the CLI and the built viewer page. The plugin's `bin/plan-review` goes on Claude Code's PATH and runs the CLI with `uv`, which creates its environment on first use. In a session, run `/reload-plugins` (or start a new one).
 
-Then, in your project, optionally add `.claude/pipeline.json` (see below), make sure `.claude/work/` is gitignored, and run `/plan-review:ship <issue>`.
+**Coming from a local clone's marketplace?** It is also named `claude-workbench`, so remove it first: `claude plugin marketplace remove claude-workbench` (this uninstalls its plan-review), then run the install command above.
+
+Then run `/plan-review:ship <issue>` in your project, optionally with a `.claude/pipeline.json` (see below). There is no other setup: plan-review keeps its files in `.claude/work/`, and creates `.claude/work/.gitignore` (`*`) the first time it writes there, so they are never committed.
+
+### Upgrade
+
+```bash
+plan-review upgrade
+```
+
+It refreshes the marketplace and updates the plugin (`claude plugin marketplace update claude-workbench`, then `claude plugin update plan-review@claude-workbench`); run `/reload-plugins` or start a new session to load the new version. Or let Claude Code do it: in `/plugin`, open **Marketplaces**, select `claude-workbench` and choose **Enable auto-update**. It then updates the plugin in the background after a session starts, and the new version loads on your next launch.
+
+Claude Code keeps a copy of each installed version and only fetches a new one when a new version is released, so editing a clone of this repo never changes your installed plugin. To work on the plugin itself, see [Development](../../README.md#development-plan-review).
 
 ## Commands
 
 ```bash
 plan-review --version
+plan-review init 42              # create .claude/work/42/ (and .claude/work/.gitignore); /ship runs it first
+plan-review upgrade              # update the installed plugin to its latest release
 plan-review schema               # print the plan.json JSON Schema
 plan-review validate plan.json   # check a plan; exit 0 = valid, 1 = invalid, 2 = file not found
 plan-review serve 42             # open the viewer for .claude/work/42/plan.json
@@ -143,7 +148,7 @@ Rules:
 The viewer works on its own, with no agents or pipeline. Any valid `plan.json` will do, whether you wrote it, another tool or agent generated it, or it came from `plan-review schema`:
 
 ```bash
-mkdir -p .claude/work/7 && cp my-plan.json .claude/work/7/plan.json
+plan-review init 7 && cp my-plan.json .claude/work/7/plan.json
 plan-review validate .claude/work/7/plan.json
 plan-review serve 7        # review, comment, approve in the browser
 plan-review threads 7      # read the comments from scripts or other agents

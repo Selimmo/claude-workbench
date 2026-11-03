@@ -1,0 +1,94 @@
+name: plan-review release
+
+# Started by release.sh pushing a plan-review--v<version> tag. `build` checks the plugin
+# and zips it with a read-only token; `publish` attaches the zip to the GitHub release
+# and, once the repo is public, points main's marketplace.json at it (link-release.sh).
+# While the repo is private, releases are test releases: main is left alone.
+# Re-run with "Re-run failed jobs": the release is reused and build's zip replaces the
+# asset. "Re-run all jobs" rebuilds the zip with a new sha256 while main may still pin
+# the old one.
+on:
+  push:
+    tags: ["plan-review--v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plan-review-release # one release at a time: each one may commit to main
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/plan-review
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Tag matches the plugin's version
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(jq -r .version .claude-plugin/plugin.json)"
+          if [[ "$TAG" != "plan-review--v$version" ]]; then
+            echo "::error::tag $TAG does not match plugin.json version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: plugins/plan-review/web/.nvmrc
+          cache: npm
+          cache-dependency-path: plugins/plan-review/web/package-lock.json
+      - run: npm ci --prefix web
+      - run: uv sync --locked
+      - name: Check and build the viewer page
+        run: ./check.sh
+      - name: Package
+        run: mkdir -p "$RUNNER_TEMP/dist" && scripts/package.sh "$RUNNER_TEMP/dist"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-zip
+          path: ${{ runner.temp }}/dist/*.zip
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the release, and the marketplace commit on main
+    defaults:
+      run:
+        working-directory: plugins/plan-review
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugin-zip
+          path: ${{ runner.temp }}/dist
+      - name: GitHub release with the zip
+        run: |
+          zip_file="$RUNNER_TEMP/dist/plan-review-$VERSION.zip"
+          gh release view "$TAG" >/dev/null 2>&1 ||
+            gh release create "$TAG" --verify-tag --title "plan-review $VERSION" --generate-notes
+          gh release upload "$TAG" "$zip_file" --clobber
+      - name: Point main's marketplace at the zip (public repo only)
+        run: |
+          zip_file="$RUNNER_TEMP/dist/plan-review-$VERSION.zip"
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG/$(basename "$zip_file")"
+          sha256="$(sha256sum "$zip_file" | cut -d ' ' -f 1)"
+          visibility="$(gh repo view "$GITHUB_REPOSITORY" --json visibility --jq .visibility)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          scripts/link-release.sh "$visibility" "$VERSION" "$url" "$sha256"

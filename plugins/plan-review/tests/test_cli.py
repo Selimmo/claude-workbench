@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import PACKAGE_VERSION, PLUGIN, version_of
 
 from plan_review import cli
 from plan_review.cli import main
@@ -16,7 +17,7 @@ def test_version_flag_prints_version_and_exits_zero(capsys: pytest.CaptureFixtur
     exit_code = main(["--version"])
 
     assert exit_code == 0
-    assert capsys.readouterr().out == "plan-review 0.1.0\n"
+    assert capsys.readouterr().out == f"plan-review {PACKAGE_VERSION}\n"
 
 
 def test_console_script_is_installed() -> None:
@@ -25,7 +26,12 @@ def test_console_script_is_installed() -> None:
     )
 
     assert result.returncode == 0
-    assert result.stdout == "plan-review 0.1.0\n"
+    assert result.stdout == f"plan-review {PACKAGE_VERSION}\n"
+
+
+def test_the_plugin_and_its_python_package_have_one_version() -> None:
+    # Claude Code reads plugin.json's version; --version reports the package's.
+    assert version_of(PLUGIN) == PACKAGE_VERSION
 
 
 def test_schema_prints_the_plan_json_schema(capsys: pytest.CaptureFixture[str]) -> None:
@@ -319,3 +325,23 @@ def test_status_for_an_issue_without_a_work_folder_exits_1(
 
     assert exit_code == 1
     assert "no .claude/work/99/" in capsys.readouterr().err
+
+
+def test_init_creates_the_issues_work_folder_and_prints_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["init", "42"])
+
+    assert exit_code == 0
+    assert (tmp_path / ".claude" / "work" / "42").is_dir()
+    assert (tmp_path / ".claude" / "work" / ".gitignore").is_file()
+    assert capsys.readouterr().out == ".claude/work/42\n"
+
+
+def test_serve_keeps_the_work_folder_out_of_git(project: Path, server: FakeServer) -> None:
+    # The page writes comments.json and drafts.json there, even for a hand-made folder.
+    main(["serve", "7"])
+
+    assert (project / ".claude" / "work" / ".gitignore").read_text() == "*\n"

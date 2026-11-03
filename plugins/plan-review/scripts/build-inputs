@@ -1,0 +1,8 @@
+web/src
+web/index.html
+web/package.json
+web/package-lock.json
+web/tsconfig.json
+web/vite.config.ts
+web/.nvmrc
+../../LICENSE

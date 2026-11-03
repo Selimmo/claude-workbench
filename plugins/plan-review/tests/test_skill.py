@@ -81,3 +81,10 @@ def test_a_review_sent_while_the_monitor_was_down_is_picked_up_after_re_arming()
 
     assert "plan-review threads N" in step_3
     assert "no reply" in step_3
+
+
+def test_it_creates_the_work_folder_with_the_cli_before_anything_writes_there() -> None:
+    _, body = parts()
+    step_0 = body.split("## 0. Preconditions", 1)[1].split("## 1.", 1)[0]
+
+    assert "plan-review init N" in step_0
