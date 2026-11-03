@@ -4,7 +4,7 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
-### Unreleased (0.1.5)
+### 0.1.5 (2026-11-03)
 
 - Docs: the README leads with the viewer, has a demo and a security note; maintainer docs moved to [CONTRIBUTING.md](CONTRIBUTING.md) and [RELEASING.md](RELEASING.md) ([#43](https://github.com/Selimmo/claude-workbench/issues/43)).
 
