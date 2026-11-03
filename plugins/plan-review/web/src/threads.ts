@@ -13,3 +13,21 @@ export interface Thread {
   resolved: boolean
   orphaned: boolean
 }
+
+/** What Claude is doing with the review, set with `plan-review status` (status.py). */
+export interface ClaudeStatus {
+  text: string
+  /** False while Claude is still working on it. */
+  done: boolean
+  at: string
+}
+
+/** An unsent review comment (see plan_review/drafts.py): only the owner sees it. */
+export interface Draft {
+  id: string
+  anchor: string
+  text: string
+  /** Set for a reply in an existing thread; null for a new comment on `anchor`. */
+  thread_id: string | null
+  at: string
+}

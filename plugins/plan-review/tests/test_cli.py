@@ -8,6 +8,7 @@ import pytest
 
 from plan_review import cli
 from plan_review.cli import main
+from plan_review.status import StatusStore
 from plan_review.threads import ThreadStore
 
 
@@ -272,3 +273,49 @@ def test_config_with_a_bad_file_exits_1_with_readable_errors(
 
     assert exit_code == 1
     assert "viewer.open: Input should be 'browser' or 'none'" in capsys.readouterr().err
+
+
+def status_of(project: Path) -> StatusStore:
+    return StatusStore(project / ".claude" / "work" / "7" / "status.json")
+
+
+def test_status_sets_what_claude_is_doing(project: Path) -> None:
+    exit_code = main(["status", "7", "Answering questions"])
+
+    status = status_of(project).get()
+    assert exit_code == 0
+    assert status is not None
+    assert (status.text, status.done) == ("Answering questions", False)
+
+
+def test_status_done_marks_it_finished(project: Path) -> None:
+    main(["status", "7", "Replies posted", "--done"])
+
+    status = status_of(project).get()
+    assert status is not None
+    assert (status.text, status.done) == ("Replies posted", True)
+
+
+def test_status_clear_removes_it(project: Path) -> None:
+    main(["status", "7", "Answering questions"])
+
+    exit_code = main(["status", "7", "--clear"])
+
+    assert exit_code == 0
+    assert status_of(project).get() is None
+
+
+def test_status_without_text_exits_1(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = main(["status", "7"])
+
+    assert exit_code == 1
+    assert "status text is empty" in capsys.readouterr().err
+
+
+def test_status_for_an_issue_without_a_work_folder_exits_1(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    exit_code = main(["status", "99", "Answering questions"])
+
+    assert exit_code == 1
+    assert "no .claude/work/99/" in capsys.readouterr().err

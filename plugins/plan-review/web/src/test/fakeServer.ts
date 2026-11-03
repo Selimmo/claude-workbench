@@ -1,7 +1,7 @@
 // A fake plan-review server for page tests: routes fetch() and the updates WebSocket.
 
 import example from '../../../examples/plan.json'
-import type { Thread } from '../threads'
+import type { Draft, Thread } from '../threads'
 
 export interface Call {
   method: string
@@ -12,6 +12,11 @@ export interface Call {
 export class FakeServer {
   plan: unknown = example
   threads: Thread[] = []
+  drafts: Draft[] = []
+  status: { text: string; done: boolean; at: string } | null = null
+  reviewError: string | null = null
+  /** When set, a submit waits for it: lets a test look at the page mid-submit. */
+  reviewHold: Promise<void> | null = null
   approved = false
   calls: Call[] = []
 
@@ -29,27 +34,66 @@ export class FakeServer {
     if (url === '/api/plan') return json(this.plan)
     if (url === '/api/approve' && method === 'GET') return json({ approved: this.approved })
     if (url === '/api/approve' && method === 'POST') {
+      if (this.drafts.length)
+        return json(
+          { errors: [`${this.drafts.length} unsent draft(s): submit or discard them first`] },
+          409,
+        )
       const open = this.threads.filter((t) => !t.resolved).length
       if (open) return json({ errors: [`${open} unresolved thread(s): resolve them first`] }, 409)
       this.approved = true
       return json({ approved_at: '2026-11-02T12:00:00Z', plan_sha256: 'abc' })
     }
     if (url === '/api/threads' && method === 'GET') return json({ threads: this.threads })
-    if (url === '/api/threads' && method === 'POST') {
-      const { anchor, text } = body as { anchor: string; text: string }
-      const created = thread(`t-${this.threads.length + 1}`, anchor, text)
-      this.threads = [...this.threads, created]
+    if (url === '/api/drafts' && method === 'GET') return json({ drafts: this.drafts })
+    if (url === '/api/drafts' && method === 'POST') {
+      const { anchor, thread_id, text } = body as Partial<Draft> & { text: string }
+      const parent = this.threads.find((t) => t.id === thread_id)
+      const created = draft(
+        `d-${this.drafts.length + 1}`,
+        parent?.anchor ?? anchor ?? '',
+        text,
+        thread_id ?? null,
+      )
+      this.drafts = [...this.drafts, created]
       return json(created, 201)
     }
-    const action = url.match(/^\/api\/threads\/([^/]+)\/(replies|resolve|reopen)$/)
+    const oneDraft = url.match(/^\/api\/drafts\/([^/]+)$/)
+    if (oneDraft && method === 'PUT') {
+      const { text } = body as { text: string }
+      this.drafts = this.drafts.map((d) => (d.id === oneDraft[1] ? { ...d, text } : d))
+      return json(this.drafts.find((d) => d.id === oneDraft[1]))
+    }
+    if (oneDraft && method === 'DELETE') {
+      this.drafts = this.drafts.filter((d) => d.id !== oneDraft[1])
+      return new Response(null, { status: 204 })
+    }
+    if (url === '/api/status') return json({ status: this.status })
+    if (url === '/api/review' && method === 'POST') {
+      if (this.reviewHold) await this.reviewHold
+      if (this.reviewError) return json({ errors: [this.reviewError] }, 500)
+      const comments = this.drafts.map((d) => ({
+        type: d.thread_id ? 'reply' : 'comment',
+        anchor: d.anchor,
+        text: d.text,
+      }))
+      for (const d of this.drafts) {
+        this.threads = d.thread_id
+          ? this.threads.map((t) =>
+              t.id === d.thread_id
+                ? { ...t, messages: [...t.messages, message('owner', d.text)] }
+                : t,
+            )
+          : [...this.threads, thread(`t-${this.threads.length + 1}`, d.anchor, d.text)]
+      }
+      this.drafts = []
+      return json({ comments })
+    }
+    const action = url.match(/^\/api\/threads\/([^/]+)\/(resolve|reopen)$/)
     if (action) {
       const [, id, verb] = action
       this.threads = this.threads.map((t) =>
-        t.id !== id
-          ? t
-          : verb === 'replies'
-            ? { ...t, messages: [...t.messages, message('owner', (body as { text: string }).text)] }
-            : { ...t, resolved: verb === 'resolve' },
+        t.id === id ? { ...t, resolved: verb === 'resolve' } : t,
       )
       return json(this.threads.find((t) => t.id === id))
     }
@@ -85,4 +129,13 @@ export function thread(id: string, anchor: string, ...texts: string[]): Thread {
     resolved: false,
     orphaned: false,
   }
+}
+
+export function draft(
+  id: string,
+  anchor: string,
+  text: string,
+  thread_id: string | null = null,
+): Draft {
+  return { id, anchor, text, thread_id, at: '2026-11-02T11:00:00Z' }
 }

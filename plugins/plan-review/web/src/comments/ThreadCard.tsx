@@ -1,17 +1,20 @@
 import { useState } from 'react'
 
-import { replyTo, setResolved } from '../api'
-import type { Thread } from '../threads'
+import { discardDraft, draftReply, setResolved } from '../api'
+import type { Draft, Thread } from '../threads'
 
 interface Props {
   thread: Thread
+  /** The owner's unsent replies in this thread. */
+  drafts: Draft[]
   onChanged: () => Promise<void>
+  onEditDraft: (draft: Draft) => void
   onClose: () => void
   readOnly: boolean
 }
 
-export function ThreadCard({ thread, onChanged, onClose, readOnly }: Props) {
-  const [draft, setDraft] = useState('')
+export function ThreadCard({ thread, drafts, onChanged, onEditDraft, onClose, readOnly }: Props) {
+  const [text, setText] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   async function act(action: () => Promise<void>) {
@@ -46,26 +49,48 @@ export function ThreadCard({ thread, onChanged, onClose, readOnly }: Props) {
           </li>
         ))}
       </ol>
+      {drafts.length > 0 && (
+        <ol className="messages" aria-label="Your draft replies">
+          {drafts.map((d) => (
+            <li key={d.id} data-author="owner" data-draft="true">
+              <span className="author">
+                You <span className="badge">Draft</span>
+              </span>
+              <span className="text">{d.text}</span>
+              {!readOnly && (
+                <span className="draft-actions">
+                  <button className="link" onClick={() => onEditDraft(d)}>
+                    Edit
+                  </button>
+                  <button className="link" onClick={() => void act(() => discardDraft(d.id))}>
+                    Discard
+                  </button>
+                </span>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
       {!readOnly && (
         <>
           <textarea
             aria-label="Reply"
             placeholder="Reply…"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
           />
           {error && <p className="error">{error}</p>}
           <div className="actions">
             <button
-              disabled={!draft.trim()}
+              disabled={!text.trim()}
               onClick={() =>
                 act(async () => {
-                  await replyTo(thread.id, draft)
-                  setDraft('')
+                  await draftReply(thread.id, text)
+                  setText('')
                 })
               }
             >
-              Reply
+              Add reply to review
             </button>
             <button onClick={() => act(() => setResolved(thread.id, !thread.resolved))}>
               {thread.resolved ? 'Reopen' : 'Resolve'}

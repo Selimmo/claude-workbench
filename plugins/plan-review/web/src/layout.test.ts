@@ -3,6 +3,8 @@ import {
   HEADER_HEIGHT,
   MIN_WIDTH,
   PADDING,
+  CARD_BORDERS,
+  HEADER_GAP,
   ROW_HEIGHT,
   TITLE_CHAR_WIDTH,
   layoutDiagram,
@@ -22,7 +24,7 @@ test('a node is as wide as its longest line and as tall as its rows', () => {
   const longest = 'next_level(given: int) -> HintLevel | None'
 
   expect(nodeSize(node(['a', longest]))).toEqual({
-    width: longest.length * CHAR_WIDTH + 2 * PADDING,
+    width: longest.length * CHAR_WIDTH + 2 * PADDING + CARD_BORDERS,
     height: HEADER_HEIGHT + 2 * ROW_HEIGHT,
   })
 })
@@ -56,7 +58,8 @@ test('the header line (bold title, then subtitle) is measured with the wider tit
   expect(nodeSize(header).width).toBe(
     'hints_given < max_hints?'.length * TITLE_CHAR_WIDTH +
       ('step'.length + 2) * CHAR_WIDTH +
-      2 * PADDING,
+      2 * PADDING +
+      CARD_BORDERS,
   )
 })
 
@@ -73,4 +76,45 @@ test('layout can run top to bottom', async () => {
 
   expect(b.y).toBeGreaterThan(a.y)
   expect(b.x).toBe(a.x)
+})
+
+test('with a text measurer, a card is sized from the measured text, not estimates', () => {
+  const measure = (text: string, kind: 'title' | 'subtitle' | 'row') =>
+    text.length * { title: 30, subtitle: 5, row: 20 }[kind]
+  const card = { ...node(['ab'], 'Wide'), subtitle: 'kind' }
+
+  // Title 4×30 + gap + subtitle 4×5 = 148, wider than the row's 2×20.
+  expect(nodeSize(card, measure).width).toBe(
+    4 * 30 + HEADER_GAP + 4 * 5 + 2 * PADDING + CARD_BORDERS,
+  )
+})
+
+test('layout sizes cards with the measurer it is given', async () => {
+  const measure = (text: string) => text.length * 50
+  const diagram: Diagram = { nodes: [{ ...node(['xyz'], 'ab'), id: 'a' }], edges: [] }
+
+  const [a] = (await layoutDiagram(diagram, 'RIGHT', measure)).nodes
+
+  expect(a.width).toBe(3 * 50 + 2 * PADDING + CARD_BORDERS)
+})
+
+test("a card's width also leaves room for its borders and the rows' status stripe", () => {
+  const measure = (text: string) => text.length * 20
+
+  expect(nodeSize(node(['abcdefghij'], 'T'), measure).width).toBe(200 + 2 * PADDING + CARD_BORDERS)
+})
+
+test("an arrow's label is measured, so the boxes either side make room for it", async () => {
+  const measure = (text: string) => (text === 'a-long-label' ? 600 : 10)
+  const diagram: Diagram = {
+    nodes: [
+      { ...node([]), id: 'a' },
+      { ...node([]), id: 'b' },
+    ],
+    edges: [{ id: 'e', source: 'a', target: 'b', label: 'a-long-label', status: 'added' }],
+  }
+
+  const [a, b] = (await layoutDiagram(diagram, 'RIGHT', measure)).nodes
+
+  expect(b.x - (a.x + a.width)).toBeGreaterThanOrEqual(600)
 })

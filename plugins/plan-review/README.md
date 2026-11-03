@@ -8,6 +8,8 @@ Review an agent's implementation plan as interactive diagrams, comment on any el
 
 Not published yet: install from a local clone of [claude-workbench](https://github.com/Selimmo/claude-workbench).
 
+Runs on macOS and Linux (files are locked with POSIX `flock`); Windows is not supported, WSL works.
+
 ```bash
 git clone git@github.com:Selimmo/claude-workbench.git ~/src/claude-workbench
 cd ~/src/claude-workbench/plugins/plan-review
@@ -34,6 +36,7 @@ plan-review serve 42 --open none # only print the URL (e.g. over SSH)
 plan-review config               # this project's pipeline settings, defaults filled in
 plan-review threads 42           # open comment threads, as JSON (for Claude)
 plan-review reply 42 t-1a2b3c4d "Because ..."   # answer a thread as Claude
+plan-review status 42 "Answering questions"     # tell the owner what Claude is doing (--done when finished, --clear to remove)
 plan-review branch 42            # branch name from pipeline.json's pattern and the plan title
 plan-review verdict review.md    # a review's last line: exit 0 PASS, 1 FINDINGS, 2 malformed
 plan-review tree-hash            # fingerprint of uncommitted changes (gitignored files excluded)
@@ -55,29 +58,34 @@ While it runs:
 |---|---|
 | `GET /` | the viewer page |
 | `GET /api/plan` | the plan (200); `{"errors": [...]}` with 404 if missing, 422 if invalid |
-| `WS /api/updates` | sends `{"type": "plan_changed"}` / `{"type": "threads_changed"}` whenever `plan.json` / `comments.json` changes on disk |
+| `WS /api/updates` | sends `{"type": "plan_changed"}` / `{"type": "threads_changed"}` / `{"type": "drafts_changed"}` / `{"type": "status_changed"}` whenever `plan.json` / `comments.json` / `drafts.json` / `status.json` changes on disk |
+| `GET /api/status` | `{"status": null}`, or `{"status": {"text", "done", "at"}}`: what Claude last said it is doing |
 | `GET /api/threads` | all comment threads, each with `orphaned: true` if its element left the plan |
-| `POST /api/threads` | `{"anchor", "text"}`: new thread, written as the owner (201) |
-| `POST /api/threads/<id>/replies` | `{"text"}`: owner reply |
 | `POST /api/threads/<id>/resolve`, `/reopen` | close or reopen a thread |
+| `GET /api/drafts` | the owner's unsent review comments |
+| `POST /api/drafts` | `{"anchor", "text"}` for a new comment, or `{"thread_id", "text"}` for a reply: adds a draft (201). Not announced |
+| `PUT /api/drafts/<id>`, `DELETE /api/drafts/<id>` | edit (`{"text"}`) or discard a draft |
+| `POST /api/review` | submit the review: every draft becomes a thread or a reply, the drafts are cleared, and one `review_submitted` event goes to `/events`; 422 if there are no drafts |
 
 | `GET /api/approve` | `{"approved": false}`, or `true` with the approval record |
-| `POST /api/approve` | approve the plan: 409 while any thread is unresolved, 422 if the plan is invalid; otherwise writes `approved.json` (`approved_at`, `plan_sha256`) |
+| `POST /api/approve` | approve the plan: 409 while any draft is unsent or any thread is unresolved, 422 if the plan is invalid; otherwise writes `approved.json` (`approved_at`, `plan_sha256`) |
 | `WS /events` | the owner's actions, for Claude (below) |
 
-Errors come back as `{"errors": [...]}`: 404 for an unknown thread, 422 for blank text.
+Errors come back as `{"errors": [...]}`: 404 for an unknown thread or draft, 422 for blank text.
 
 ### Events for Claude (`WS /events`)
 
-One JSON message per owner action:
+One JSON message per owner action. The owner reviews like a pull request: comments and replies stay drafts, which never reach this socket, until **Submit review** sends them all as one message:
 
 ```json
-{"type": "comment", "thread_id": "t-1a2b3c4d", "anchor": "class:HintPolicy", "text": "Why a class?"}
-{"type": "reply",   "thread_id": "t-1a2b3c4d", "anchor": "class:HintPolicy", "text": "Thanks"}
+{"type": "review_submitted", "comments": [
+  {"type": "comment", "thread_id": "t-1a2b3c4d", "anchor": "class:HintPolicy", "text": "Why a class?"},
+  {"type": "reply",   "thread_id": "t-5e6f7a8b", "anchor": "risk:1",           "text": "Thanks"}
+]}
 {"type": "approved"}
 ```
 
-`comment` is a new thread and `reply` an owner reply in an existing one. Claude's own replies go through the CLI, not the server, so they never produce an event and Claude is never woken by itself.
+In `comments`, in the order written, `comment` is a new thread and `reply` an owner reply in an existing one. One message per review, not one per comment, so Claude wakes once with the whole batch and can answer and revise together. Claude's own replies go through the CLI, not the server, so they never produce an event and Claude is never woken by itself.
 
 In Claude Code, subscribe with the `Monitor` tool's WebSocket source. Each message becomes one notification:
 
@@ -87,15 +95,17 @@ Monitor({ ws: { url: "ws://127.0.0.1:<port>/events" }, description: "plan-review
 
 A Monitor expires after at most 30 minutes, so re-arm it until `approved` arrives.
 
-**Commenting in the viewer.** Press **Add comment**, then click any element: a class, a member row, an arrow, a flow step, a file, a test or a risk. **Comment on this tab** comments on the tab as a whole. Each thread shows as a numbered pin on its element: hover it for a preview, click it for the whole conversation, where you can reply, resolve or reopen it (Esc or × closes it). Claude's replies appear without a reload. Threads whose element left the plan are listed under **Orphaned comments** on every tab.
+**Commenting in the viewer.** Click any element to comment on it: the issue title or summary, a class or one of its member rows, an arrow, a flow participant or step, a flowchart or architecture box or arrow, a file, a test, a risk or question. Hovering outlines what a click will comment on; dragging pans instead. **Comment on this tab** comments on the tab as a whole. **Add to review** saves the comment as a draft (a dashed pin on its element, and a line under **Your review** on the right), where you can edit or discard it; replies in a thread are drafts too. Drafts are kept in `drafts.json`, so a reload or a restarted server keeps them. **Submit review** sends them all to Claude at once and confirms with a toast, "Review sent (N comments)" (or the error, keeping the drafts). A status line under the title then shows what Claude is doing with the review (set by the orchestrator with `plan-review status`; blinking while Claude works, green when done). Each submitted thread shows as a numbered pin on its element: hover it for a preview, click it for the whole conversation, where you can reply, resolve or reopen it (Esc or × closes it). Claude's replies appear without a reload. Threads whose element left the plan are listed under **Orphaned comments** on every tab.
 
-**Revisions and approval.** When the architect revises `plan.json`, the page updates in place (same tab, threads still attached), outlines every changed element and shows "Plan revised: N elements changed" until you click **Mark as seen**. **Approve plan** stays disabled while any thread is unresolved; once you approve, the page becomes read-only and the implementer takes over.
+**Diagrams.** The page fills the window and each diagram takes all the space below the tabs. It opens fitted, the whole diagram as large as it can be (small ones enlarged up to 1.5x). Wheel or pinch zooms around the pointer, drag pans. **Fit all** returns to the whole picture, **Fill** makes a wide diagram as tall as the window (a tall one as wide) to read it by panning along, and **100%** shows actual size. Whenever part of the diagram is off screen, a minimap in the corner shows all of it with your view outlined: click or drag in it to move there. Flows show one at a time, chosen by title. Boxes are sized from their text measured in the page's real fonts, and sequence columns are spaced so participant names and step labels always fit. Diagrams have a legend for the status colours, files say their change in words, and removed text is struck through. A test's target link opens the target's tab (and flow) and outlines the element. Risks and questions keep the architect's order.
+
+**Revisions and approval.** When the architect revises `plan.json`, the page updates in place (same tab, threads still attached), outlines every changed element and shows "Plan revised: N elements changed" until you click **Mark as seen**. **Approve plan** stays disabled while any draft is unsent or any thread is unresolved; once you approve, the page becomes read-only and the implementer takes over.
 
 The page has a theme switch (top right): **Auto** follows your OS, or pick **Light** or **Dark**. Your choice is remembered in the browser. Text and status colours meet WCAG AA contrast (at least 4.5:1) in both themes.
 
 ### Comment threads
 
-Threads live in `.claude/work/<issue>/comments.json`, next to the plan. Each thread is anchored to a plan element id (such as `class:HintPolicy`) or to a whole tab (`tab:classes`, `tab:flows`, `tab:architecture`, `tab:files`, `tab:tests`, `tab:risks`), and holds ordered messages from `owner` or `claude` plus a `resolved` flag. The page writes as the owner; Claude answers with `plan-review reply`, never by editing the file. A thread whose element disappears from a revised plan is **orphaned**: kept, and shown separately. Tab threads never orphan.
+Threads live in `.claude/work/<issue>/comments.json`, next to the plan; unsent drafts in `drafts.json` beside it (the CLI and Claude never read them). Every read-modify-write of these files holds an OS file lock (a `<file>.lock` sibling), so the server and `plan-review reply` never lose each other's updates. Each thread is anchored to a plan element id (such as `class:HintPolicy`), to the plan's header (`header:title`, `header:summary`) or to a whole tab (`tab:classes`, `tab:flows`, `tab:architecture`, `tab:files`, `tab:tests`, `tab:risks`), and holds ordered messages from `owner` or `claude` plus a `resolved` flag. The page writes as the owner; Claude answers with `plan-review reply`, never by editing the file. A thread whose element disappears from a revised plan is **orphaned**: kept, and shown separately. Header and tab threads never orphan.
 
 `validate` prints one line per problem, as `location: message`:
 
@@ -147,7 +157,7 @@ One command takes an issue to a reviewed commit:
 
 0. **Settle decisions (optional).** Anything already decided can go in `.claude/work/<issue>/decisions.md`: notes, a doc, the outcome of any discussion. The architect treats it as settled. With `/ship <issue> --grill`, `/ship` first runs Matt Pocock's [`grilling`](https://github.com/mattpocock/skills) skill, if you have it, and saves the outcome there.
 1. **Plan.** The `architect` writes `.claude/work/<issue>/plan.json`.
-2. **Review.** The viewer opens. Your comments wake Claude through the `/events` socket: questions are answered in the thread, change requests go back to the architect, and the page updates live. Approve when every thread is resolved.
+2. **Review.** The viewer opens. Your comments and replies are drafts until you press **Submit review**; the submitted review wakes Claude through the `/events` socket: questions are answered in the thread, change requests go back to the architect, the page updates live, and a status line shows what Claude is doing. Approve when no draft is left unsent and every thread is resolved.
 3. **Branch.** Named by `plan-review branch`.
 4. **Implement and review the tests.** `implementer` ⇄ `test-reviewer` until `VERDICT: PASS`.
 5. **Review the code.** `implementer` ⇄ `code-reviewer` until `VERDICT: PASS`. Each loop stops and asks you after `max_review_rounds`, and a review that changed files (detected by `plan-review tree-hash` before and after) is discarded.

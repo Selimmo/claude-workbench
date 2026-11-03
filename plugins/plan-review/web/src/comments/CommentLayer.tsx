@@ -1,7 +1,7 @@
 import {
   type MouseEvent,
   type ReactNode,
-  useEffect,
+  useCallback,
   useLayoutEffect,
   useRef,
   useState,
@@ -9,25 +9,42 @@ import {
 
 import type { Plan } from '../plan'
 import { threadsFor } from '../threadGroups'
-import type { Thread } from '../threads'
+import type { Draft, Thread } from '../threads'
 import type { TabId } from '../viewModels'
 import { Composer } from './Composer'
 import { Pin } from './Pin'
 import { useSpot } from './position'
+import { ReviewPanel } from './ReviewPanel'
+import { type Note, Toast } from './Toast'
 import { ThreadCard } from './ThreadCard'
 
-type Open = { kind: 'thread'; id: string } | { kind: 'new'; anchor: string } | null
+type Open =
+  | { kind: 'thread'; id: string }
+  | { kind: 'new'; anchor: string }
+  | { kind: 'draft'; draft: Draft }
+  | null
 
 interface Props {
   plan: Plan
   tab: TabId
   threads: Thread[]
+  drafts: Draft[]
   refresh: () => Promise<void>
   readOnly: boolean
+  header: ReactNode
+  tabs: ReactNode
   children: ReactNode
 }
 
 const MARGIN = 16
+/** Clicking these does their own job; it never opens a comment on the element around them. */
+const CONTROLS = 'button, a, input, textarea, select, label, [role="dialog"]'
+
+/** The element id a click comments on, or null if the click was meant for something else. */
+function anchorOfClick(target: Element): string | null {
+  if (target.closest(CONTROLS)) return null
+  return target.closest('[data-element-id]')?.getAttribute('data-element-id') ?? null
+}
 
 function Floating({ anchor, children }: { anchor: string; children: ReactNode }) {
   // Cards open beside their element when it is on screen, else in the corner,
@@ -84,69 +101,140 @@ function ThreadList({
   )
 }
 
-export function CommentLayer({ plan, tab, threads, refresh, readOnly, children }: Props) {
-  const [commenting, setCommenting] = useState(false)
-  const [open, setOpen] = useState<Open>(null)
+/**
+ * Makes every element with a data-element-id commentable by a plain click, and lays out
+ * the page around it: header, tab row, the tab's content, and a side panel with the
+ * pending review and the threads that have no element to pin to.
+ */
+export function CommentLayer(props: Props) {
+  const { plan, tab, threads, drafts, refresh, readOnly } = props
+  const [open, setOpenState] = useState<Open>(null)
+  const [note, setNote] = useState<Note | null>(null)
+  // An open composer holding unsaved text: clicking another element must not throw it away.
+  const writing = useRef(false)
   const groups = threadsFor(threads, plan, tab)
-
-  useEffect(() => {
-    if (!commenting) return
-    const cancel = (e: KeyboardEvent) => e.key === 'Escape' && setCommenting(false)
-    window.addEventListener('keydown', cancel)
-    return () => window.removeEventListener('keydown', cancel)
-  }, [commenting])
   const openThread = open?.kind === 'thread' ? threads.find((t) => t.id === open.id) : undefined
+  const newDrafts = drafts.filter((d) => d.thread_id === null)
 
-  function onClickCapture(event: MouseEvent) {
-    if (!commenting) return
-    const target = (event.target as Element).closest('[data-element-id]')
-    if (!target) return
-    event.preventDefault()
-    event.stopPropagation()
-    setOpen({ kind: 'new', anchor: target.getAttribute('data-element-id') ?? '' })
-    setCommenting(false)
+  function onClick(event: MouseEvent) {
+    if (readOnly) return
+    if (window.getSelection()?.toString()) return // the owner is selecting text to copy
+    const anchor = anchorOfClick(event.target as Element)
+    if (anchor) setOpen({ kind: 'new', anchor })
   }
 
+  // Every way of opening a card goes through here: while the open composer holds unsaved
+  // text, nothing replaces it (a pin, "Comment on this tab", a draft's Edit, an element).
+  // Only closing it (Cancel, ×, Esc, or saving) ends that text.
+  function setOpen(next: Open) {
+    if (writing.current && next !== null) return
+    writing.current = false
+    setOpenState(next)
+  }
   const close = () => setOpen(null)
+  const onDirty = (dirty: boolean) => (writing.current = dirty)
+  const closeNote = useCallback(() => setNote(null), [])
+  const editDraft = (draft: Draft) => setOpen({ kind: 'draft', draft })
+  const side = drafts.length > 0 || groups.onTab.length > 0 || groups.orphaned.length > 0
   return (
     <>
-      {!readOnly && (
-        <div className="comment-bar">
-          <button aria-pressed={commenting} onClick={() => setCommenting((on) => !on)}>
-            {commenting ? 'Click an element… (Esc to cancel)' : 'Add comment'}
-          </button>
-          <button onClick={() => setOpen({ kind: 'new', anchor: `tab:${tab}` })}>
-            Comment on this tab
-          </button>
+      <div className={readOnly ? 'plan' : 'plan commentable'} onClick={onClick}>
+        {props.header}
+        <div className="tab-row">
+          {props.tabs}
+          {!readOnly && (
+            <button
+              className="tab-comment"
+              onClick={() => setOpen({ kind: 'new', anchor: `tab:${tab}` })}
+            >
+              Comment on this tab
+            </button>
+          )}
         </div>
-      )}
-      <ThreadList
-        title="Orphaned comments"
-        threads={groups.orphaned}
-        onOpen={(id) => setOpen({ kind: 'thread', id })}
-      />
-      <ThreadList
-        title="Comments on this tab"
-        threads={groups.onTab}
-        onOpen={(id) => setOpen({ kind: 'thread', id })}
-      />
-      <div
-        className={commenting ? 'commentable commenting' : 'commentable'}
-        onClickCapture={onClickCapture}
-      >
-        {children}
+        <div className="workspace">
+          {props.children}
+          {side && (
+            <aside className="side-panel">
+              {!readOnly && (
+                <ReviewPanel
+                  drafts={drafts}
+                  onChanged={refresh}
+                  onEdit={editDraft}
+                  onNotify={setNote}
+                />
+              )}
+              <ThreadList
+                title="Orphaned comments"
+                threads={groups.orphaned}
+                onOpen={(id) => setOpen({ kind: 'thread', id })}
+              />
+              <ThreadList
+                title="Comments on this tab"
+                threads={groups.onTab}
+                onOpen={(id) => setOpen({ kind: 'thread', id })}
+              />
+            </aside>
+          )}
+        </div>
       </div>
+      {note && <Toast note={note} onClose={closeNote} />}
       {groups.pinned.map((t) => (
-        <Pin key={t.id} thread={t} onOpen={() => setOpen({ kind: 'thread', id: t.id })} />
+        <Pin
+          key={t.id}
+          anchor={t.anchor}
+          badge={String(t.messages.length)}
+          label={`${t.messages.length} message${t.messages.length === 1 ? '' : 's'} on ${t.anchor}`}
+          preview={t.messages[0]?.text ?? ''}
+          onOpen={() => setOpen({ kind: 'thread', id: t.id })}
+        />
       ))}
+      {!readOnly &&
+        newDrafts.map((d, i) => (
+          <Pin
+            key={d.id}
+            anchor={d.anchor}
+            badge="✎"
+            label={`Draft on ${d.anchor}`}
+            preview={d.text}
+            draft
+            // Beside any thread pin, and beside earlier drafts on the same element.
+            offset={26 * (1 + newDrafts.slice(0, i).filter((o) => o.anchor === d.anchor).length)}
+            onOpen={() => editDraft(d)}
+          />
+        ))}
       {openThread && (
         <Floating anchor={openThread.anchor}>
-          <ThreadCard thread={openThread} onChanged={refresh} onClose={close} readOnly={readOnly} />
+          <ThreadCard
+            thread={openThread}
+            drafts={drafts.filter((d) => d.thread_id === openThread.id)}
+            onChanged={refresh}
+            onEditDraft={editDraft}
+            onClose={close}
+            readOnly={readOnly}
+          />
         </Floating>
       )}
       {open?.kind === 'new' && (
         <Floating anchor={open.anchor}>
-          <Composer anchor={open.anchor} onPosted={refresh} onClose={close} />
+          <Composer
+            key={open.anchor}
+            anchor={open.anchor}
+            onSaved={refresh}
+            onClose={close}
+            onDirty={onDirty}
+          />
+        </Floating>
+      )}
+      {open?.kind === 'draft' && (
+        <Floating anchor={open.draft.anchor}>
+          <Composer
+            key={open.draft.id}
+            anchor={open.draft.anchor}
+            draft={open.draft}
+            onSaved={refresh}
+            onClose={close}
+            onDirty={onDirty}
+          />
         </Floating>
       )}
     </>

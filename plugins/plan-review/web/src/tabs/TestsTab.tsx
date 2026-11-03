@@ -1,9 +1,10 @@
 import type { Plan } from '../plan'
-import { type TabId, tabOf } from '../viewModels'
+import { tabOf } from '../viewModels'
 
 interface Props {
   plan: Plan
-  onShow: (tab: TabId) => void
+  /** Show the element a test targets: its tab, highlighted. */
+  onShow: (target: string) => void
 }
 
 export function TestsTab({ plan, onShow }: Props) {
@@ -18,7 +19,7 @@ export function TestsTab({ plan, onShow }: Props) {
             <button
               className="link"
               disabled={targetTab === null}
-              onClick={() => targetTab && onShow(targetTab)}
+              onClick={() => targetTab && onShow(test.target)}
             >
               {test.target}
             </button>

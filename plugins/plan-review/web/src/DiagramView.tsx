@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 
 import type { Diagram } from './diagram'
 import type { LaidDiagram, LaidEdge, Point } from './layout'
-import { PanZoom } from './PanZoom'
+import { canvasMeasure } from './measure'
+import { type Overview, PanZoom } from './PanZoom'
 
 const STATUSES = ['added', 'modified', 'removed', 'unchanged'] as const
 
@@ -11,9 +12,12 @@ function path(points: Point[]): string {
 }
 
 function EdgeView({ edge }: { edge: LaidEdge }) {
+  const d = path(edge.points)
   return (
     <g className="edge" data-element-id={edge.id} data-status={edge.status}>
-      <path d={path(edge.points)} markerEnd="url(#arrow)" />
+      {/* An invisible wide stroke: the arrow is easy to click, not just its 1.5px line. */}
+      <path className="hit" d={d} />
+      <path className="line" d={d} markerEnd="url(#arrow)" />
       {edge.label && edge.labelAt && (
         <text x={edge.labelAt.x} y={edge.labelAt.y + 12}>
           {edge.label}
@@ -41,6 +45,10 @@ interface Props {
   direction?: 'RIGHT' | 'DOWN'
 }
 
+function overviewOf(laid: LaidDiagram): Overview {
+  return { boxes: laid.nodes, lines: laid.edges.map((e) => e.points) }
+}
+
 export function DiagramView({ diagram, empty, direction = 'RIGHT' }: Props) {
   const [laid, setLaid] = useState<LaidDiagram | null>(null)
 
@@ -48,7 +56,7 @@ export function DiagramView({ diagram, empty, direction = 'RIGHT' }: Props) {
     let current = true
     // ELK is large; load it only when a diagram is first shown.
     void import('./layout')
-      .then(({ layoutDiagram }) => layoutDiagram(diagram, direction))
+      .then(({ layoutDiagram }) => layoutDiagram(diagram, direction, canvasMeasure()))
       .then((result) => current && setLaid(result))
     return () => {
       current = false
@@ -58,9 +66,9 @@ export function DiagramView({ diagram, empty, direction = 'RIGHT' }: Props) {
   if (diagram.nodes.length === 0) return <p className="empty">{empty}</p>
   if (laid === null) return <p className="status">Laying out…</p>
   return (
-    <>
+    <div className="diagram">
       <Legend />
-      <PanZoom width={laid.width} height={laid.height}>
+      <PanZoom width={laid.width} height={laid.height} overview={overviewOf(laid)}>
         <svg className="edges" width={laid.width} height={laid.height}>
           <defs>
             <marker
@@ -101,6 +109,6 @@ export function DiagramView({ diagram, empty, direction = 'RIGHT' }: Props) {
           </div>
         ))}
       </PanZoom>
-    </>
+    </div>
   )
 }

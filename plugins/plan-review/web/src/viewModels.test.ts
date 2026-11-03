@@ -28,7 +28,7 @@ test('files are grouped by kind in a fixed order, skipping empty groups', () => 
   ])
 })
 
-test('risks and questions are separated and sorted by severity, high first', () => {
+test("risks and questions are separated, each keeping the architect's order", () => {
   const risk = (id: string, kind: 'risk' | 'question', severity: 'low' | 'medium' | 'high') => ({
     id,
     kind,
@@ -46,8 +46,8 @@ test('risks and questions are separated and sorted by severity, high first', () 
     ],
   })
 
-  expect(sections.risks.map((r) => r.id)).toEqual(['r-high', 'r-low', 'r-low-2'])
-  expect(sections.questions.map((r) => r.id)).toEqual(['q-high', 'q-med'])
+  expect(sections.risks.map((r) => r.id)).toEqual(['r-low', 'r-high', 'r-low-2'])
+  expect(sections.questions.map((r) => r.id)).toEqual(['q-med', 'q-high'])
 })
 
 test.each([

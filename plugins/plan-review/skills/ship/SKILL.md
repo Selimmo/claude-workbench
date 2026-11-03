@@ -40,16 +40,22 @@ Once the owner confirms, write `W/decisions.md`. Write only what was settled, in
 
 ## 2. Plan
 
-Start the `plan-review:architect` agent with: "Plan mode. Issue N." When it finishes, relay its summary lines to the owner in two or three sentences.
+Start the `plan-review:architect` agent with: "Plan mode. Issue N." When it finishes, go straight to step 3. Don't summarize the plan: the owner reads all of it in the viewer.
 
 ## 3. Review in the viewer
 
 1. Start `plan-review serve N` with the Bash tool in the background (`run_in_background`). Read its first output line, `plan-review: issue #N at http://127.0.0.1:<port>/`, from the task's output file, and give the owner that URL. The browser opens by itself unless `viewer.open` is `none`.
-2. Subscribe to the owner's actions with the **Monitor** tool's WebSocket source: `ws://127.0.0.1:<port>/events`, `timeout_ms: 1800000`, description `plan-review #N`. A Monitor lasts at most 30 minutes: when it expires before `approved`, arm it again.
+2. Subscribe to the owner's actions with the **Monitor** tool's WebSocket source: `ws://127.0.0.1:<port>/events`, `timeout_ms: 1800000`, description `plan-review #N`. A Monitor lasts at most 30 minutes: when it expires before `approved`, arm it again. Events sent while no Monitor is listening are not kept, so each time you arm it again, run `plan-review threads N` and treat every thread whose last message is the owner's (no reply from you yet) as part of a review: handle it as below.
 3. Each notification is one JSON event:
-   - `comment` or `reply` with `thread_id`, `anchor` and `text`: the owner wrote on the element `anchor`.
+   - `review_submitted` with `comments`: the owner submitted a review. Their comments and replies were drafts until now, so this one event holds all of them. Each item has `type` (`comment` for a new thread, `reply` for a reply in an existing one), `thread_id`, `anchor` and `text`: the owner wrote on the element `anchor` (`header:title`/`header:summary` is the plan's header, `tab:<tab>` a whole tab). The viewer shows the owner a status line of what you are doing; set it with `plan-review status N "<text>"` (the latest text replaces the last) at each stage:
+     1. At once: `plan-review status N "Review received (<count> comments)"`.
+     2. Before answering: `plan-review status N "Answering questions"`.
+     3. Before starting the architect: `plan-review status N "Architect revising (<thread ids>)"`.
+     4. When the whole review is handled: `plan-review status N "<what changed>" --done`, for example "Replies posted to 2 threads; plan updated: HintPolicy split".
+
+     Handle every item of the review:
      - **A question.** Answer it with `plan-review reply N <thread_id> "<answer>"`. Read the plan and the code first if you need to. Keep answers short and concrete.
-     - **A requested change.** Never edit `plan.json` yourself. Collect the change requests that arrive close together, then start `plan-review:architect` with: "Revise mode. Issue N. Threads: <thread ids>." For each thread, post the architect's line about it with `plan-review reply`. The viewer refreshes by itself and outlines what changed.
+     - **A requested change.** Never edit `plan.json` yourself. Take all the change requests of the review together, then start `plan-review:architect` once with: "Revise mode. Issue N. Threads: <thread ids>." For each thread, post the architect's line about it with `plan-review reply`. The viewer refreshes by itself and outlines what changed.
      - Never resolve threads. Resolving is the owner's way of saying they are satisfied.
    - `approved`: go to step 4. Stop the Monitor and the server task.
 

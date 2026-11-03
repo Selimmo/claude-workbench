@@ -16,3 +16,8 @@ if (typeof globalThis.localStorage?.clear !== 'function') {
   }
   Object.defineProperty(globalThis, 'localStorage', { value: memory, configurable: true })
 }
+
+// jsdom has no canvas: say so quietly (getContext would log "Not implemented"), as a
+// browser without canvas support would, so text measuring falls back to estimates.
+HTMLCanvasElement.prototype.getContext = (() =>
+  null) as typeof HTMLCanvasElement.prototype.getContext

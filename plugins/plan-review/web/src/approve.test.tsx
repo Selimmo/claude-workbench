@@ -1,7 +1,13 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 
 import { App } from './App'
-import { FakeServer, thread } from './test/fakeServer'
+import { FakeServer, draft, thread } from './test/fakeServer'
+
+function element(id: string): HTMLElement {
+  const found = document.querySelector<HTMLElement>(`[data-element-id="${CSS.escape(id)}"]`)
+  if (!found) throw new Error(`no element ${id}`)
+  return found
+}
 
 let server: FakeServer
 
@@ -26,6 +32,15 @@ test('Approve is disabled while threads are unresolved, saying how many', async 
   expect(screen.getByText('Resolve 2 threads to approve')).toBeInTheDocument()
 })
 
+test('Approve is disabled while drafts are unsent, saying how many', async () => {
+  server.drafts = [draft('d-1', 'risk:1', 'Hmm')]
+  await open()
+
+  const approve = await screen.findByRole('button', { name: 'Approve plan' })
+  await vi.waitFor(() => expect(approve).toBeDisabled())
+  expect(screen.getByText('Submit or discard 1 draft to approve')).toBeInTheDocument()
+})
+
 test('approving confirms it and makes the page read-only', async () => {
   server.threads = [{ ...thread('t-1', 'risk:1', 'Done'), resolved: true }]
   await open()
@@ -34,7 +49,7 @@ test('approving confirms it and makes the page read-only', async () => {
 
   expect(await screen.findByText(/Approved/)).toBeInTheDocument()
   expect(server.calls).toContainEqual({ method: 'POST', url: '/api/approve', body: null })
-  expect(screen.queryByRole('button', { name: 'Add comment' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Comment on this tab' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Approve plan' })).not.toBeInTheDocument()
 })
 
@@ -67,4 +82,23 @@ test('a revised plan re-renders in place, keeps the tab and marks what changed',
 
   fireEvent.click(screen.getByRole('button', { name: 'Mark as seen' }))
   expect(document.querySelector('[data-revised]')).toBeNull()
+})
+
+test('in a read-only (approved) plan, clicking an element opens no composer', async () => {
+  server.approved = true
+  await open()
+  await screen.findByText(/Approved/)
+
+  fireEvent.click(element('header:title'))
+
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+test('in a read-only (approved) plan, leftover drafts show no pins', async () => {
+  server.approved = true
+  server.drafts = [draft('d-1', 'header:title', 'Late thought')]
+  await open()
+  await screen.findByText(/Approved/)
+
+  expect(screen.queryByRole('button', { name: 'Draft on header:title' })).not.toBeInTheDocument()
 })

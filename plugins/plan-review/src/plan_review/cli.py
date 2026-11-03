@@ -16,6 +16,7 @@ from plan_review.orchestration import MalformedReview, slugify, tree_hash, verdi
 from plan_review.pipeline import PipelineConfigError, load_pipeline
 from plan_review.plan import Plan, PlanFileError, load_plan
 from plan_review.server import create_app
+from plan_review.status import StatusStore
 from plan_review.threads import BlankComment, ThreadNotFound, ThreadStore
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -71,6 +72,15 @@ def _parser() -> argparse.ArgumentParser:
     reply.add_argument("issue", type=int)
     reply.add_argument("thread_id")
     reply.add_argument("text")
+    status = command(
+        "status",
+        "show the owner what Claude is doing with their review (latest text wins)",
+        lambda a: _status(a.issue, a.text, done=a.done, clear=a.clear),
+    )
+    status.add_argument("issue", type=int)
+    status.add_argument("text", nargs="?", default="")
+    status.add_argument("--done", action="store_true", help="mark it finished")
+    status.add_argument("--clear", action="store_true", help="remove the status line")
     command(
         "branch", "the branch name for an issue, from its plan", lambda a: _branch(a.issue)
     ).add_argument("issue", type=int)
@@ -157,6 +167,23 @@ def _threads(issue: int) -> int:
         t for t in ThreadStore(_work_dir(issue) / "comments.json").all() if not t.resolved
     ]
     print(json.dumps([t.model_dump(mode="json") for t in open_threads], indent=2))
+    return 0
+
+
+def _status(issue: int, text: str, *, done: bool, clear: bool) -> int:
+    work = _work_dir(issue)
+    if not work.is_dir():
+        print(f"no {work}/ for issue #{issue}: is this the project root?", file=sys.stderr)
+        return 1
+    store = StatusStore(work / "status.json")
+    if clear:
+        store.clear()
+        return 0
+    try:
+        store.set(text, done=done)
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
     return 0
 
 
