@@ -45,16 +45,11 @@ export function filesByKind(plan: Plan): FileGroup[] {
   })).filter((group) => group.files.length > 0)
 }
 
-const SEVERITY_RANK: Record<Risk['severity'], number> = { high: 0, medium: 1, low: 2 }
-
+/** Risks and questions apart, each in the architect's order (they may order by importance). */
 export function risksByKind(plan: Plan): { risks: Risk[]; questions: Risk[] } {
-  // Array.prototype.sort is stable, so equal severities keep the plan's order.
-  const sorted = [...plan.risks].sort(
-    (a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity],
-  )
   return {
-    risks: sorted.filter((r) => r.kind === 'risk'),
-    questions: sorted.filter((r) => r.kind === 'question'),
+    risks: plan.risks.filter((r) => r.kind === 'risk'),
+    questions: plan.risks.filter((r) => r.kind === 'question'),
   }
 }
 

@@ -10,8 +10,11 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from plan_review.approval import approval_routes
+from plan_review.drafts import DraftNotFound, DraftStore
 from plan_review.events import Subscribers
 from plan_review.plan import PlanFileError, load_plan
+from plan_review.review import review_routes
+from plan_review.status import StatusStore, status_routes
 from plan_review.thread_routes import thread_routes
 from plan_review.threads import BlankComment, ThreadNotFound, ThreadStore
 
@@ -53,12 +56,19 @@ async def _listen(socket: WebSocket, subscribers: Subscribers) -> None:
 
 def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5) -> FastAPI:
     comments_file = plan_file.parent / "comments.json"  # sits next to the plan it comments on
+    drafts_file = plan_file.parent / "drafts.json"  # the owner's unsent review comments
+    status_file = plan_file.parent / "status.json"  # what Claude is doing, set by the CLI
     subscribers = Subscribers()  # viewer pages, on /api/updates
     events = Subscribers()  # Claude (through Monitor), on /events
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
-        watched = {plan_file: "plan_changed", comments_file: "threads_changed"}
+        watched = {
+            plan_file: "plan_changed",
+            comments_file: "threads_changed",
+            drafts_file: "drafts_changed",  # e.g. a second tab of the viewer
+            status_file: "status_changed",
+        }
         watcher = asyncio.create_task(_watch(watched, poll_interval, subscribers))
         yield
         watcher.cancel()
@@ -88,13 +98,20 @@ def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5)
     async def not_found(_: Request, error: ThreadNotFound) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
         return JSONResponse({"errors": [f"no thread '{error.args[0]}'"]}, status_code=404)
 
+    @app.exception_handler(DraftNotFound)
+    async def no_draft(_: Request, error: DraftNotFound) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
+        return JSONResponse({"errors": [f"no draft '{error.args[0]}'"]}, status_code=404)
+
     @app.exception_handler(BlankComment)
     async def blank(_: Request, error: BlankComment) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
         return JSONResponse({"errors": [str(error)]}, status_code=422)
 
     store = ThreadStore(comments_file)
-    app.include_router(thread_routes(store, plan_file, events))
-    app.include_router(approval_routes(store, plan_file, events))
+    drafts = DraftStore(drafts_file)
+    app.include_router(thread_routes(store, plan_file))
+    app.include_router(review_routes(store, drafts, events))
+    app.include_router(status_routes(StatusStore(status_file)))
+    app.include_router(approval_routes(store, drafts, plan_file, events))
 
     @app.middleware("http")
     async def revalidate(  # pyright: ignore[reportUnusedFunction]

@@ -8,6 +8,7 @@ export function FilesTab({ plan }: { plan: Plan }) {
       <ul className="rows">
         {group.files.map((file) => (
           <li key={file.id} data-element-id={file.id} data-status={file.change}>
+            <span className="change">{file.change}</span>
             <code>{file.path}</code>
             <span className="reason">{file.reason}</span>
           </li>

@@ -10,6 +10,7 @@ Claude Code plugins for taking an issue to a reviewed commit with agents.
 
 ## Prerequisites
 
+- macOS or Linux: plan-review locks its files with POSIX `flock`, so Windows is not supported (WSL works)
 - [uv](https://docs.astral.sh/uv/) (Python 3.12+ is downloaded automatically)
 - Node.js 24 LTS (see `plugins/plan-review/web/.nvmrc`), to build the viewer page
 - [Claude Code](https://claude.com/claude-code)
@@ -30,7 +31,7 @@ claude-workbench/
         ├── agents/                     # architect, implementer, test-reviewer, code-reviewer
         ├── skills/ship/SKILL.md        # /plan-review:ship — the orchestrator
         ├── examples/                   # plan.json and pipeline.json samples
-        ├── src/plan_review/            # CLI, plan schema, server, comment threads, /ship helpers
+        ├── src/plan_review/            # CLI, plan schema, server, comment threads, review drafts, /ship helpers
         │   └── static/                 # built viewer page (generated, gitignored)
         ├── tests/                      # pytest
         └── web/                        # viewer page: React + TypeScript + Vite
@@ -40,8 +41,9 @@ claude-workbench/
                 ├── diagram.ts          # plan → boxes-and-arrows model (classes, architecture, flowcharts)
                 ├── sequence.ts         # sequence-diagram geometry
                 ├── layout.ts           # ELK layout (loaded lazily); DiagramView renders it as DOM
+                ├── fit.ts, PanZoom.tsx # full-window pan and zoom: fit all, fill, 100%, minimap
                 ├── api.ts, App.tsx, PlanView.tsx
-                ├── comments/           # pins, thread cards, composer, comment mode
+                ├── comments/           # click-to-comment, pins, thread cards, composer, review panel (drafts)
                 └── tabs/               # one component per tab
 ```
 

@@ -10,7 +10,9 @@ import uvicorn
 from fastapi.testclient import TestClient
 from websockets.sync.client import connect
 
+from plan_review.drafts import DraftStore
 from plan_review.server import create_app
+from plan_review.status import StatusStore
 from plan_review.threads import ThreadStore
 
 EXAMPLE = Path(__file__).parents[1] / "examples" / "plan.json"
@@ -107,73 +109,194 @@ def test_real_uvicorn_server_pushes_plan_changes_over_websocket(
         sock.close()
 
 
-def test_owner_can_create_list_reply_resolve_and_reopen_threads(
-    plan_file: Path, static_dir: Path
-) -> None:
+def test_owner_can_list_resolve_and_reopen_threads(plan_file: Path, static_dir: Path) -> None:
+    thread = ThreadStore(plan_file.parent / "comments.json").create("class:HintPolicy", "Why?")
     client = TestClient(create_app(plan_file, static_dir))
 
-    created = client.post("/api/threads", json={"anchor": "class:HintPolicy", "text": "Why?"})
-    thread_id = created.json()["id"]
-    client.post(f"/api/threads/{thread_id}/replies", json={"text": "More detail"})
-    client.post(f"/api/threads/{thread_id}/resolve")
-    client.post(f"/api/threads/{thread_id}/reopen")
-    listed = client.get("/api/threads").json()["threads"]
+    client.post(f"/api/threads/{thread.id}/resolve")
+    client.post(f"/api/threads/{thread.id}/reopen")
+    (listed,) = client.get("/api/threads").json()["threads"]
 
-    assert created.status_code == 201
-    assert len(listed) == 1
-    assert [(m["author"], m["text"]) for m in listed[0]["messages"]] == [
-        ("owner", "Why?"),
-        ("owner", "More detail"),
-    ]
-    assert listed[0]["resolved"] is False
-    assert listed[0]["orphaned"] is False
+    assert [(m["author"], m["text"]) for m in listed["messages"]] == [("owner", "Why?")]
+    assert listed["resolved"] is False
+    assert listed["orphaned"] is False
 
 
-def test_reply_to_unknown_thread_is_404(plan_file: Path, static_dir: Path) -> None:
+def test_resolving_an_unknown_thread_is_404(plan_file: Path, static_dir: Path) -> None:
     client = TestClient(create_app(plan_file, static_dir))
 
-    response = client.post("/api/threads/t-nope/replies", json={"text": "hi"})
+    response = client.post("/api/threads/t-nope/resolve")
 
     assert response.status_code == 404
     assert response.json() == {"errors": ["no thread 't-nope'"]}
 
 
-def test_blank_comment_is_422(plan_file: Path, static_dir: Path) -> None:
-    client = TestClient(create_app(plan_file, static_dir))
-
-    response = client.post("/api/threads", json={"anchor": "risk:1", "text": "  "})
-
-    assert response.status_code == 422
-    assert response.json() == {"errors": ["comment text is empty"]}
-
-
 def test_thread_on_an_element_removed_from_the_plan_is_listed_as_orphaned(
     plan_file: Path, static_dir: Path
 ) -> None:
+    ThreadStore(plan_file.parent / "comments.json").create("class:Gone", "?")
     client = TestClient(create_app(plan_file, static_dir))
-    client.post("/api/threads", json={"anchor": "class:Gone", "text": "?"})
 
     (thread,) = client.get("/api/threads").json()["threads"]
 
     assert thread["orphaned"] is True
 
 
-def test_owners_new_thread_is_announced_on_events(plan_file: Path, static_dir: Path) -> None:
+def test_an_added_draft_is_listed(plan_file: Path, static_dir: Path) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+
+    added = client.post("/api/drafts", json={"anchor": "class:HintPolicy", "text": "Why?"})
+    listed = client.get("/api/drafts").json()["drafts"]
+
+    assert added.status_code == 201
+    assert [(d["anchor"], d["text"], d["thread_id"]) for d in listed] == [
+        ("class:HintPolicy", "Why?", None)
+    ]
+
+
+def test_a_draft_can_be_edited(plan_file: Path, static_dir: Path) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+    draft = client.post("/api/drafts", json={"anchor": "risk:1", "text": "Why?"}).json()
+
+    client.put(f"/api/drafts/{draft['id']}", json={"text": "Why a class?"})
+
+    assert [d["text"] for d in client.get("/api/drafts").json()["drafts"]] == ["Why a class?"]
+
+
+def test_a_draft_can_be_discarded(plan_file: Path, static_dir: Path) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+    kept = client.post("/api/drafts", json={"anchor": "risk:1", "text": "Keep"}).json()
+    gone = client.post("/api/drafts", json={"anchor": "risk:2", "text": "Hmm"}).json()
+
+    discarded = client.delete(f"/api/drafts/{gone['id']}")
+
+    assert discarded.status_code == 204
+    assert [d["id"] for d in client.get("/api/drafts").json()["drafts"]] == [kept["id"]]
+
+
+def test_a_reply_draft_takes_its_threads_anchor(plan_file: Path, static_dir: Path) -> None:
+    thread = ThreadStore(plan_file.parent / "comments.json").create("risk:1", "Agree?")
+    client = TestClient(create_app(plan_file, static_dir))
+
+    draft = client.post("/api/drafts", json={"thread_id": thread.id, "text": "Yes"}).json()
+
+    assert (draft["anchor"], draft["thread_id"]) == ("risk:1", thread.id)
+
+
+def test_a_draft_without_anchor_or_thread_is_422(plan_file: Path, static_dir: Path) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+
+    response = client.post("/api/drafts", json={"text": "?"})
+
+    assert response.status_code == 422
+    assert response.json() == {"errors": ["a draft needs an anchor or a thread_id"]}
+
+
+def test_a_reply_draft_to_an_unknown_thread_is_404(plan_file: Path, static_dir: Path) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+
+    response = client.post("/api/drafts", json={"thread_id": "t-nope", "text": "?"})
+
+    assert response.status_code == 404
+    assert client.get("/api/drafts").json() == {"drafts": []}
+
+
+def test_blank_draft_is_422(plan_file: Path, static_dir: Path) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+
+    response = client.post("/api/drafts", json={"anchor": "risk:1", "text": "  "})
+
+    assert response.status_code == 422
+    assert response.json() == {"errors": ["comment text is empty"]}
+
+
+def test_editing_an_unknown_draft_is_404(plan_file: Path, static_dir: Path) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+
+    response = client.put("/api/drafts/d-nope", json={"text": "x"})
+
+    assert response.status_code == 404
+    assert response.json() == {"errors": ["no draft 'd-nope'"]}
+
+
+def test_drafts_are_not_announced_until_the_review_is_submitted(
+    plan_file: Path, static_dir: Path
+) -> None:
+    store = ThreadStore(plan_file.parent / "comments.json")
+    thread = store.create("risk:1", "Agree?")
     with (
         TestClient(create_app(plan_file, static_dir)) as client,
         client.websocket_connect("/events") as events,
     ):
-        thread = client.post("/api/threads", json={"anchor": "risk:1", "text": "Agree?"}).json()
+        client.post("/api/drafts", json={"anchor": "class:HintPolicy", "text": "Why?"})
+        client.post("/api/drafts", json={"thread_id": thread.id, "text": "Thanks"})
+        submitted = client.post("/api/review").json()
 
-        assert events.receive_json() == {
-            "type": "comment",
-            "thread_id": thread["id"],
-            "anchor": "risk:1",
-            "text": "Agree?",
-        }
+        # The first event is the whole review: drafts were never announced on their own.
+        event = events.receive_json()
+    new_thread = submitted["comments"][0]["thread_id"]
+    assert event == {
+        "type": "review_submitted",
+        "comments": [
+            {
+                "type": "comment",
+                "thread_id": new_thread,
+                "anchor": "class:HintPolicy",
+                "text": "Why?",
+            },
+            {"type": "reply", "thread_id": thread.id, "anchor": "risk:1", "text": "Thanks"},
+        ],
+    }
+    assert submitted == {"comments": event["comments"]}
 
 
-def test_owner_replies_are_announced_but_claudes_are_not(plan_file: Path, static_dir: Path) -> None:
+def test_submitting_a_review_turns_drafts_into_threads_and_clears_them(
+    plan_file: Path, static_dir: Path
+) -> None:
+    thread = ThreadStore(plan_file.parent / "comments.json").create("risk:1", "Agree?")
+    client = TestClient(create_app(plan_file, static_dir))
+    client.post("/api/drafts", json={"anchor": "class:HintPolicy", "text": "Why?"})
+    client.post("/api/drafts", json={"thread_id": thread.id, "text": "Thanks"})
+
+    client.post("/api/review")
+    threads = client.get("/api/threads").json()["threads"]
+
+    assert [(t["anchor"], [m["text"] for m in t["messages"]]) for t in threads] == [
+        ("risk:1", ["Agree?", "Thanks"]),
+        ("class:HintPolicy", ["Why?"]),
+    ]
+    assert client.get("/api/drafts").json() == {"drafts": []}
+
+
+def test_a_review_with_a_reply_to_a_vanished_thread_submits_nothing(
+    plan_file: Path, static_dir: Path
+) -> None:
+    comments = plan_file.parent / "comments.json"
+    thread = ThreadStore(comments).create("risk:1", "Agree?")
+    client = TestClient(create_app(plan_file, static_dir))
+    client.post("/api/drafts", json={"anchor": "class:HintPolicy", "text": "Why?"})
+    client.post("/api/drafts", json={"thread_id": thread.id, "text": "Thanks"})
+    comments.write_text("[]")
+
+    response = client.post("/api/review")
+
+    assert response.status_code == 404
+    assert client.get("/api/threads").json() == {"threads": []}
+    assert len(client.get("/api/drafts").json()["drafts"]) == 2
+
+
+def test_submitting_an_empty_review_is_422(plan_file: Path, static_dir: Path) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+
+    response = client.post("/api/review")
+
+    assert response.status_code == 422
+    assert response.json() == {"errors": ["no drafts to submit"]}
+
+
+def test_claudes_replies_through_the_cli_are_not_announced(
+    plan_file: Path, static_dir: Path
+) -> None:
     store = ThreadStore(plan_file.parent / "comments.json")
     thread = store.create("risk:1", "Agree?")
     with (
@@ -181,14 +304,21 @@ def test_owner_replies_are_announced_but_claudes_are_not(plan_file: Path, static
         client.websocket_connect("/events") as events,
     ):
         store.reply(thread.id, "Yes, see mitigation.", author="claude")  # as the CLI does
-        client.post(f"/api/threads/{thread.id}/replies", json={"text": "Thanks"})
+        client.post("/api/drafts", json={"anchor": "risk:2", "text": "Ok"})
+        client.post("/api/review")
 
-        assert events.receive_json() == {
-            "type": "reply",
-            "thread_id": thread.id,
-            "anchor": "risk:1",
-            "text": "Thanks",
-        }
+        assert events.receive_json()["type"] == "review_submitted"
+
+
+def test_approve_is_refused_while_drafts_are_unsent(plan_file: Path, static_dir: Path) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+    client.post("/api/drafts", json={"anchor": "risk:1", "text": "Hmm"})
+
+    response = client.post("/api/approve")
+
+    assert response.status_code == 409
+    assert response.json() == {"errors": ["1 unsent draft(s): submit or discard them first"]}
+    assert not (plan_file.parent / "approved.json").exists()
 
 
 def test_approve_is_refused_while_a_thread_is_unresolved(plan_file: Path, static_dir: Path) -> None:
@@ -236,6 +366,15 @@ def test_page_is_revalidated_so_an_upgraded_viewer_is_never_served_stale(
     assert client.get("/").headers["cache-control"] == "no-cache"
 
 
+def test_pages_are_told_when_drafts_change_on_disk(plan_file: Path, static_dir: Path) -> None:
+    app = create_app(plan_file, static_dir, poll_interval=0.01)
+
+    with TestClient(app) as client, client.websocket_connect("/api/updates") as updates:
+        DraftStore(plan_file.parent / "drafts.json").add("risk:1", "from another tab")
+
+        assert updates.receive_json() == {"type": "drafts_changed"}
+
+
 def test_pages_are_told_when_comment_threads_change_on_disk(
     plan_file: Path, static_dir: Path
 ) -> None:
@@ -257,3 +396,27 @@ def test_approval_state_can_be_read(plan_file: Path, static_dir: Path) -> None:
     assert before == {"approved": False}
     assert after["approved"] is True
     assert after["plan_sha256"] == hashlib.sha256(plan_file.read_bytes()).hexdigest()
+
+
+def test_status_is_none_until_claude_sets_one(plan_file: Path, static_dir: Path) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+
+    assert client.get("/api/status").json() == {"status": None}
+
+
+def test_status_set_by_the_cli_can_be_read(plan_file: Path, static_dir: Path) -> None:
+    StatusStore(plan_file.parent / "status.json").set("Answering questions")
+    client = TestClient(create_app(plan_file, static_dir))
+
+    status = client.get("/api/status").json()["status"]
+
+    assert (status["text"], status["done"]) == ("Answering questions", False)
+
+
+def test_pages_are_told_when_the_status_changes(plan_file: Path, static_dir: Path) -> None:
+    app = create_app(plan_file, static_dir, poll_interval=0.01)
+
+    with TestClient(app) as client, client.websocket_connect("/api/updates") as updates:
+        StatusStore(plan_file.parent / "status.json").set("Architect revising")
+
+        assert updates.receive_json() == {"type": "status_changed"}

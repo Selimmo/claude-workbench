@@ -10,7 +10,11 @@ function serve(status: number, body: unknown) {
   )
 }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView // jsdom has none
+})
 
 test('shows loading, then the issue and its summary', async () => {
   new FakeServer().install()
@@ -55,6 +59,14 @@ test('tabs start on Classes; Files shows files grouped by kind, coloured by chan
   expect(removed).toHaveTextContent('Free-text commands replaced by events')
 })
 
+test('each file says in words how it changes, not by colour alone', async () => {
+  await loaded()
+  fireEvent.click(screen.getByRole('tab', { name: 'Files' }))
+
+  const removed = screen.getByText('backend/src/app/core/commands.py').closest('li')!
+  expect(within(removed).getByText('removed')).toHaveClass('change')
+})
+
 test('Tests lists the plan order; a target link switches to its tab', async () => {
   await loaded()
   fireEvent.click(screen.getByRole('tab', { name: 'Tests' }))
@@ -72,7 +84,34 @@ test('Tests lists the plan order; a target link switches to its tab', async () =
   expect(screen.getByRole('tab', { name: 'Flows' })).toHaveAttribute('aria-selected', 'true')
 })
 
-test('Risks shows risks and open questions in separate sections, high severity first', async () => {
+test("a test's target link shows its flow and highlights the element", async () => {
+  await loaded()
+  fireEvent.click(screen.getByRole('tab', { name: 'Tests' }))
+
+  fireEvent.click(screen.getByRole('button', { name: 'flow:level/refuse' }))
+
+  await vi.waitFor(() =>
+    expect(element('flow:level/refuse')).toHaveAttribute('data-focused', 'true'),
+  )
+  expect(screen.getByRole('button', { name: 'Choosing the hint level' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+})
+
+test("a test's target in a class diagram is highlighted once the diagram is laid out", async () => {
+  await loaded()
+  fireEvent.click(screen.getByRole('tab', { name: 'Tests' }))
+
+  fireEvent.click(screen.getAllByRole('button', { name: 'class:HintPolicy.max_hints' })[0])
+
+  await vi.waitFor(() =>
+    expect(element('class:HintPolicy.max_hints')).toHaveAttribute('data-focused', 'true'),
+  )
+  expect(document.querySelectorAll('[data-focused]')).toHaveLength(1)
+})
+
+test("Risks shows risks and open questions in separate sections, in the architect's order", async () => {
   await loaded()
   fireEvent.click(screen.getByRole('tab', { name: 'Risks & open questions' }))
 
@@ -123,7 +162,7 @@ test('Architecture draws its components and labelled connections', async () => {
   expect(element('arch:agent-ollama')).toHaveTextContent('HTTP')
 })
 
-test('Flows draws each flow: sequences as messages between participants, flowcharts as boxes', async () => {
+test('Flows draws one flow at a time, picked by title: sequences as messages, flowcharts as boxes', async () => {
   await loaded()
   fireEvent.click(screen.getByRole('tab', { name: 'Flows' }))
 
@@ -131,6 +170,68 @@ test('Flows draws each flow: sequences as messages between participants, flowcha
   expect(element('flow:hint/orch')).toHaveTextContent('Orchestrator')
   expect(element('flow:hint/5')).toHaveAttribute('data-status', 'removed')
   expect(element('flow:hint/5')).toHaveTextContent("chat '/hint'")
+  fireEvent.click(screen.getByRole('button', { name: /hint level/i }))
   await screen.findByText('hints_given < max_hints?')
   expect(element('flow:level/e2')).toHaveTextContent('yes')
+})
+
+test('the summary starts clamped to two lines; More shows all of it', async () => {
+  await loaded()
+  const summary = element('header:summary')
+  expect(summary).toHaveAttribute('data-clamped', 'true')
+
+  fireEvent.click(screen.getByRole('button', { name: 'More' }))
+
+  expect(summary).toHaveAttribute('data-clamped', 'false')
+  expect(screen.getByRole('button', { name: 'Less' })).toBeInTheDocument()
+})
+
+async function withTestTargeting(target: string) {
+  const server = new FakeServer()
+  const plan = structuredClone(server.plan) as { tests: { target: string }[] }
+  plan.tests[0].target = target
+  server.plan = plan
+  server.install()
+  render(<App />)
+  await screen.findByRole('tablist')
+  fireEvent.click(screen.getByRole('tab', { name: 'Tests' }))
+}
+
+test("a test's target in a list is scrolled into view", async () => {
+  const scroll = vi.fn()
+  Element.prototype.scrollIntoView = scroll
+  await withTestTargeting('file:commands')
+
+  fireEvent.click(screen.getByRole('button', { name: 'file:commands' }))
+
+  await vi.waitFor(() => expect(scroll).toHaveBeenCalled())
+  expect(scroll.mock.contexts[0]).toBe(element('file:commands'))
+})
+
+test("a test's target in a diagram is not scrolled: the fitted view already shows it", async () => {
+  const scroll = vi.fn()
+  Element.prototype.scrollIntoView = scroll
+  await withTestTargeting('class:HintPolicy')
+
+  fireEvent.click(screen.getAllByRole('button', { name: 'class:HintPolicy' })[0])
+  await vi.waitFor(() =>
+    expect(element('class:HintPolicy')).toHaveAttribute('data-focused', 'true'),
+  )
+
+  expect(scroll).not.toHaveBeenCalled()
+})
+
+test('changing tab clears the highlight of a test target', async () => {
+  await loaded()
+  fireEvent.click(screen.getByRole('tab', { name: 'Tests' }))
+  fireEvent.click(screen.getAllByRole('button', { name: 'class:HintPolicy.max_hints' })[0])
+  await vi.waitFor(() =>
+    expect(element('class:HintPolicy.max_hints')).toHaveAttribute('data-focused', 'true'),
+  )
+
+  fireEvent.click(screen.getByRole('tab', { name: 'Files' }))
+  fireEvent.click(screen.getByRole('tab', { name: 'Classes' }))
+
+  await screen.findByText('HintPolicy')
+  expect(document.querySelector('[data-focused]')).toBeNull()
 })

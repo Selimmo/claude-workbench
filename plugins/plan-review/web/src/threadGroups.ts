@@ -12,9 +12,15 @@ export interface ThreadGroups {
   unresolved: number
 }
 
+/** The plan's header is commentable too; it is on every tab. */
+export const HEADER_ANCHORS = { title: 'header:title', summary: 'header:summary' } as const
+const onEveryTab = (anchor: string) => anchor.startsWith('header:')
+
 export function threadsFor(threads: Thread[], plan: Plan, tab: TabId): ThreadGroups {
   return {
-    pinned: threads.filter((t) => !t.orphaned && tabOf(plan, t.anchor) === tab),
+    pinned: threads.filter(
+      (t) => !t.orphaned && (onEveryTab(t.anchor) || tabOf(plan, t.anchor) === tab),
+    ),
     onTab: threads.filter((t) => t.anchor === `tab:${tab}`),
     orphaned: threads.filter((t) => t.orphaned),
     unresolved: threads.filter((t) => !t.resolved).length,

@@ -1,21 +1,29 @@
 import { useState } from 'react'
 
-import type { Thread } from '../threads'
 import { useSpot } from './position'
 
-const count = (n: number) => `${n} message${n === 1 ? '' : 's'}`
+interface Props {
+  anchor: string
+  /** What the pin shows: a thread's message count, or a mark for a draft. */
+  badge: string
+  label: string
+  preview: string
+  draft?: boolean
+  /** Pixels to the left of the anchor's corner, so pins on one element don't stack. */
+  offset?: number
+  onOpen: () => void
+}
 
-export function Pin({ thread, onOpen }: { thread: Thread; onOpen: () => void }) {
-  const spot = useSpot(thread.anchor)
+export function Pin({ anchor, badge, label, preview, draft = false, offset = 0, onOpen }: Props) {
+  const spot = useSpot(anchor)
   const [hover, setHover] = useState(false)
   if (spot === null) return null
-  const first = thread.messages[0]?.text ?? ''
   return (
-    <div className="pin-spot" style={{ top: spot.top, left: spot.left }}>
+    <div className="pin-spot" style={{ top: spot.top, left: spot.left - offset }}>
       <button
         className="pin"
-        data-resolved={thread.resolved}
-        aria-label={`${count(thread.messages.length)} on ${thread.anchor}`}
+        data-draft={draft}
+        aria-label={label}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
         onFocus={() => setHover(true)}
@@ -25,11 +33,11 @@ export function Pin({ thread, onOpen }: { thread: Thread; onOpen: () => void }) 
           onOpen()
         }}
       >
-        {thread.messages.length}
+        {badge}
       </button>
       {hover && (
         <div role="tooltip" className="pin-tip">
-          {first.length > 80 ? `${first.slice(0, 80)}…` : first}
+          {preview.length > 80 ? `${preview.slice(0, 80)}…` : preview}
         </div>
       )}
     </div>

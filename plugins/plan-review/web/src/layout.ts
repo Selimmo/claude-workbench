@@ -1,13 +1,17 @@
-// Positions a Diagram with ELK. Sizes are estimated from text (monospace), so layout
-// needs no DOM measuring and is deterministic in tests.
+// Positions a Diagram with ELK. Boxes are sized from their text: measured in the real
+// font in the browser (see measure.ts), estimated in tests.
 
 import ELK, { type ElkNode } from 'elkjs/lib/elk.bundled.js'
 
 import type { Diagram, DiagramEdge, DiagramNode } from './diagram'
+import { CHAR_WIDTH, TITLE_CHAR_WIDTH, estimate } from './measure'
 
-export const CHAR_WIDTH = 7.8 // px per character at the diagram's 13px monospace font
-export const TITLE_CHAR_WIDTH = 9.2 // bold proportional titles run wider per character
+export { CHAR_WIDTH, TITLE_CHAR_WIDTH }
 export const PADDING = 12
+/** Between the title and the subtitle on a card's header line (at least the CSS gap). */
+export const HEADER_GAP = 2 * CHAR_WIDTH
+/** The card's left (3px) and right (1px) borders plus a row's 3px status stripe (styles.css). */
+export const CARD_BORDERS = 7
 export const HEADER_HEIGHT = 44
 export const ROW_HEIGHT = 22
 export const MIN_WIDTH = 140
@@ -34,14 +38,20 @@ export interface LaidDiagram {
   height: number
 }
 
-export function nodeSize(node: DiagramNode): { width: number; height: number } {
-  // The header shows the title, then the subtitle about two characters further on.
+/** Measures the text on a card. */
+export type CardMeasure = (text: string, kind: 'title' | 'subtitle' | 'row') => number
+
+export function nodeSize(
+  node: DiagramNode,
+  measure: CardMeasure = estimate,
+): { width: number; height: number } {
+  // The header shows the title, then the subtitle after a gap.
   const header =
-    node.title.length * TITLE_CHAR_WIDTH +
-    (node.subtitle ? (node.subtitle.length + 2) * CHAR_WIDTH : 0)
-  const rows = node.rows.map((r) => r.text.length * CHAR_WIDTH)
+    measure(node.title, 'title') +
+    (node.subtitle ? HEADER_GAP + measure(node.subtitle, 'subtitle') : 0)
+  const rows = node.rows.map((r) => measure(r.text, 'row'))
   return {
-    width: Math.max(MIN_WIDTH, Math.max(header, ...rows) + 2 * PADDING),
+    width: Math.max(MIN_WIDTH, Math.max(header, ...rows) + 2 * PADDING + CARD_BORDERS),
     height: HEADER_HEIGHT + node.rows.length * ROW_HEIGHT,
   }
 }
@@ -51,6 +61,7 @@ const elk = new ELK()
 export async function layoutDiagram(
   diagram: Diagram,
   direction: 'RIGHT' | 'DOWN' = 'RIGHT',
+  measure: CardMeasure = estimate,
 ): Promise<LaidDiagram> {
   const input: ElkNode = {
     id: 'root',
@@ -62,13 +73,13 @@ export async function layoutDiagram(
       'elk.layered.spacing.nodeNodeBetweenLayers': '80',
       'elk.padding': '[top=20,left=20,bottom=20,right=20]',
     },
-    children: diagram.nodes.map((node) => ({ id: node.id, ...nodeSize(node) })),
+    children: diagram.nodes.map((node) => ({ id: node.id, ...nodeSize(node, measure) })),
     edges: diagram.edges.map((edge) => ({
       id: edge.id,
       sources: [edge.source],
       targets: [edge.target],
       labels: edge.label
-        ? [{ text: edge.label, width: edge.label.length * CHAR_WIDTH, height: 16 }]
+        ? [{ text: edge.label, width: measure(edge.label, 'row'), height: 16 }]
         : [],
     })),
   }

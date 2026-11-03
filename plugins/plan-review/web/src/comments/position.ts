@@ -12,6 +12,24 @@ export function elementFor(anchor: string): HTMLElement | null {
   return document.querySelector<HTMLElement>(`[data-element-id="${CSS.escape(anchor)}"]`)
 }
 
+type Box = Pick<DOMRect, 'left' | 'top' | 'right' | 'bottom'>
+
+/**
+ * The top-right corner of an element's box, or null when that corner lies outside `clip`
+ * (the diagram viewport around it): a panned-away element must not leave its pin floating
+ * over other parts of the page.
+ */
+export function spotOf(box: Box, clip: Box | null): Spot | null {
+  const spot = { top: box.top, left: box.right }
+  if (!clip) return spot
+  const inside =
+    spot.left >= clip.left &&
+    spot.left <= clip.right &&
+    spot.top >= clip.top &&
+    spot.top <= clip.bottom
+  return inside ? spot : null
+}
+
 const nextFrame = (callback: () => void) =>
   typeof requestAnimationFrame === 'function'
     ? requestAnimationFrame(callback)
@@ -25,9 +43,10 @@ export function useSpot(anchor: string): Spot | null {
   useEffect(() => {
     let frame = 0
     const track = () => {
-      const box = elementFor(anchor)?.getBoundingClientRect()
+      const element = elementFor(anchor)
+      const clip = element?.closest('.viewport')?.getBoundingClientRect() ?? null
       setSpot((old) => {
-        const next = box ? { top: box.top, left: box.right } : null
+        const next = element ? spotOf(element.getBoundingClientRect(), clip) : null
         return old?.top === next?.top && old?.left === next?.left ? old : next
       })
       frame = nextFrame(track) as number

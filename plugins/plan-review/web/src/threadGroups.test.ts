@@ -43,3 +43,10 @@ test('unresolved count covers every thread, wherever it is', () => {
 
   expect(threadsFor([...threads, resolved], plan, 'risks').unresolved).toBe(threads.length)
 })
+
+test('threads on the plan header are pinned on every tab', () => {
+  const header = [thread('title', 'header:title'), thread('summary', 'header:summary')]
+
+  for (const tab of ['classes', 'files'] as const)
+    expect(threadsFor(header, plan, tab).pinned.map((t) => t.id)).toEqual(['title', 'summary'])
+})
