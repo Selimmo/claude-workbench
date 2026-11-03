@@ -52,6 +52,9 @@ def fakes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (fakes / "marketplace.json").write_text(json.dumps(marketplace))
     with zipfile.ZipFile(fakes / "plan-review-0.1.2.zip", "w") as zip_file:
         zip_file.writestr("README.md", "plan-review")
+    # Run from an empty folder of the test's own, so a relative <dir> never lands in the repo.
+    (tmp_path / "cwd").mkdir()
+    monkeypatch.chdir(tmp_path / "cwd")
     monkeypatch.setenv("FAKES", str(fakes))
     monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
     return fakes
@@ -159,3 +162,10 @@ def test_ends_by_listing_the_versions_in_the_throwaway_cache(fakes: Path, tmp_pa
     result = prove("install", str(work))
 
     assert result.stdout.splitlines()[-1] == "installed plan-review versions: 0.1.1 0.1.2"
+
+
+def test_a_usage_error_creates_nothing(fakes: Path, tmp_path: Path) -> None:
+    result = prove("remove", "dir")
+
+    assert result.returncode == 2
+    assert list((tmp_path / "cwd").iterdir()) == []
