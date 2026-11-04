@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from plan_review.drafts import Draft, DraftStore
-from plan_review.events import Subscribers
+from plan_review.events import ClaudeEvents
 from plan_review.threads import ThreadStore
 
 
@@ -45,7 +45,7 @@ def submit(pending: list[Draft], threads: ThreadStore) -> list[dict[str, str]]:
     return comments
 
 
-def review_routes(threads: ThreadStore, drafts: DraftStore, events: Subscribers) -> APIRouter:
+def review_routes(threads: ThreadStore, drafts: DraftStore, events: ClaudeEvents) -> APIRouter:
     router = APIRouter()
 
     @router.get("/api/drafts")

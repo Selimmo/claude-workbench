@@ -11,8 +11,10 @@ from fastapi.staticfiles import StaticFiles
 
 from plan_review.approval import approval_routes
 from plan_review.drafts import DraftNotFound, DraftStore
-from plan_review.events import Subscribers
+from plan_review.events import ClaudeEvents, Subscribers
+from plan_review.last_event import LastEventStore
 from plan_review.plan import PlanFileError, load_plan
+from plan_review.resend import resend_routes
 from plan_review.review import review_routes
 from plan_review.status import StatusStore, status_routes
 from plan_review.thread_routes import thread_routes
@@ -59,7 +61,10 @@ def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5)
     drafts_file = plan_file.parent / "drafts.json"  # the owner's unsent review comments
     status_file = plan_file.parent / "status.json"  # what Claude is doing, set by the CLI
     subscribers = Subscribers()  # viewer pages, on /api/updates
-    events = Subscribers()  # Claude (through Monitor), on /events
+    # Claude (through Monitor), on /events. Its last event is kept, but last_event.json is
+    # not watched: pages are not told about it, so /api/updates is unchanged.
+    kept = LastEventStore(plan_file.parent / "last_event.json")
+    events = ClaudeEvents(kept)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
@@ -110,7 +115,9 @@ def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5)
     drafts = DraftStore(drafts_file)
     app.include_router(thread_routes(store, plan_file))
     app.include_router(review_routes(store, drafts, events))
-    app.include_router(status_routes(StatusStore(status_file)))
+    statuses = StatusStore(status_file)
+    app.include_router(status_routes(statuses))
+    app.include_router(resend_routes(kept, statuses, events))
     app.include_router(approval_routes(store, drafts, plan_file, events))
 
     @app.middleware("http")

@@ -1131,18 +1131,18 @@ g[data-focused='true'] rect {
 }
 
 /* What Claude is doing with the review. */
-.claude-status {
-  display: inline-flex;
+.claude-banner {
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin: 0 0 8px;
-  padding: 4px 10px;
+  padding: 8px 14px;
   border: 1px solid var(--accent);
-  border-radius: 12px;
-  font-size: 0.85rem;
+  border-radius: 8px;
+  font-size: 1rem;
 }
 
-.claude-status-mark {
+.claude-banner-mark {
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -1150,11 +1150,25 @@ g[data-focused='true'] rect {
   animation: status-blink 1.4s ease-in-out infinite;
 }
 
-.claude-status[data-done='true'] {
+.claude-banner[data-state='no-response'] {
+  border-color: var(--removed);
+  color: var(--removed);
+}
+
+.claude-banner[data-state='no-response'] .claude-banner-mark {
+  background: currentcolor;
+  animation: none;
+}
+
+.claude-banner button {
+  margin-left: auto;
+}
+
+.claude-banner[data-done='true'] {
   border-color: var(--added);
 }
 
-.claude-status[data-done='true'] .claude-status-mark {
+.claude-banner[data-done='true'] .claude-banner-mark {
   background: var(--added);
   animation: none;
 }

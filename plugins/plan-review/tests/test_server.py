@@ -420,3 +420,140 @@ def test_pages_are_told_when_the_status_changes(plan_file: Path, static_dir: Pat
         StatusStore(plan_file.parent / "status.json").set("Architect revising")
 
         assert updates.receive_json() == {"type": "status_changed"}
+
+
+def test_a_submitted_review_is_kept_as_the_last_event(plan_file: Path, static_dir: Path) -> None:
+    with (
+        TestClient(create_app(plan_file, static_dir)) as client,
+        client.websocket_connect("/events") as events,
+    ):
+        client.post("/api/drafts", json={"anchor": "class:HintPolicy", "text": "Why?"})
+        client.post("/api/review")
+        sent = events.receive_json()
+
+    kept = json.loads((plan_file.parent / "last_event.json").read_text())
+    assert kept["event"] == sent
+    assert kept["sent_at"]
+
+
+def test_an_approval_is_kept_as_the_last_event(plan_file: Path, static_dir: Path) -> None:
+    with TestClient(create_app(plan_file, static_dir)) as client:
+        client.post("/api/drafts", json={"anchor": "class:HintPolicy", "text": "Why?"})
+        client.post("/api/review")
+        ThreadStore(plan_file.parent / "comments.json").set_resolved(
+            ThreadStore(plan_file.parent / "comments.json").all()[0].id, True
+        )
+        client.post("/api/approve")
+
+    kept = json.loads((plan_file.parent / "last_event.json").read_text())
+    assert kept["event"] == {"type": "approved"}
+
+
+def test_an_event_is_kept_even_with_no_monitor_connected(plan_file: Path, static_dir: Path) -> None:
+    with TestClient(create_app(plan_file, static_dir)) as client:
+        assert client.post("/api/approve").status_code == 200
+
+    kept = json.loads((plan_file.parent / "last_event.json").read_text())
+    assert kept["event"] == {"type": "approved"}
+
+
+def test_pages_are_not_told_about_the_kept_event(plan_file: Path, static_dir: Path) -> None:
+    app = create_app(plan_file, static_dir, poll_interval=0.01)
+
+    with TestClient(app) as client, client.websocket_connect("/api/updates") as updates:
+        client.post("/api/approve")  # keeps an event; approved.json is not watched either
+        StatusStore(plan_file.parent / "status.json").set("Approved, implementing")
+
+        assert updates.receive_json() == {"type": "status_changed"}
+
+
+def test_last_event_is_null_until_something_is_sent(plan_file: Path, static_dir: Path) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+
+    assert client.get("/api/last-event").json() == {"last_event": None}
+
+
+def test_last_event_says_whether_claude_answered(plan_file: Path, static_dir: Path) -> None:
+    with TestClient(create_app(plan_file, static_dir)) as client:
+        client.post("/api/approve")
+        before = client.get("/api/last-event").json()["last_event"]
+        StatusStore(plan_file.parent / "status.json").set("Approved, implementing")
+        after = client.get("/api/last-event").json()["last_event"]
+
+    assert before["type"] == "approved"
+    assert before["sent_at"]
+    assert before["answered"] is False
+    assert after["answered"] is True
+
+
+def test_resend_sends_the_kept_event_again_unchanged(plan_file: Path, static_dir: Path) -> None:
+    with TestClient(create_app(plan_file, static_dir)) as client:
+        client.post("/api/drafts", json={"anchor": "class:HintPolicy", "text": "Why?"})
+        client.post("/api/review")  # sent while no Monitor was connected
+        with client.websocket_connect("/events") as events:
+            response = client.post("/api/resend")
+
+            assert response.json() == {"sent": True}
+            resent = events.receive_json()
+    kept = json.loads((plan_file.parent / "last_event.json").read_text())
+    assert resent["type"] == "review_submitted"
+    assert resent["comments"][0]["text"] == "Why?"
+    assert resent == kept["event"]
+
+
+def test_resend_re_stamps_when_the_event_was_sent(plan_file: Path, static_dir: Path) -> None:
+    kept_file = plan_file.parent / "last_event.json"
+    kept_file.write_text(
+        json.dumps({"event": {"type": "approved"}, "sent_at": "2020-01-01T00:00:00Z"})
+    )
+    client = TestClient(create_app(plan_file, static_dir))
+
+    assert client.post("/api/resend").json() == {"sent": True}
+
+    sent_at = client.get("/api/last-event").json()["last_event"]["sent_at"]
+    assert not sent_at.startswith("2020")
+    assert not json.loads(kept_file.read_text())["sent_at"].startswith("2020")
+
+
+def test_resend_sends_nothing_once_claude_set_a_status(plan_file: Path, static_dir: Path) -> None:
+    kept_file = plan_file.parent / "last_event.json"
+    with (
+        TestClient(create_app(plan_file, static_dir)) as client,
+        client.websocket_connect("/events") as events,
+    ):
+        client.post("/api/approve")
+        events.receive_json()
+        StatusStore(plan_file.parent / "status.json").set("Approved, implementing")
+        kept_before = kept_file.read_text()
+
+        response = client.post("/api/resend")
+
+        assert response.json()["sent"] is False
+        assert response.json()["status"]["text"] == "Approved, implementing"
+        assert kept_file.read_text() == kept_before
+        # Sentinel: a socket only blocks on silence, so prove the next event is the next send.
+        client.post("/api/drafts", json={"anchor": "class:HintPolicy", "text": "Why?"})
+        client.post("/api/review")
+        assert events.receive_json()["type"] == "review_submitted"
+
+
+def test_resend_with_nothing_kept_is_409(plan_file: Path, static_dir: Path) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+
+    response = client.post("/api/resend")
+
+    assert response.status_code == 409
+    assert response.json() == {"errors": ["nothing has been sent to Claude yet"]}
+    assert not (plan_file.parent / "last_event.json").exists()
+
+
+def test_resend_works_after_a_server_restart(plan_file: Path, static_dir: Path) -> None:
+    with TestClient(create_app(plan_file, static_dir)) as client:
+        client.post("/api/approve")
+
+    with (
+        TestClient(create_app(plan_file, static_dir)) as restarted,
+        restarted.websocket_connect("/events") as events,
+    ):
+        assert restarted.post("/api/resend").json() == {"sent": True}
+        assert events.receive_json() == {"type": "approved"}

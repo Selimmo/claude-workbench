@@ -9,13 +9,13 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from plan_review.drafts import DraftStore
-from plan_review.events import Subscribers
+from plan_review.events import ClaudeEvents
 from plan_review.plan import PlanFileError, load_plan
 from plan_review.threads import ThreadStore
 
 
 def approval_routes(
-    store: ThreadStore, drafts: DraftStore, plan_file: Path, events: Subscribers
+    store: ThreadStore, drafts: DraftStore, plan_file: Path, events: ClaudeEvents
 ) -> APIRouter:
     router = APIRouter()
 
