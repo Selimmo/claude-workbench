@@ -51,7 +51,7 @@ def test_api_plan_missing_file_is_404_naming_the_path(plan_file: Path, static_di
     response = client.get("/api/plan")
 
     assert response.status_code == 404
-    assert response.json() == {"errors": [f"{plan_file}: file not found"]}
+    assert response.json() == {"errors": [f"{plan_file.as_posix()}: file not found"]}
 
 
 def test_api_plan_invalid_file_is_422_with_readable_errors(

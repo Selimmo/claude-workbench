@@ -1,9 +1,9 @@
 """Comment threads on plan elements, kept in the issue's comments.json."""
 
-import fcntl  # POSIX only: plan-review runs on macOS and Linux
 import os
 import stat
 import tempfile
+import time
 import uuid
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from filelock import FileLock
 from pydantic import BaseModel, Field, TypeAdapter, field_validator
 
 Author = Literal["owner", "claude"]
@@ -117,14 +118,11 @@ def file_lock(path: Path) -> Generator[None]:
     """Hold an exclusive lock for a read-modify-write of `path`.
 
     The server's request threads and the CLI (another process) write the same files, so
-    the lock is the OS's (flock on a sibling `.lock` file), not just a threading.Lock.
+    the lock is the OS's (a file lock on a sibling `.lock` file, through the filelock
+    package, which works on Windows too), not just a threading.Lock.
     """
-    with path.with_name(f"{path.name}.lock").open("a") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(handle, fcntl.LOCK_UN)
+    with FileLock(path.with_name(f"{path.name}.lock")):
+        yield
 
 
 def _umask() -> int:
@@ -135,6 +133,25 @@ def _umask() -> int:
 
 # Read once, at import: os.umask is process-wide, so not safe to call while threads write.
 _NEW_FILE_MODE = 0o666 & ~_umask()
+
+
+# On Windows a file another handle has open (the server polls these files) cannot be
+# replaced: os.replace raises PermissionError until that handle closes.
+REPLACE_RETRY_SECONDS = 1.0
+_REPLACE_RETRY_PAUSE = 0.01  # between tries, so the wait does not spin a core
+
+
+def _replace_retrying(src: str, dst: Path) -> None:
+    deadline = time.monotonic() + REPLACE_RETRY_SECONDS
+    while True:
+        try:
+            os.replace(src, dst)
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(_REPLACE_RETRY_PAUSE)
+        else:
+            return
 
 
 def write_atomically(path: Path, data: bytes) -> None:
@@ -153,7 +170,7 @@ def write_atomically(path: Path, data: bytes) -> None:
             tmp.write(data)
             tmp.flush()
             os.fchmod(tmp.fileno(), mode)
-        os.replace(tmp.name, path)
+        _replace_retrying(tmp.name, path)
     except BaseException:
         Path(tmp.name).unlink(missing_ok=True)  # leave no stray temporary file behind
         raise

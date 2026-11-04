@@ -6,7 +6,9 @@ import zipfile
 from pathlib import Path
 
 import pytest
-from conftest import PLUGIN
+from conftest import PLUGIN, posix_only
+
+pytestmark = posix_only
 
 
 def package(plugin: Path, out: Path) -> subprocess.CompletedProcess[str]:

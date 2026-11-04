@@ -1,9 +1,12 @@
 """`plan-review upgrade`: the released plugin's newest version, in one command."""
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
+from plan_review import upgrade
 from plan_review.cli import main
 
 
@@ -16,6 +19,13 @@ def claude(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     fake = bin_dir / "claude"
     fake.write_text(f'#!/bin/sh\necho "$*" >> {log}\nexit "${{FAKE_CLAUDE_EXIT:-0}}"\n')
     fake.chmod(0o755)
+    if sys.platform == "win32":
+        # npm's layout: an extensionless sh shim next to claude.cmd, which is what starts.
+        (bin_dir / "claude.cmd").write_text(
+            f'@echo off\n>>"{log}" echo %*\n'
+            "if not defined FAKE_CLAUDE_EXIT set FAKE_CLAUDE_EXIT=0\n"
+            "exit /b %FAKE_CLAUDE_EXIT%\n"
+        )
     monkeypatch.setenv("PATH", str(bin_dir))
     return log
 
@@ -58,3 +68,21 @@ def test_after_updating_says_how_to_load_the_new_version(
     main(["upgrade"])
 
     assert "/reload-plugins" in capsys.readouterr().out
+
+
+def test_runs_the_claude_that_path_lookup_finds(monkeypatch: pytest.MonkeyPatch) -> None:
+    # On Windows an npm-installed claude is claude.cmd, which only its full path starts.
+    calls: list[list[str]] = []
+
+    def run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(upgrade.shutil, "which", lambda _: "C:/npm/claude.cmd")
+    monkeypatch.setattr(upgrade.subprocess, "run", run)
+
+    assert main(["upgrade"]) == 0
+    assert calls == [
+        ["C:/npm/claude.cmd", "plugin", "marketplace", "update", "claude-workbench"],
+        ["C:/npm/claude.cmd", "plugin", "update", "plan-review@claude-workbench"],
+    ]

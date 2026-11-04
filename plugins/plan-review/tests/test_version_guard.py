@@ -8,7 +8,9 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from conftest import VIEWER_BUILD_FILES, git
+from conftest import VIEWER_BUILD_FILES, git, posix_only
+
+pytestmark = posix_only
 
 
 def guard(plugin: Path) -> subprocess.CompletedProcess[str]:

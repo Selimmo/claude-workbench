@@ -1,0 +1,2 @@
+# LF everywhere: bin/plan-review and the *.sh scripts break under /bin/sh with CRLF.
+* text=auto eol=lf

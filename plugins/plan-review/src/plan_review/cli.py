@@ -127,7 +127,7 @@ def _work_dir(issue: int) -> Path:
 
 
 def _init(issue: int) -> int:
-    print(ensure_work_dir(Path(), issue))
+    print(ensure_work_dir(Path(), issue).as_posix())
     return 0
 
 
@@ -149,7 +149,7 @@ def _serve(issue: int, open_flag: str | None) -> int:
         return 1
     if not (STATIC_DIR / "index.html").is_file():
         print(
-            f"{STATIC_DIR}: viewer page not built; run `npm --prefix web run build`",
+            f"{STATIC_DIR.as_posix()}: viewer page not built; run `npm --prefix web run build`",
             file=sys.stderr,
         )
         return 2
@@ -185,7 +185,9 @@ def _threads(issue: int) -> int:
 def _status(issue: int, text: str, *, done: bool, clear: bool) -> int:
     work = _work_dir(issue)
     if not work.is_dir():
-        print(f"no {work}/ for issue #{issue}: is this the project root?", file=sys.stderr)
+        print(
+            f"no {work.as_posix()}/ for issue #{issue}: is this the project root?", file=sys.stderr
+        )
         return 1
     store = StatusStore(work / "status.json")
     if clear:

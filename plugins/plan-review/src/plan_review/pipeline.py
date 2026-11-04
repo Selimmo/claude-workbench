@@ -48,4 +48,6 @@ def load_pipeline(path: Path) -> PipelineConfig:
     try:
         return PipelineConfig.model_validate_json(path.read_text())
     except ValidationError as error:
-        raise PipelineConfigError([f"{path}: {line}" for line in readable_errors(error)]) from error
+        raise PipelineConfigError(
+            [f"{path.as_posix()}: {line}" for line in readable_errors(error)]
+        ) from error

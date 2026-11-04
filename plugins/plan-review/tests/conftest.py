@@ -3,10 +3,16 @@
 import json
 import shutil
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
 import pytest
+
+# The release scripts are POSIX shell and the file modes are POSIX: Windows skips these.
+posix_only = pytest.mark.skipif(
+    sys.platform == "win32", reason="POSIX only: shell scripts and file modes"
+)
 
 PLUGIN = Path(__file__).parents[1]
 TAG = "plan-review--v{}"
@@ -23,6 +29,16 @@ VIEWER_BUILD_FILES = [
     "web/vite.config.ts",
     "web/.nvmrc",
 ]
+
+
+class WindowsStylePath(type(Path())):  # type: ignore[misc]
+    """A real path that prints with backslashes on every OS, like Windows."""
+
+    def __str__(self) -> str:
+        return super().__str__().replace("/", "\\")
+
+    def as_posix(self) -> str:
+        return str(self).replace("\\", "/")
 
 
 def git(cwd: Path, *args: str) -> str:
@@ -69,10 +85,10 @@ def repo(tmp_path: Path) -> Path:
         json.dumps({"name": "plan-review", "version": "0.1.0"}, indent=2) + "\n"
     )
     (plugin / "pyproject.toml").write_text(
-        '[project]\nname = "plan-review"\nversion = "0.1.0"\nrequires-python = ">=3.12"\n'
+        '[project]\nname = "plan-review"\nversion = "0.1.0"\nrequires-python = ">=3.15"\n'
     )
     (plugin / "README.md").write_text("# plan-review\n")
-    (plugin / ".python-version").write_text("3.12\n")
+    (plugin / ".python-version").write_text("3.15\n")
     for shipped in [
         "agents/architect.md",
         "skills/ship/SKILL.md",

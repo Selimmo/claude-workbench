@@ -5,9 +5,10 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import WindowsStylePath
 
 from plan_review.cli import main
-from plan_review.orchestration import slugify, tree_hash
+from plan_review.orchestration import MalformedReview, slugify, tree_hash, verdict
 
 EXAMPLE = Path(__file__).parents[1] / "examples" / "plan.json"
 
@@ -124,3 +125,14 @@ def test_tree_hash_command_prints_the_current_repos_hash(
 
     assert main(["tree-hash"]) == 0
     assert capsys.readouterr().out.strip() == tree_hash(repo)
+
+
+def test_a_malformed_reviews_path_is_reported_with_forward_slashes(tmp_path: Path) -> None:
+    review = WindowsStylePath(tmp_path / "review.md")
+    review.write_text("no verdict here\n")
+
+    with pytest.raises(MalformedReview) as error:
+        verdict(review)
+
+    expected = (tmp_path / "review.md").as_posix()
+    assert str(error.value).startswith(f"{expected}: last line is not")

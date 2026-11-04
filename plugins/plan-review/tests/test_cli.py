@@ -1,16 +1,27 @@
 import json
-import select
+import queue
 import socket
 import subprocess
+import threading
 from pathlib import Path
+from typing import IO
 
 import pytest
-from conftest import PACKAGE_VERSION, PLUGIN, version_of
+from conftest import PACKAGE_VERSION, PLUGIN, WindowsStylePath, version_of
 
 from plan_review import cli
 from plan_review.cli import main
+from plan_review.pipeline import PipelineConfigError, load_pipeline
+from plan_review.plan import PlanFileError, load_plan
 from plan_review.status import StatusStore
 from plan_review.threads import ThreadStore
+
+
+@pytest.fixture
+def windows_style_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_work_dir, real_ensure = cli.work_dir, cli.ensure_work_dir
+    monkeypatch.setattr(cli, "work_dir", lambda r, i: WindowsStylePath(real_work_dir(r, i)))
+    monkeypatch.setattr(cli, "ensure_work_dir", lambda r, i: WindowsStylePath(real_ensure(r, i)))
 
 
 def test_version_flag_prints_version_and_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
@@ -178,6 +189,20 @@ def test_serve_open_flag_overrides_pipeline_json(project: Path, server: FakeServ
     assert len(server.opened) == 1
 
 
+def test_the_missing_viewer_page_is_reported_with_forward_slashes(
+    project: Path,
+    server: FakeServer,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli, "STATIC_DIR", WindowsStylePath(project / "missing"))
+
+    main(["serve", "7"])
+
+    expected = f"{(project / 'missing').as_posix()}: viewer page not built"
+    assert expected in capsys.readouterr().err
+
+
 def test_serve_without_a_built_page_says_how_to_build_it(
     project: Path,
     server: FakeServer,
@@ -193,6 +218,16 @@ def test_serve_without_a_built_page_says_how_to_build_it(
     assert server.addresses == []
 
 
+def read_line_within(stream: IO[str], seconds: float) -> str:
+    """The next line of a pipe, read by a thread: select() only takes sockets on Windows."""
+    lines: queue.Queue[str] = queue.Queue()
+    threading.Thread(target=lambda: lines.put(stream.readline()), daemon=True).start()
+    try:
+        return lines.get(timeout=seconds)
+    except queue.Empty:
+        pytest.fail(f"no output within {seconds:g}s: is stdout buffered?")
+
+
 def test_serve_prints_its_url_immediately_when_stdout_is_a_pipe(project: Path) -> None:
     # How /ship runs it: in the background, reading the URL from a pipe.
     proc = subprocess.Popen(
@@ -202,9 +237,7 @@ def test_serve_prints_its_url_immediately_when_stdout_is_a_pipe(project: Path) -
     )
     try:
         assert proc.stdout is not None
-        ready, _, _ = select.select([proc.stdout], [], [], 10)
-        assert ready, "no output within 10s: is stdout buffered?"
-        assert "http://127.0.0.1:" in proc.stdout.readline()
+        assert "http://127.0.0.1:" in read_line_within(proc.stdout, 10)
     finally:
         proc.terminate()
         proc.wait(timeout=5)
@@ -345,3 +378,36 @@ def test_serve_keeps_the_work_folder_out_of_git(project: Path, server: FakeServe
     main(["serve", "7"])
 
     assert (project / ".claude" / "work" / ".gitignore").read_text() == "*\n"
+
+
+@pytest.mark.usefixtures("windows_style_paths")
+def test_paths_in_messages_use_forward_slashes_on_every_os(
+    project: Path, server: FakeServer, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["serve", "8"]) == 2
+    assert main(["status", "99", "Answering questions"]) == 1
+    assert main(["init", "42"]) == 0
+
+    captured = capsys.readouterr()
+    assert ".claude/work/8/plan.json: file not found" in captured.err
+    assert "no .claude/work/99/ for issue #99" in captured.err
+    assert captured.out == ".claude/work/42\n"
+
+
+def test_a_plan_path_is_reported_with_forward_slashes(tmp_path: Path) -> None:
+    missing = WindowsStylePath(tmp_path / "plan.json")
+
+    with pytest.raises(PlanFileError) as error:
+        load_plan(missing)
+
+    assert error.value.errors == [f"{(tmp_path / 'plan.json').as_posix()}: file not found"]
+
+
+def test_a_pipeline_path_is_reported_with_forward_slashes(tmp_path: Path) -> None:
+    bad = WindowsStylePath(tmp_path / "pipeline.json")
+    bad.write_text('{"viewer": 3}')
+
+    with pytest.raises(PipelineConfigError) as error:
+        load_pipeline(bad)
+
+    assert error.value.errors[0].startswith(f"{(tmp_path / 'pipeline.json').as_posix()}: ")

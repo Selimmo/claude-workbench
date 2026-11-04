@@ -4,6 +4,10 @@ import json
 import subprocess
 from pathlib import Path
 
+from conftest import posix_only
+
+pytestmark = posix_only
+
 PLUGIN = Path(__file__).parents[1]
 SCRIPT = PLUGIN / "scripts" / "set-marketplace-entry.sh"
 URL = "https://github.com/o/r/releases/download/plan-review--v0.2.0/plan-review-0.2.0.zip"
