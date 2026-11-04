@@ -202,7 +202,7 @@ class PlanFileError(Exception):
 
 def load_plan(path: Path) -> Plan:
     if not path.is_file():
-        raise PlanFileError([f"{path}: file not found"], missing=True)
+        raise PlanFileError([f"{path.as_posix()}: file not found"], missing=True)
     try:
         return Plan.model_validate_json(path.read_text())
     except ValidationError as error:

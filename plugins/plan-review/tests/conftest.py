@@ -31,6 +31,16 @@ VIEWER_BUILD_FILES = [
 ]
 
 
+class WindowsStylePath(type(Path())):  # type: ignore[misc]
+    """A real path that prints with backslashes on every OS, like Windows."""
+
+    def __str__(self) -> str:
+        return super().__str__().replace("/", "\\")
+
+    def as_posix(self) -> str:
+        return str(self).replace("\\", "/")
+
+
 def git(cwd: Path, *args: str) -> str:
     result = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True)
     return result.stdout.strip()

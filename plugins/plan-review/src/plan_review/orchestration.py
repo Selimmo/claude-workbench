@@ -21,7 +21,9 @@ def verdict(review: Path) -> Verdict:
         return "PASS"
     if last == "VERDICT: FINDINGS":
         return "FINDINGS"
-    raise MalformedReview(f"{review}: last line is not 'VERDICT: PASS' or 'VERDICT: FINDINGS'")
+    raise MalformedReview(
+        f"{review.as_posix()}: last line is not 'VERDICT: PASS' or 'VERDICT: FINDINGS'"
+    )
 
 
 def slugify(title: str, words: int = 5) -> str:
