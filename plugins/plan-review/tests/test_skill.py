@@ -88,3 +88,39 @@ def test_it_creates_the_work_folder_with_the_cli_before_anything_writes_there() 
     step_0 = body.split("## 0. Preconditions", 1)[1].split("## 1.", 1)[0]
 
     assert "plan-review init N" in step_0
+
+
+def _step_3() -> str:
+    _, body = parts()
+    return body.split("## 3. Review in the viewer", 1)[1].split("## 4.", 1)[0]
+
+
+def test_an_approval_gets_a_status_before_moving_on() -> None:
+    assert 'plan-review status N "Approved, implementing"' in _step_3()
+
+
+def test_a_review_already_being_handled_is_ignored() -> None:
+    step_3 = _step_3()
+
+    assert "already handled" in step_3
+    assert "Resend" in step_3
+
+
+def test_re_arming_also_checks_for_an_approval() -> None:
+    step_3 = _step_3()
+
+    assert "approved.json" in step_3
+    assert "plan-review threads N" in step_3
+    assert "no reply" in step_3
+
+
+def test_an_approval_found_on_re_arming_is_handled_like_an_approved_event() -> None:
+    step_3 = _step_3()
+
+    assert "handle it as `approved` below" in step_3
+    assert "so go to step 4" not in step_3
+
+
+def test_the_skill_calls_the_status_line_a_banner() -> None:
+    assert "status line of what you are doing" not in _step_3()
+    assert "banner" in _step_3()

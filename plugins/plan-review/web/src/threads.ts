@@ -31,3 +31,11 @@ export interface Draft {
   thread_id: string | null
   at: string
 }
+
+/** The last event sent to Claude (see plan_review/last_event.py and resend.py). */
+export interface LastEvent {
+  type: string
+  sent_at: string
+  /** True once Claude set a status after it was sent. */
+  answered: boolean
+}

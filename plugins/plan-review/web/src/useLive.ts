@@ -5,12 +5,14 @@ import {
   approve,
   fetchApproval,
   fetchDrafts,
+  fetchLastEvent,
   fetchPlan,
   fetchStatus,
   fetchThreads,
+  resend,
 } from './api'
 import { changedIds } from './revisions'
-import type { ClaudeStatus, Draft, Thread } from './threads'
+import type { ClaudeStatus, Draft, LastEvent, Thread } from './threads'
 
 export interface Live {
   result: PlanResult | null
@@ -18,6 +20,8 @@ export interface Live {
   refreshThreads: () => Promise<void>
   /** What Claude is doing with the review, or null if it hasn't said. */
   status: ClaudeStatus | null
+  /** The last event sent to Claude, or null if nothing was sent yet. */
+  lastEvent: LastEvent | null
   /** The owner's unsent review comments. */
   drafts: Draft[]
   /** Re-read threads and drafts, after the page changed either. */
@@ -25,6 +29,8 @@ export interface Live {
   /** Elements changed by revisions since the owner last marked them seen. */
   revised: Set<string>
   markSeen: () => void
+  /** Send the last event to Claude again (a no-op if Claude has answered it). */
+  resend: () => Promise<void>
   approved: boolean
   approvePlan: () => Promise<void>
 }
@@ -35,15 +41,17 @@ export function useLive(): Live {
   const [threads, setThreads] = useState<Thread[]>([])
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [status, setStatus] = useState<ClaudeStatus | null>(null)
+  const [lastEvent, setLastEvent] = useState<LastEvent | null>(null)
   const [revised, setRevised] = useState<Set<string>>(new Set())
   const [approved, setApproved] = useState(false)
   const shown = useRef<PlanResult | null>(null)
 
   const refreshThreads = useCallback(async () => setThreads(await fetchThreads()), [])
   const refreshDrafts = useCallback(async () => setDrafts(await fetchDrafts()), [])
+  const refreshLastEvent = useCallback(async () => setLastEvent(await fetchLastEvent()), [])
   const refreshReview = useCallback(
-    async () => void (await Promise.all([refreshThreads(), refreshDrafts()])),
-    [refreshThreads, refreshDrafts],
+    async () => void (await Promise.all([refreshThreads(), refreshDrafts(), refreshLastEvent()])),
+    [refreshThreads, refreshDrafts, refreshLastEvent],
   )
 
   const refreshPlan = useCallback(async () => {
@@ -73,10 +81,13 @@ export function useLive(): Live {
       if (type === 'plan_changed') void refreshPlan()
       if (type === 'threads_changed') void refreshThreads()
       if (type === 'drafts_changed') void refreshDrafts()
-      if (type === 'status_changed') void fetchStatus().then(setStatus)
+      if (type === 'status_changed') {
+        void fetchStatus().then(setStatus)
+        void refreshLastEvent()
+      }
     }
     return () => socket.close()
-  }, [refreshPlan, refreshReview, refreshThreads, refreshDrafts])
+  }, [refreshPlan, refreshReview, refreshThreads, refreshDrafts, refreshLastEvent])
 
   return {
     result,
@@ -84,13 +95,24 @@ export function useLive(): Live {
     refreshThreads,
     drafts,
     status,
+    lastEvent,
     refreshReview,
     revised,
     markSeen: () => setRevised(new Set()),
+    resend: async () => {
+      try {
+        const result = await resend()
+        if (!result.sent) setStatus(result.status)
+      } catch {
+        // Refused (nothing is kept) or the server is gone: the refresh below shows what is true.
+      }
+      await refreshLastEvent()
+    },
     approved,
     approvePlan: async () => {
       await approve()
       setApproved(true)
+      await refreshLastEvent()
     },
   }
 }

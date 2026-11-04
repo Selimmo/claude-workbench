@@ -5,7 +5,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from plan_review.drafts import DraftNotFound, DraftStore
-from plan_review.events import Subscribers
+from plan_review.events import ClaudeEvents
+from plan_review.last_event import LastEventStore
 from plan_review.review import review_routes
 from plan_review.threads import Thread, ThreadStore
 
@@ -30,7 +31,9 @@ def test_a_draft_added_while_a_review_is_submitted_stays_for_the_next_review(
     drafts = DraftStore(tmp_path / "drafts.json")
     threads = OtherTabWritesDuringSubmit(tmp_path / "comments.json", drafts)
     app = FastAPI()
-    app.include_router(review_routes(threads, drafts, Subscribers()))
+    app.include_router(
+        review_routes(threads, drafts, ClaudeEvents(LastEventStore(tmp_path / "last_event.json")))
+    )
     drafts.add("risk:1", "early")
 
     TestClient(app).post("/api/review")
@@ -70,7 +73,9 @@ def test_an_edit_during_a_submit_is_not_silently_lost(tmp_path: Path) -> None:
         tmp_path / "comments.json", tmp_path / "drafts.json", draft.id
     )
     app = FastAPI()
-    app.include_router(review_routes(threads, drafts, Subscribers()))
+    app.include_router(
+        review_routes(threads, drafts, ClaudeEvents(LastEventStore(tmp_path / "last_event.json")))
+    )
 
     TestClient(app).post("/api/review")
     assert threads.editor is not None

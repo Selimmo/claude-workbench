@@ -8,6 +8,7 @@ import { FilesTab } from './tabs/FilesTab'
 import { FlowsTab } from './tabs/FlowsTab'
 import { RisksTab } from './tabs/RisksTab'
 import { TestsTab } from './tabs/TestsTab'
+import { ClaudeBanner } from './ClaudeBanner'
 import { ApprovalBar } from './ApprovalBar'
 import { HEADER_ANCHORS, threadsFor } from './threadGroups'
 import type { Live } from './useLive'
@@ -25,7 +26,18 @@ export function PlanView({ plan, live }: { plan: Plan; live: Live }) {
   const [active, setActive] = useState<TabId>('classes')
   const [fullSummary, setFullSummary] = useState(false)
   const tabs = tabsFor(plan)
-  const { threads, drafts, status, refreshReview, revised, markSeen, approved, approvePlan } = live
+  const {
+    threads,
+    drafts,
+    status,
+    lastEvent,
+    resend,
+    refreshReview,
+    revised,
+    markSeen,
+    approved,
+    approvePlan,
+  } = live
   useMarkRevised(revised)
   // The element a test's target link points at: shown and outlined until the tab changes.
   const [focus, setFocus] = useState<string | null>(null)
@@ -43,6 +55,7 @@ export function PlanView({ plan, live }: { plan: Plan; live: Live }) {
 
   const header = (
     <header>
+      <ClaudeBanner status={status} lastEvent={lastEvent} onResend={resend} />
       <div className="header-row">
         <h1 data-element-id={HEADER_ANCHORS.title}>
           #{plan.issue.number} {plan.issue.title}
@@ -63,12 +76,6 @@ export function PlanView({ plan, live }: { plan: Plan; live: Live }) {
           {fullSummary ? 'Less' : 'More'}
         </button>
       </div>
-      {status && (
-        <p role="status" aria-label="Claude" className="claude-status" data-done={status.done}>
-          <span className="claude-status-mark" aria-hidden="true" />
-          Claude: <span>{status.text}</span>
-        </p>
-      )}
       {revised.size > 0 && (
         <div role="status" className="revised-banner">
           Plan revised: {revised.size} element{revised.size === 1 ? '' : 's'} changed

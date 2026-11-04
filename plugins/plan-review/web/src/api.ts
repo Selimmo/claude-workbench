@@ -1,5 +1,5 @@
 import type { Plan } from './plan'
-import type { ClaudeStatus, Draft, Thread } from './threads'
+import type { ClaudeStatus, Draft, LastEvent, Thread } from './threads'
 
 export type PlanResult = { ok: true; plan: Plan } | { ok: false; errors: string[] }
 
@@ -87,3 +87,17 @@ export async function fetchApproval(): Promise<boolean> {
 }
 
 export const approve = async () => void (await send('/api/approve'))
+
+export async function fetchLastEvent(): Promise<LastEvent | null> {
+  // Secondary, like status: an older server has no such route, so show nothing.
+  try {
+    const response = await fetch('/api/last-event')
+    return ((await response.json()) as { last_event?: LastEvent | null }).last_event ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Sends the last event to Claude again, unless Claude already answered it. */
+export const resend = async () =>
+  (await send('/api/resend')) as { sent: true } | { sent: false; status: ClaudeStatus }

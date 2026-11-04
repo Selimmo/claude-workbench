@@ -1,7 +1,7 @@
 // A fake plan-review server for page tests: routes fetch() and the updates WebSocket.
 
 import example from '../../../examples/plan.json'
-import type { Draft, Thread } from '../threads'
+import type { ClaudeStatus, Draft, LastEvent, Thread } from '../threads'
 
 export interface Call {
   method: string
@@ -13,10 +13,13 @@ export class FakeServer {
   plan: unknown = example
   threads: Thread[] = []
   drafts: Draft[] = []
-  status: { text: string; done: boolean; at: string } | null = null
+  status: ClaudeStatus | null = null
+  /** What was last sent to Claude; set by review and approve, as the server does. */
+  lastEvent: LastEvent | null = null
   reviewError: string | null = null
   /** When set, a submit waits for it: lets a test look at the page mid-submit. */
   reviewHold: Promise<void> | null = null
+  resendHold: Promise<void> | null = null
   approved = false
   calls: Call[] = []
 
@@ -42,6 +45,7 @@ export class FakeServer {
       const open = this.threads.filter((t) => !t.resolved).length
       if (open) return json({ errors: [`${open} unresolved thread(s): resolve them first`] }, 409)
       this.approved = true
+      this.sent('approved')
       return json({ approved_at: '2026-11-02T12:00:00Z', plan_sha256: 'abc' })
     }
     if (url === '/api/threads' && method === 'GET') return json({ threads: this.threads })
@@ -69,6 +73,14 @@ export class FakeServer {
       return new Response(null, { status: 204 })
     }
     if (url === '/api/status') return json({ status: this.status })
+    if (url === '/api/last-event') return json({ last_event: this.lastEvent })
+    if (url === '/api/resend' && method === 'POST') {
+      if (this.resendHold) await this.resendHold
+      if (!this.lastEvent) return json({ errors: ['nothing has been sent to Claude yet'] }, 409)
+      if (this.lastEvent.answered) return json({ sent: false, status: this.status })
+      this.sent(this.lastEvent.type)
+      return json({ sent: true })
+    }
     if (url === '/api/review' && method === 'POST') {
       if (this.reviewHold) await this.reviewHold
       if (this.reviewError) return json({ errors: [this.reviewError] }, 500)
@@ -87,6 +99,7 @@ export class FakeServer {
           : [...this.threads, thread(`t-${this.threads.length + 1}`, d.anchor, d.text)]
       }
       this.drafts = []
+      this.sent('review_submitted')
       return json({ comments })
     }
     const action = url.match(/^\/api\/threads\/([^/]+)\/(resolve|reopen)$/)
@@ -98,6 +111,10 @@ export class FakeServer {
       return json(this.threads.find((t) => t.id === id))
     }
     return json({ errors: [`no route ${method} ${url}`] }, 404)
+  }
+
+  private sent(type: string) {
+    this.lastEvent = { type, sent_at: new Date().toISOString(), answered: false }
   }
 
   /** Simulate the server's push, e.g. after Claude replies through the CLI. */
