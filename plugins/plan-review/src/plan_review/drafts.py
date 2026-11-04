@@ -54,7 +54,7 @@ class DraftStore:
 
     @contextmanager
     def _lock(self) -> Generator[None]:
-        # flock can't be taken twice from one thread on new handles: reuse a held lock.
+        # An OS file lock can't be taken twice from one thread: reuse a held lock.
         if getattr(self._holding, "on", False):
             yield
         else:

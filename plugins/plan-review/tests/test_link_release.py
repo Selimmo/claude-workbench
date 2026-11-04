@@ -9,7 +9,9 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from conftest import git
+from conftest import git, posix_only
+
+pytestmark = posix_only
 
 URL = "https://github.com/o/r/releases/download/plan-review--v0.1.1/plan-review-0.1.1.zip"
 SHA = "cd" * 32

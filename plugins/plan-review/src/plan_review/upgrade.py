@@ -10,17 +10,18 @@ import sys
 
 MARKETPLACE = "claude-workbench"
 STEPS = [
-    ["claude", "plugin", "marketplace", "update", MARKETPLACE],
-    ["claude", "plugin", "update", f"plan-review@{MARKETPLACE}"],
+    ["plugin", "marketplace", "update", MARKETPLACE],
+    ["plugin", "update", f"plan-review@{MARKETPLACE}"],
 ]
 
 
 def upgrade() -> int:
-    if shutil.which("claude") is None:
+    claude = shutil.which("claude")
+    if claude is None:
         print("`claude` not found on PATH: install Claude Code first", file=sys.stderr)
         return 1
     for step in STEPS:
-        code = subprocess.run(step, check=False).returncode
+        code = subprocess.run([claude, *step], check=False).returncode
         if code != 0:
             return code
     print("Run /reload-plugins in a running session, or start a new one, to use it.")

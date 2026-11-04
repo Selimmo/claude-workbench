@@ -1,11 +1,17 @@
 import os
 import stat
+import subprocess
+import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
+from threading import Event
 from threading import Thread as Thread_
 
 import pytest
+from conftest import posix_only
 
+from plan_review import threads
 from plan_review.threads import Author, ThreadNotFound, ThreadStore
 
 
@@ -154,6 +160,7 @@ def test_concurrent_new_threads_are_all_kept(tmp_path: Path) -> None:
     assert len(ThreadStore(path).all()) == 80
 
 
+@posix_only
 def test_a_new_file_gets_the_usual_permissions_not_private_ones(tmp_path: Path) -> None:
     umask = os.umask(0)
     os.umask(umask)
@@ -163,6 +170,7 @@ def test_a_new_file_gets_the_usual_permissions_not_private_ones(tmp_path: Path) 
     assert stat.S_IMODE((tmp_path / "comments.json").stat().st_mode) == 0o666 & ~umask
 
 
+@posix_only
 def test_rewriting_a_file_keeps_its_permissions(tmp_path: Path) -> None:
     store = ThreadStore(tmp_path / "comments.json")
     store.create("risk:1", "a")
@@ -185,3 +193,115 @@ def test_a_failed_write_leaves_no_temporary_file(
         ThreadStore(tmp_path / "comments.json").create("risk:1", "a")
 
     assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_stores_work_without_fcntl(tmp_path: Path) -> None:
+    # Windows has no fcntl: the module must import and write all the same.
+    code = (
+        "import sys; sys.modules['fcntl'] = None\n"
+        "from pathlib import Path\n"
+        "from plan_review.threads import ThreadStore\n"
+        f"ThreadStore(Path({str(tmp_path / 'comments.json')!r})).create('risk:1', 'a')\n"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=False
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def refuse_replace_times(
+    monkeypatch: pytest.MonkeyPatch, refusals: int | None
+) -> list[tuple[object, object]]:
+    """os.replace refuses `refusals` times (always, for None) with PermissionError, as
+    Windows does while another handle has the target open; then does the real thing."""
+    calls: list[tuple[object, object]] = []
+    real = os.replace
+
+    def replace(src: str, dst: Path) -> None:
+        calls.append((src, dst))
+        if refusals is None or len(calls) <= refusals:
+            raise PermissionError("in use")
+        real(src, dst)
+
+    monkeypatch.setattr(os, "replace", replace)
+    return calls
+
+
+def test_a_replace_refused_while_the_file_is_open_is_retried(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = refuse_replace_times(monkeypatch, 2)
+
+    thread = ThreadStore(tmp_path / "comments.json").create("risk:1", "a")
+
+    assert [t.id for t in ThreadStore(tmp_path / "comments.json").all()] == [thread.id]
+    assert len(calls) == 3
+
+
+def test_a_replace_still_refused_after_the_retry_window_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(threads, "REPLACE_RETRY_SECONDS", 0.1)
+    calls = refuse_replace_times(monkeypatch, None)
+
+    started = time.monotonic()
+    with pytest.raises(PermissionError):
+        ThreadStore(tmp_path / "comments.json").create("risk:1", "a")
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 0.6  # gave up at the patched 0.1 s, not the real 1 s window
+    assert len(calls) > 1
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_other_write_errors_are_not_retried(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[object] = []
+
+    def fail(*args: object) -> None:
+        calls.append(args)
+        raise OSError("disk full")
+
+    monkeypatch.setattr(os, "replace", fail)
+
+    with pytest.raises(OSError, match="disk full"):
+        ThreadStore(tmp_path / "comments.json").create("risk:1", "a")
+
+    assert len(calls) == 1
+
+
+def test_a_write_while_a_reader_holds_the_file_lands_once_it_lets_go(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "comments.json"
+    store = ThreadStore(path)
+    store.create("risk:1", "a")
+    errors: list[BaseException] = []
+    replacing = Event()
+    real_replace = os.replace
+
+    def spy(src: str, dst: Path) -> None:
+        try:
+            real_replace(src, dst)
+        finally:  # after the real attempt, so on Windows the open handle has refused it first
+            replacing.set()
+
+    monkeypatch.setattr(os, "replace", spy)
+
+    def write() -> None:
+        try:
+            store.create("risk:2", "b")
+        except BaseException as error:  # noqa: BLE001 - reported by the assertion below
+            errors.append(error)
+
+    with path.open("rb"):
+        writer = Thread_(target=write)
+        writer.start()
+        assert replacing.wait(timeout=5), "the writer never reached os.replace"
+    writer.join()
+
+    assert errors == []
+    assert [t.anchor for t in store.all()] == ["risk:1", "risk:2"]

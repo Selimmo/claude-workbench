@@ -1,8 +1,10 @@
 import json
-import select
+import queue
 import socket
 import subprocess
+import threading
 from pathlib import Path
+from typing import IO
 
 import pytest
 from conftest import PACKAGE_VERSION, PLUGIN, version_of
@@ -193,6 +195,16 @@ def test_serve_without_a_built_page_says_how_to_build_it(
     assert server.addresses == []
 
 
+def read_line_within(stream: IO[str], seconds: float) -> str:
+    """The next line of a pipe, read by a thread: select() only takes sockets on Windows."""
+    lines: queue.Queue[str] = queue.Queue()
+    threading.Thread(target=lambda: lines.put(stream.readline()), daemon=True).start()
+    try:
+        return lines.get(timeout=seconds)
+    except queue.Empty:
+        pytest.fail(f"no output within {seconds:g}s: is stdout buffered?")
+
+
 def test_serve_prints_its_url_immediately_when_stdout_is_a_pipe(project: Path) -> None:
     # How /ship runs it: in the background, reading the URL from a pipe.
     proc = subprocess.Popen(
@@ -202,9 +214,7 @@ def test_serve_prints_its_url_immediately_when_stdout_is_a_pipe(project: Path) -
     )
     try:
         assert proc.stdout is not None
-        ready, _, _ = select.select([proc.stdout], [], [], 10)
-        assert ready, "no output within 10s: is stdout buffered?"
-        assert "http://127.0.0.1:" in proc.stdout.readline()
+        assert "http://127.0.0.1:" in read_line_within(proc.stdout, 10)
     finally:
         proc.terminate()
         proc.wait(timeout=5)

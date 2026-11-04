@@ -23,7 +23,7 @@ class Subscribers:
         for socket in list(self._sockets):
             try:
                 await socket.send_json(message)
-            except (WebSocketDisconnect, RuntimeError):
+            except WebSocketDisconnect, RuntimeError:
                 self.remove(socket)
 
 

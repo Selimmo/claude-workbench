@@ -8,6 +8,9 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from conftest import posix_only
+
+pytestmark = posix_only
 
 PLUGIN = Path(__file__).parents[1]
 SCRIPT = PLUGIN / "scripts" / "prove-release.sh"

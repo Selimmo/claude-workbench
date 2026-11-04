@@ -44,10 +44,11 @@ Changing anything that ships in the plugin's zip (including `plugins/plan-review
 claude-workbench/
 ├── README.md, CHANGELOG.md             # for users
 ├── CONTRIBUTING.md, RELEASING.md       # for maintainers
+├── .gitattributes                      # LF line endings everywhere (the launcher is a sh script)
 ├── docs/img/                           # README screenshots and demo
 ├── .claude-plugin/marketplace.json     # lists the plugins in this repo
 ├── .github/workflows/
-│   ├── plan-review.yml                 # CI for plan-review: version guard, then check.sh
+│   ├── plan-review.yml                 # CI for plan-review: version guard, check.sh, backend tests on Windows
 │   └── plan-review-release.yml         # on a plan-review--v* tag: build, zip, release, update marketplace.json
 └── plugins/
     └── plan-review/
@@ -84,7 +85,7 @@ claude-workbench/
 
 | Area | Tech |
 |---|---|
-| CLI and server | Python 3.12+, uv, argparse, pydantic 2, FastAPI, uvicorn, websockets |
+| CLI and server | Python 3.15+, uv, argparse, pydantic 2, filelock, FastAPI, uvicorn, websockets |
 | Python checks | ruff, pyright, pytest |
 | Viewer page | React 19, TypeScript 6, Vite 8, elkjs (diagram layout) |
 | Web checks | vitest 4 (jsdom, Testing Library), oxlint, prettier |

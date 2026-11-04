@@ -28,3 +28,22 @@ jobs:
       - run: npm ci --prefix web
       - run: uv sync --locked
       - run: ./check.sh
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: plugins/plan-review
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: plugins/plan-review/web/.nvmrc
+          cache: npm
+          cache-dependency-path: plugins/plan-review/web/package-lock.json
+      - run: npm ci --prefix web
+      - run: npm --prefix web run build # the serve test starts the real server
+      - run: uv sync --locked
+      - run: uv run pytest

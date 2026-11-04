@@ -12,10 +12,10 @@ Developers who use Claude Code for multi-file changes and want to steer the desi
 
 ## Prerequisites
 
-- macOS or Linux (plan-review locks its files with POSIX `flock`; Windows is not supported, WSL works)
+- macOS, Linux, or Windows with [Git for Windows](https://gitforwindows.org/) (Claude Code's Bash tool on Windows)
 - [Claude Code](https://claude.com/claude-code) v2.1.292 or later
 - `git`: Claude Code clones the marketplace from GitHub
-- [uv](https://docs.astral.sh/uv/) (Python 3.12+ is downloaded automatically)
+- [uv](https://docs.astral.sh/uv/) 0.13.0 or later (Python 3.15 is downloaded automatically)
 - For the pipeline only: [`gh`](https://cli.github.com/), logged in with `gh auth login`, to read the issue and post the approved plan
 
 ## Try it
@@ -70,7 +70,7 @@ plan-review runs inside your Claude Code session, under your permission settings
 
 ## Roadmap
 
-plan-review is the first plugin here; the aim is a set of tools that take an issue to a reviewed commit with agents. Next for plan-review: issue trackers beyond GitHub ([#40](https://github.com/Selimmo/claude-workbench/issues/40)) and native Windows ([#39](https://github.com/Selimmo/claude-workbench/issues/39)).
+plan-review is the first plugin here; the aim is a set of tools that take an issue to a reviewed commit with agents. Next for plan-review: issue trackers beyond GitHub ([#40](https://github.com/Selimmo/claude-workbench/issues/40)).
 
 ## More
 

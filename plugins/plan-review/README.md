@@ -6,7 +6,7 @@ Review an agent's implementation plan as interactive diagrams, comment on any el
 
 ## Install
 
-Runs on macOS and Linux (files are locked with POSIX `flock`); Windows is not supported, WSL works. You need [Claude Code](https://claude.com/claude-code) v2.1.292 or later, `git` (Claude Code clones the marketplace from GitHub), [uv](https://docs.astral.sh/uv/) and [`gh`](https://cli.github.com/), logged in (`/plan-review:ship` reads the issue and posts the approved plan); nothing else: no clone, no build, no Node.js.
+Runs on macOS, Linux, or Windows with [Git for Windows](https://gitforwindows.org/). You need [Claude Code](https://claude.com/claude-code) v2.1.292 or later, `git` (Claude Code clones the marketplace from GitHub), [uv](https://docs.astral.sh/uv/) 0.13.0 or later and [`gh`](https://cli.github.com/), logged in (`/plan-review:ship` reads the issue and posts the approved plan); nothing else: no clone, no build, no Node.js.
 
 ```bash
 claude plugin install plan-review --marketplace Selimmo/claude-workbench

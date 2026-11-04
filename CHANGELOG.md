@@ -4,6 +4,10 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
+### 0.1.7
+
+- Windows (with Git for Windows) is supported: files are locked with the `filelock` package, a write retries while another process has the file open, and CI runs the backend tests on Windows. `plan-review upgrade` also works with an npm-installed Claude Code on Windows. The minimum Python is now 3.15 and the minimum uv 0.13.0 ([#39](https://github.com/Selimmo/claude-workbench/issues/39)).
+
 ### 0.1.6 (2026-11-04)
 
 - Fix: an approval or review sent before Claude's Monitor connected was lost. The last event is now kept in `last_event.json`; the viewer shows a full-width banner that waits for Claude, turns red after 120 s without a response, and offers **Resend** (`GET /api/last-event`, `POST /api/resend`). `/ship` sets a status on approval, ignores a review it already handles, and checks `approved.json` when it re-arms the Monitor ([#45](https://github.com/Selimmo/claude-workbench/issues/45)).

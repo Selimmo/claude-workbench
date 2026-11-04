@@ -5,7 +5,9 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from conftest import TAG, git
+from conftest import TAG, git, posix_only
+
+pytestmark = posix_only
 
 
 def release(plugin: Path, *args: str) -> subprocess.CompletedProcess[str]:
