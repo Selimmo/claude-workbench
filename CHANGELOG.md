@@ -4,7 +4,7 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
-### 0.1.6
+### 0.1.6 (2026-11-04)
 
 - Fix: an approval or review sent before Claude's Monitor connected was lost. The last event is now kept in `last_event.json`; the viewer shows a full-width banner that waits for Claude, turns red after 120 s without a response, and offers **Resend** (`GET /api/last-event`, `POST /api/resend`). `/ship` sets a status on approval, ignores a review it already handles, and checks `approved.json` when it re-arms the Monitor ([#45](https://github.com/Selimmo/claude-workbench/issues/45)).
 
