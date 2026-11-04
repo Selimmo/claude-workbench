@@ -4,7 +4,7 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
-### 0.1.7
+### 0.1.7 (2026-11-04)
 
 - Windows (with Git for Windows) is supported: files are locked with the `filelock` package, a write retries while another process has the file open, and CI runs the backend tests on Windows. `plan-review upgrade` also works with an npm-installed Claude Code on Windows. The minimum Python is now 3.15 and the minimum uv 0.13.0 ([#39](https://github.com/Selimmo/claude-workbench/issues/39)).
 
