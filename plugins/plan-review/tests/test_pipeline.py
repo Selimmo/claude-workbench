@@ -63,3 +63,14 @@ def test_example_pipeline_config_is_valid_and_sets_every_field() -> None:
     config = load_pipeline(example)
 
     assert config.model_fields_set == set(type(config).model_fields)
+
+
+def test_grill_setting_is_page_chat_or_unset(tmp_path: Path) -> None:
+    assert load_pipeline(tmp_path / "missing.json").grill is None
+    assert load_pipeline(write(tmp_path, {"grill": "page"})).grill == "page"
+    assert load_pipeline(write(tmp_path, {"grill": "chat"})).grill == "chat"
+
+    with pytest.raises(PipelineConfigError) as raised:
+        load_pipeline(write(tmp_path, {"grill": "tab"}))
+
+    assert "grill: Input should be 'page' or 'chat'" in raised.value.errors[0]

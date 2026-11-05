@@ -1,6 +1,6 @@
 {
   "name": "plan-review",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Review an agent's implementation plan as interactive diagrams, comment on any element, and approve it before agents implement and review the code.",
   "author": {
     "name": "Selimmo",

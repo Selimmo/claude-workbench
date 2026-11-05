@@ -1,6 +1,7 @@
 // A fake plan-review server for page tests: routes fetch() and the updates WebSocket.
 
 import example from '../../../examples/plan.json'
+import type { AnswerDraft, Grill } from '../grill'
 import type { ClaudeStatus, Draft, LastEvent, Thread } from '../threads'
 
 export interface Call {
@@ -10,7 +11,11 @@ export interface Call {
 }
 
 export class FakeServer {
+  /** Null: no plan yet, as while the grill is still on. */
   plan: unknown = example
+  /** Null: no grill.json. */
+  grill: Grill | null = null
+  grillDrafts: Record<string, AnswerDraft> = {}
   threads: Thread[] = []
   drafts: Draft[] = []
   status: ClaudeStatus | null = null
@@ -21,6 +26,10 @@ export class FakeServer {
   reviewHold: Promise<void> | null = null
   resendHold: Promise<void> | null = null
   approved = false
+  /** When set, the grill's drafts, submit, confirm and reopen are refused with this message (409). */
+  grillRefusal: string | null = null
+  /** When set, GET /api/grill answers 422 with these errors, as for a grill.json that does not parse. */
+  grillErrors: string[] | null = null
   calls: Call[] = []
 
   install() {
@@ -34,7 +43,12 @@ export class FakeServer {
     const body: unknown = init?.body ? JSON.parse(String(init.body)) : null
     this.calls.push({ method, url, body })
     const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status })
-    if (url === '/api/plan') return json(this.plan)
+    if (url === '/api/plan')
+      return this.plan === null
+        ? json({ errors: ['plan.json: file not found'] }, 404)
+        : json(this.plan)
+    const grillReply = this.handleGrill(url, method, body, json)
+    if (grillReply) return grillReply
     if (url === '/api/approve' && method === 'GET') return json({ approved: this.approved })
     if (url === '/api/approve' && method === 'POST') {
       if (this.drafts.length)
@@ -109,6 +123,69 @@ export class FakeServer {
         t.id === id ? { ...t, resolved: verb === 'resolve' } : t,
       )
       return json(this.threads.find((t) => t.id === id))
+    }
+    return json({ errors: [`no route ${method} ${url}`] }, 404)
+  }
+
+  private handleGrill(
+    url: string,
+    method: string,
+    body: unknown,
+    json: (data: unknown, status?: number) => Response,
+  ): Response | null {
+    if (!url.startsWith('/api/grill')) return null
+    if (this.grillErrors) return json({ errors: this.grillErrors }, 422)
+    const grill = this.grill
+    if (!grill) return json({ errors: ['grill.json: file not found'] }, 404)
+    if (url === '/api/grill') return json(grill)
+    if (url === '/api/grill/drafts') return json({ drafts: this.grillDrafts })
+    const one = url.match(/^\/api\/grill\/drafts\/([^/]+)$/)
+    if (this.grillRefusal && ((one && method === 'PUT') || url === '/api/grill/submit'))
+      return json({ errors: [this.grillRefusal] }, 409)
+    if (one && method === 'PUT') {
+      this.grillDrafts = { ...this.grillDrafts, [one[1]]: body as AnswerDraft }
+      return json(body)
+    }
+    if (one && method === 'DELETE') {
+      const { [one[1]]: _, ...rest } = this.grillDrafts
+      this.grillDrafts = rest
+      return new Response(null, { status: 204 })
+    }
+    if (url === '/api/grill/submit') {
+      const answers = Object.entries(this.grillDrafts).map(([question_id, d]) => ({
+        question_id,
+        ...d,
+      }))
+      for (const round of grill.rounds)
+        for (const q of round.questions) {
+          const d = this.grillDrafts[q.id]
+          if (!d || q.answer) continue
+          if (d.kind === 'ask') q.thread.push(message('owner', d.text ?? ''))
+          else
+            q.answer = {
+              kind: d.kind,
+              choice_id: d.choice_id ?? null,
+              text: d.text ?? null,
+            }
+        }
+      grill.log.push({ kind: 'answers', text: null, at: new Date().toISOString() })
+      this.grillDrafts = {}
+      this.sent('grill_submitted')
+      return json({ answers })
+    }
+    if (this.grillRefusal && (url === '/api/grill/confirm' || url === '/api/grill/reopen'))
+      return json({ errors: [this.grillRefusal] }, 409)
+    if (url === '/api/grill/confirm') {
+      grill.confirmed_at = new Date().toISOString()
+      grill.log.push({ kind: 'confirm', text: null, at: grill.confirmed_at })
+      this.sent('grill_confirmed')
+      return json({ confirmed: true })
+    }
+    if (url === '/api/grill/reopen') {
+      grill.done = false
+      grill.log.push({ kind: 'reopen', text: (body as { text: string }).text, at: '' })
+      this.sent('grill_reopened')
+      return json({ reopened: true })
     }
     return json({ errors: [`no route ${method} ${url}`] }, 404)
   }

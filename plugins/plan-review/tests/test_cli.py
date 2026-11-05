@@ -12,6 +12,7 @@ from conftest import PACKAGE_VERSION, PLUGIN, WindowsStylePath, version_of
 
 from plan_review import cli
 from plan_review.cli import main
+from plan_review.grill import GrillStore, SubmittedAnswer
 from plan_review.pipeline import PipelineConfigError, load_pipeline
 from plan_review.plan import PlanFileError, load_plan
 from plan_review.status import StatusStore
@@ -307,7 +308,7 @@ def test_blank_reply_exits_1_with_a_message(
 def test_config_prints_the_resolved_pipeline_settings(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    write_pipeline(project, {"checks": [{"name": "all", "run": "./check.sh"}]})
+    write_pipeline(project, {"checks": [{"name": "all", "run": "./check.sh"}], "grill": "chat"})
 
     exit_code = main(["config"])
 
@@ -315,6 +316,7 @@ def test_config_prints_the_resolved_pipeline_settings(
     assert exit_code == 0
     assert config["checks"] == [{"name": "all", "run": "./check.sh"}]
     assert config["max_review_rounds"] == 3
+    assert config["grill"] == "chat"
 
 
 def test_config_with_a_bad_file_exits_1_with_readable_errors(
@@ -601,3 +603,201 @@ def test_cli_messages_use_the_label(project: Path, capsys: pytest.CaptureFixture
         "no .claude/work/99/ for #99: is this the project root?",
         "no thread 't-nope' for #7",
     ]
+
+
+def test_prefs_command_sets_and_prints_the_grill_mode(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["prefs", "grill"]) == 3
+    assert "no grill mode chosen" in capsys.readouterr().err
+
+    assert main(["prefs", "grill", "chat"]) == 0
+    assert json.loads((project / ".claude" / "work" / "preferences.json").read_text()) == {
+        "grill": "chat"
+    }
+    capsys.readouterr()
+
+    assert main(["prefs", "grill"]) == 0
+    assert capsys.readouterr().out == "chat\n"
+
+    write_pipeline(project, {"grill": "page"})  # the team's setting wins
+    assert main(["prefs", "grill"]) == 0
+    assert capsys.readouterr().out == "page\n"
+
+    assert main(["prefs", "grill", "tab"]) == 2
+    assert "page or chat" in capsys.readouterr().err
+
+    write_pipeline(project, {"grill": "tab"})
+    assert main(["prefs", "grill"]) == 1
+    assert "grill: Input should be 'page' or 'chat'" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("content", ["{bad", '{"grill": "pagex"}'])
+def test_prefs_grill_with_an_unreadable_preferences_file_exits_1(
+    project: Path, capsys: pytest.CaptureFixture[str], content: str
+) -> None:
+    (project / ".claude" / "work" / "preferences.json").write_text(content)
+    assert main(["prefs", "grill"]) == 1
+    err = capsys.readouterr().err
+    assert "preferences.json" in err
+    assert "Traceback" not in err
+
+
+def write_turn(project: Path, turn: object, name: str = "turn.json") -> Path:
+    path = project / name
+    path.write_text(json.dumps(turn))
+    return path
+
+
+FIRST_TURN = {
+    "title": "Add hints",
+    "round": [
+        {
+            "id": "q1",
+            "title": "Cost?",
+            "explanation": "Why it matters.",
+            "choices": [
+                {"id": "a", "label": "Free", "description": "No cost."},
+                {"id": "b", "label": "Points", "description": "Costs points."},
+            ],
+        }
+    ],
+}
+
+
+def test_grill_post_appends_a_turn_and_reports_a_bad_one_readably(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["grill", "post", "7", str(write_turn(project, FIRST_TURN))]) == 0
+    saved = json.loads((project / ".claude" / "work" / "7" / "grill.json").read_text())
+    assert saved["rounds"][0]["questions"][0]["id"] == "q1"
+    capsys.readouterr()
+
+    bad = write_turn(project, {"round": [{**FIRST_TURN["round"][0], "choices": []}]}, "bad.json")
+    assert main(["grill", "post", "7", str(bad)]) == 1
+    assert "round.0.choices: needs at least two choices" in capsys.readouterr().err
+
+    assert main(["grill", "post", "7", str(project / "nope.json")]) == 2
+    assert "nope.json: file not found" in capsys.readouterr().err
+
+
+def test_grill_post_refuses_a_misspelled_turn_key(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    typo = write_turn(project, {**FIRST_TURN, "decsions": []}, "typo.json")
+
+    assert main(["grill", "post", "7", str(typo)]) == 1
+
+    assert "decsions: Extra inputs are not permitted" in capsys.readouterr().err
+
+
+def grill_store(project: Path) -> GrillStore:
+    return GrillStore(project / ".claude" / "work" / "7" / "grill.json")
+
+
+def test_grill_pending_prints_whether_confirmed_and_what_is_pending(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["grill", "pending", "7"]) == 1
+    assert "grill.json: file not found" in capsys.readouterr().err
+
+    main(["grill", "post", "7", str(write_turn(project, FIRST_TURN))])
+    grill_store(project).submit([SubmittedAnswer(question_id="q1", kind="choice", choice_id="b")])
+    capsys.readouterr()
+
+    assert main(["grill", "pending", "7"]) == 0
+
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["confirmed"] is False
+    assert printed["pending"][0]["answers"][0]["choice"] == "Points"
+
+
+def test_grill_decisions_writes_decisions_md_only_once_confirmed(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    decided = {
+        **FIRST_TURN,
+        "decisions": [
+            {
+                "id": "d1",
+                "topic": "Cost",
+                "decision": "Hints cost",
+                "choice": "Points",
+                "question_id": "q1",
+            }
+        ],
+    }
+    assert main(["grill", "decisions", "7"]) == 1
+    assert "grill.json: file not found" in capsys.readouterr().err
+
+    main(["grill", "post", "7", str(write_turn(project, decided))])
+    store = grill_store(project)
+    decisions = project / ".claude" / "work" / "7" / "decisions.md"
+
+    assert main(["grill", "decisions", "7"]) == 1
+    assert "not confirmed" in capsys.readouterr().err
+    assert not decisions.exists()
+
+    store.submit([SubmittedAnswer(question_id="q1", kind="choice", choice_id="b")])
+    main(["grill", "post", "7", str(write_turn(project, {"done": True}, "done.json"))])
+    store.confirm()
+
+    assert main(["grill", "decisions", "7"]) == 0
+    assert decisions.read_text() == (
+        "# Decisions for #7: Add hints\n\n## Cost\n- **Hints cost**: Points\n"
+    )
+
+
+def test_grill_schema_prints_the_turn_schema(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["grill", "schema"]) == 0
+
+    schema = json.loads(capsys.readouterr().out)
+    assert {"replies", "decisions", "out_of_scope", "round", "done"} <= set(schema["properties"])
+
+
+def test_serve_starts_from_grill_json_and_points_at_the_grill_page(
+    project: Path, server: FakeServer, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (project / ".claude" / "work" / "7" / "plan.json").unlink()
+    assert main(["serve", "7"]) == 2  # neither a plan nor a grill
+    assert ".claude/work/7/plan.json: file not found" in capsys.readouterr().err
+    assert server.addresses == []
+
+    main(["grill", "post", "7", str(write_turn(project, FIRST_TURN))])
+    capsys.readouterr()
+
+    assert main(["serve", "7"]) == 0
+
+    _, port = server.addresses[0]
+    url = f"http://127.0.0.1:{port}/grill"
+    assert f"plan-review: #7 at {url} (Ctrl+C to stop)" in capsys.readouterr().out
+    assert server.opened == [url]
+
+
+def test_serve_with_an_invalid_plan_still_exits_1_even_with_a_grill(
+    project: Path, server: FakeServer, capsys: pytest.CaptureFixture[str]
+) -> None:
+    main(["grill", "post", "7", str(write_turn(project, FIRST_TURN))])
+    (project / ".claude" / "work" / "7" / "plan.json").write_text("{}")
+
+    assert main(["serve", "7"]) == 1
+    assert server.addresses == []
+
+
+def test_grill_with_no_subcommand_prints_help_and_exits_2(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["grill"]) == 2
+
+    assert "post" in capsys.readouterr().err
+
+
+def test_grill_pending_with_an_unreadable_grill_json_exits_1(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (project / ".claude" / "work" / "7").mkdir(parents=True, exist_ok=True)
+    (project / ".claude" / "work" / "7" / "grill.json").write_text("{bad")
+
+    assert main(["grill", "pending", "7"]) == 1
+
+    assert capsys.readouterr().err

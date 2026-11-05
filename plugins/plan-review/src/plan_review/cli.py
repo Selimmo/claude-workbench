@@ -12,16 +12,27 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
+from pydantic import ValidationError
 
+from plan_review.decisions_md import decisions_markdown
+from plan_review.grill import GrillError, GrillStore
+from plan_review.grill_turn import Turn
 from plan_review.orchestration import MalformedReview, branch_name, tree_hash, verdict
 from plan_review.pipeline import PipelineConfigError, load_pipeline
-from plan_review.plan import Plan, PlanFileError, load_plan, record_branch
+from plan_review.plan import Plan, PlanFileError, load_plan, readable_errors, record_branch
+from plan_review.prefs import GrillMode, grill_mode, load_preferences, record
 from plan_review.run_id import InvalidRunId, check_run_id, label
 from plan_review.server import create_app
 from plan_review.status import StatusStore
 from plan_review.threads import BlankComment, ThreadNotFound, ThreadStore
 from plan_review.upgrade import upgrade
-from plan_review.workdir import ensure_work_dir, new_prompt_work_dir, work_dir
+from plan_review.workdir import (
+    ensure_work_dir,
+    new_prompt_work_dir,
+    preferences_file,
+    preferences_path,
+    work_dir,
+)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -102,6 +113,45 @@ def _parser() -> argparse.ArgumentParser:
         "a review's verdict: exit 0 PASS, 1 FINDINGS, 2 malformed",
         lambda a: _verdict(a.file),
     ).add_argument("file", type=Path)
+    grill = command(
+        "grill", "the page grill: post turns, see what is pending", lambda a: _usage(grill)
+    )
+    grill_commands = grill.add_subparsers(dest="grill_command")
+
+    def grill_command(
+        name: str, help: str, run: Callable[[argparse.Namespace], int]
+    ) -> argparse.ArgumentParser:
+        sub = grill_commands.add_parser(name, help=help)
+        sub.set_defaults(run=run)
+        return sub
+
+    post = grill_command(
+        "post",
+        "add the agent's next turn to a run's grill.json",
+        lambda a: _grill_post(a.run_id, a.file),
+    )
+    post.add_argument("run_id")
+    post.add_argument("file", type=Path, help="the turn, as JSON (see `grill schema`)")
+    pending = grill_command(
+        "pending",
+        "whether the owner confirmed, and what they did that is not answered yet (JSON)",
+        lambda a: _grill_pending(a.run_id),
+    )
+    pending.add_argument("run_id")
+    decisions = grill_command(
+        "decisions",
+        "write W/decisions.md from the confirmed grill",
+        lambda a: _grill_decisions(a.run_id),
+    )
+    decisions.add_argument("run_id")
+    grill_command("schema", "print the JSON Schema of a turn", lambda a: _grill_schema())
+    prefs = command(
+        "prefs",
+        "the owner's recorded choices: `prefs grill [page|chat]` sets or prints the grill mode",
+        lambda a: _prefs(a.setting, a.value),
+    )
+    prefs.add_argument("setting", choices=["grill"])
+    prefs.add_argument("value", nargs="?", help="page or chat; leave out to print the mode")
     command("upgrade", "update the installed plugin to its newest release", lambda a: upgrade())
     command("tree-hash", "fingerprint of uncommitted changes (git)", lambda a: _tree_hash())
     return parser
@@ -127,6 +177,11 @@ def main(argv: list[str] | None = None) -> int:
 PIPELINE_FILE = Path(".claude", "pipeline.json")
 
 
+def _usage(parser: argparse.ArgumentParser) -> int:
+    parser.print_help(sys.stderr)
+    return 2
+
+
 def _config() -> int:
     try:
         config = load_pipeline(PIPELINE_FILE)
@@ -134,6 +189,86 @@ def _config() -> int:
         print("\n".join(error.errors), file=sys.stderr)
         return 1
     print(config.model_dump_json(indent=2))
+    return 0
+
+
+def _prefs(setting: str, value: str | None) -> int:
+    assert setting == "grill"
+    if value is not None:
+        if value not in ("page", "chat"):
+            print(f"plan-review prefs grill: give page or chat, not '{value}'", file=sys.stderr)
+            return 2
+        mode: GrillMode = "page" if value == "page" else "chat"
+        record(preferences_file(Path()), mode)
+        return 0
+    try:
+        config = load_pipeline(PIPELINE_FILE)
+    except PipelineConfigError as error:
+        print("\n".join(error.errors), file=sys.stderr)
+        return 1
+    path = preferences_path(Path())
+    try:
+        prefs_file = load_preferences(path)
+    except ValidationError as error:
+        print(
+            "\n".join(f"{path.as_posix()}: {line}" for line in readable_errors(error)),
+            file=sys.stderr,
+        )
+        return 1
+    chosen = grill_mode(config, prefs_file)
+    if chosen is None:
+        print(
+            "no grill mode chosen: ask the owner, then `plan-review prefs grill <mode>`",
+            file=sys.stderr,
+        )
+        return 3
+    print(chosen)
+    return 0
+
+
+def _grill_schema() -> int:
+    print(json.dumps(Turn.model_json_schema(), indent=2))
+    return 0
+
+
+def _grill_post(run_id: str, file: Path) -> int:
+    if not file.is_file():
+        print(f"{file.as_posix()}: file not found", file=sys.stderr)
+        return 2
+    store = GrillStore(ensure_work_dir(Path(), run_id) / "grill.json")
+    try:
+        state = store.post(Turn.parse(file.read_bytes()))
+    except GrillError as error:
+        print("\n".join(error.errors), file=sys.stderr)
+        return 1
+    print(f"posted: {len(state.rounds)} rounds, {len(state.open_questions())} questions open")
+    return 0
+
+
+def _grill_pending(run_id: str) -> int:
+    store = GrillStore(_work_dir(run_id) / "grill.json")
+    try:
+        state = store.get()
+    except GrillError as error:
+        print("\n".join(error.errors), file=sys.stderr)
+        return 1
+    result = {"confirmed": state.confirmed_at is not None, "pending": store.pending()}
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+def _grill_decisions(run_id: str) -> int:
+    work = _work_dir(run_id)
+    try:
+        state = GrillStore(work / "grill.json").get()
+    except GrillError as error:
+        print("\n".join(error.errors), file=sys.stderr)
+        return 1
+    if state.confirmed_at is None:
+        print(f"the grill for {label(run_id)} is not confirmed yet", file=sys.stderr)
+        return 1
+    (work / "decisions.md").write_text(decisions_markdown(state, label(run_id)), encoding="utf-8")
+    print((work / "decisions.md").as_posix())
     return 0
 
 
@@ -186,11 +321,14 @@ def _serve(run_id: str, open_flag: str | None) -> int:
         )
         return 2
     plan_file = _work_dir(run_id) / "plan.json"
+    page = ""  # the plan page is "/"; before there is a plan, the grill page is shown
     try:
         load_plan(plan_file)
     except PlanFileError as error:
-        print("\n".join(error.errors), file=sys.stderr)
-        return 2 if error.missing else 1
+        if not (error.missing and (_work_dir(run_id) / "grill.json").is_file()):
+            print("\n".join(error.errors), file=sys.stderr)
+            return 2 if error.missing else 1
+        page = "grill"
     ensure_work_dir(Path(), run_id)  # the page writes comments and drafts there
     # Bind and listen before opening the browser: its first request then waits in the
     # socket's queue until uvicorn accepts it, instead of racing the server's startup.
@@ -198,7 +336,7 @@ def _serve(run_id: str, open_flag: str | None) -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         sock.listen()
-        url = f"http://127.0.0.1:{sock.getsockname()[1]}/"
+        url = f"http://127.0.0.1:{sock.getsockname()[1]}/{page}"
         print(f"plan-review: {label(run_id)} at {url} (Ctrl+C to stop)", flush=True)
         if open_mode == "browser":
             webbrowser.open(url)

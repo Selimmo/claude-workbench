@@ -53,7 +53,7 @@ def test_project_agents_take_precedence_over_the_plugins() -> None:
 def test_grilling_is_opt_in_and_the_hand_off_is_a_plain_file() -> None:
     meta, body = parts()
 
-    assert meta["argument-hint"] == "<issue number, issue link or prompt> [--grill]"
+    assert meta["argument-hint"] == ("<issue number, issue link or prompt> [--grill[=page|chat]]")
     assert "--no-grill" not in body  # never on by default
     for required in ["--grill", "`grilling` skill", "decisions.md", "github.com/mattpocock/skills"]:
         assert required in body
@@ -171,3 +171,61 @@ def test_ship_reads_the_serve_line_by_label() -> None:
 
     assert "plan-review: <label> at http://127.0.0.1:<port>/" in step_3
     assert "issue #N at" not in step_3
+
+
+def _step_1() -> str:
+    _, body = parts()
+    return body.split("## 1.", 1)[1].split("## 2.", 1)[0]
+
+
+def test_grill_mode_comes_from_the_flag_then_pipeline_then_preference_then_asking() -> None:
+    step_1 = _step_1()
+
+    for required in [
+        "--grill=page",
+        "--grill=chat",
+        "plan-review prefs grill",
+        "asks once",
+        "plan-review prefs grill <mode>",
+        "change it",
+    ]:
+        assert required in step_1, required
+    for flag in ["--grill=page", "--grill=chat"]:
+        assert flag in _step_0()  # step 0 reads the input without the flag
+
+
+def test_page_grill_goes_through_the_helpers_and_keeps_the_banner_answered() -> None:
+    step_1 = _step_1()
+
+    for required in [
+        "plan-review grill post",
+        "plan-review grill pending",
+        "plan-review grill decisions",
+        "plan-review grill schema",
+        "plan-review serve ID",
+        "/grill",
+        "Monitor",
+        "catch up",
+        "grill_submitted",
+        "grill_confirmed",
+        "grill_reopened",
+        "plan-review status ID",
+        "viewer.open",
+        "`none`",
+    ]:
+        assert required in step_1, required
+
+
+def test_resume_and_the_chat_fallback_are_described() -> None:
+    step_1 = _step_1()
+    step_3 = _step_3()
+
+    assert "confirmed" in step_1
+    assert "skip to step 2" in step_1
+    resume = step_1.split("you are resuming:")[1].split("Otherwise")[0]
+    assert "plan-review serve ID" in resume  # nothing is running on a resume
+    assert "serve` cannot start" in step_1
+    assert "written by hand" in step_1
+    assert "delete" in step_1  # the grill.json just posted
+    assert "already running" in step_3
+    assert 'plan-review status ID "Plan ready for review" --done' in step_3

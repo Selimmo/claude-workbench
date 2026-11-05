@@ -41,6 +41,12 @@ plan-review validate plan.json   # check a plan; exit 0 = valid, 1 = invalid, 2 
 plan-review serve 42             # open the viewer for .claude/work/42/plan.json
 plan-review serve 42 --open none # only print the URL (e.g. over SSH)
 plan-review config               # this project's pipeline settings, defaults filled in
+plan-review prefs grill          # the grill mode in force (page or chat); exit 3 if none is chosen
+plan-review prefs grill page     # record the owner's choice (page or chat) in .claude/work/preferences.json
+plan-review grill post 42 turn.json   # add the agent's next turn (replies, decisions, next round, done) to grill.json
+plan-review grill pending 42     # JSON {confirmed, pending}: what the owner did that is not answered yet
+plan-review grill decisions 42   # write .claude/work/42/decisions.md from the confirmed grill
+plan-review grill schema         # the JSON Schema of a turn
 plan-review threads 42           # open comment threads, as JSON (for Claude)
 plan-review reply 42 t-1a2b3c4d "Because ..."   # answer a thread as Claude
 plan-review status 42 "Answering questions"     # tell the owner what Claude is doing (--done when finished, --clear to remove)
@@ -51,7 +57,7 @@ plan-review tree-hash            # fingerprint of uncommitted changes (gitignore
 
 ### `serve`
 
-Run it from the project root. It reads `.claude/work/<id>/plan.json`, refuses to start if the plan is missing or invalid, and serves the viewer on `127.0.0.1` (never other interfaces) on a free port. It prints `plan-review: #42 at http://127.0.0.1:<port>/` (`plan-review: PROJ-123 at ...` for a key) and opens your default browser.
+Run it from the project root. It reads `.claude/work/<id>/plan.json`, refuses to start if the plan is invalid, or if there is neither a plan nor a `grill.json` (exit 2), and serves the viewer on `127.0.0.1` (never other interfaces) on a free port. It prints `plan-review: #42 at http://127.0.0.1:<port>/` (`plan-review: PROJ-123 at ...` for a key) and opens your default browser. With a `grill.json` and no plan yet it prints and opens `http://127.0.0.1:<port>/grill` instead.
 
 `--open browser|none` decides whether the browser opens. Without it, `viewer.open` in the project's `.claude/pipeline.json` decides, and the default is `browser`:
 
@@ -63,9 +69,14 @@ While it runs:
 
 | Endpoint | What |
 |---|---|
-| `GET /` | the viewer page |
+| `GET /` | the viewer page; redirects to `/grill` while there is no `plan.json` |
+| `GET /grill` | the viewer page, showing the grill |
+| `GET /api/grill` | the grill (`title`, `label`, `rounds`, `decisions`, `out_of_scope`, `done`, `confirmed_at`, `log`, `handled`) plus `max_asks: 3`; 404 without `grill.json` |
+| `GET /api/grill/drafts`, `PUT`, `DELETE /api/grill/drafts/<question id>` | the owner's unsent answers (`{kind: choice\|own\|ask, choice_id?, text?}`); 404 for an unknown or answered question, 422 for an invalid draft or a fourth ask back. Not announced to `/events` |
+| `POST /api/grill/submit` | records every draft as an answer (an ask back goes into the question's thread) and sends one `grill_submitted` event; 422 while an open question has no draft, 409 while it is Claude's turn |
+| `POST /api/grill/confirm`, `/api/grill/reopen {text}` | the owner confirms the finished grill (`grill_confirmed`), or says 'not yet' (`grill_reopened`); 409 unless Claude said it is done, 422 for blank text |
 | `GET /api/plan` | the plan (200); `{"errors": [...]}` with 404 if missing, 422 if invalid |
-| `WS /api/updates` | sends `{"type": "plan_changed"}` / `{"type": "threads_changed"}` / `{"type": "drafts_changed"}` / `{"type": "status_changed"}` whenever `plan.json` / `comments.json` / `drafts.json` / `status.json` changes on disk |
+| `WS /api/updates` | also `{"type": "grill_changed"}` / `{"type": "grill_drafts_changed"}` for `grill.json` / `grill_drafts.json`. Sends `{"type": "plan_changed"}` / `{"type": "threads_changed"}` / `{"type": "drafts_changed"}` / `{"type": "status_changed"}` whenever `plan.json` / `comments.json` / `drafts.json` / `status.json` changes on disk |
 | `GET /api/status` | `{"status": null}`, or `{"status": {"text", "done", "at"}}`: what Claude last said it is doing |
 | `GET /api/threads` | all comment threads, each with `orphaned: true` if its element left the plan |
 | `POST /api/threads/<id>/resolve`, `/reopen` | close or reopen a thread |
@@ -83,6 +94,8 @@ While it runs:
 Errors come back as `{"errors": [...]}`: 404 for an unknown thread or draft, 422 for blank text.
 
 ### Events for Claude (`WS /events`)
+
+The page grill adds three events: `{"type": "grill_submitted", "answers": [{"question_id", "kind": "choice"|"own"|"ask", "choice_id"?, "text"?}]}`, `{"type": "grill_confirmed"}` and `{"type": "grill_reopened", "text"}`. They are kept and resent like the others.
 
 One JSON message per owner action. The owner reviews like a pull request: comments and replies stay drafts, which never reach this socket, until **Submit review** sends them all as one message:
 
@@ -169,7 +182,7 @@ Use as much or as little of the rest as you like.
 
 One command takes an issue, or a plain prompt, to a reviewed commit. The input can be a GitHub issue (`42`, `#42` or its link), a Jira or Linear link or a bare key such as `PROJ-123` (read through the connector Claude Code has for that tracker), or any other text, which is a prompt. Only the GitHub and prompt inputs are proven end to end. `/ship` reads the issue once, with its comments, into `.claude/work/<id>/issue.md` (a prompt is written there exactly as given); the agents read that file and never call a tracker. The run id `<id>` names the work folder: `42`, `PROJ-123`, or `<prompt name>-<date>`.
 
-0. **Settle decisions (optional).** Anything already decided can go in `.claude/work/<id>/decisions.md`: notes, a doc, the outcome of any discussion. The architect treats it as settled. With `/ship <input> --grill`, `/ship` first runs Matt Pocock's [`grilling`](https://github.com/mattpocock/skills) skill, if you have it, and saves the outcome there.
+0. **Settle decisions (optional).** Anything already decided can go in `.claude/work/<id>/decisions.md`: notes, a doc, the outcome of any discussion. The architect treats it as settled. With `/ship <input> --grill`, `/ship` first grills the input with Matt Pocock's [`grilling`](https://github.com/mattpocock/skills) skill, if you have it, and saves the outcome there. There are two ways to be asked. The **page grill** puts each round on a `/grill` page of the same `plan-review serve`: you pick a choice (the first is the recommendation), write your own answer or ask back (up to three times per question), submit the round at once, watch the decisions pile up beside it, and finally **Confirm** or say 'Not yet'. Claude's side goes through `plan-review grill post`, and `plan-review grill decisions` writes `decisions.md`. The **chat grill** asks in the chat, as before. The mode is `--grill=page` or `--grill=chat`; for a plain `--grill`, the `grill` setting in `.claude/pipeline.json`, else your recorded preference (`plan-review prefs grill page|chat`); if neither exists `/ship` asks once and records the answer. If `serve` cannot start, the chat grill is the fallback. A confirmed grill is not asked again when you run `/ship` again.
 1. **Plan.** The `architect` writes `.claude/work/<id>/plan.json`. For a prompt run it also writes the `acceptance_criteria`, which you approve with the plan; they open as the first tab.
 2. **Review.** The viewer opens. Your comments and replies are drafts until you press **Submit review**; the submitted review wakes Claude through the `/events` socket: questions are answered in the thread, change requests go back to the architect, the page updates live, and a banner shows what Claude is doing (or offers Resend if it hears nothing). Approve when no draft is left unsent and every thread is resolved.
 3. **Branch.** Named by `plan-review branch` and recorded in `plan.json`; the viewer shows it the next time it opens. A prompt run's branch is its id.
@@ -206,4 +219,5 @@ All fields are optional. `plan-review config` prints the resolved settings, and 
 | `review_rules` | `[]` | extra rules the code reviewer enforces, in plain words |
 | `branch` | `"{issue}-{slug}"` | the branch name for an issue; must contain `{issue}`, which is the run id (`42`, `PROJ-123`). A prompt run's branch is just its id |
 | `viewer.open` | `"browser"` | `"none"` to only print the viewer's URL |
+| `grill` | none | `"page"` or `"chat"`: where `/ship --grill` asks its questions; unset means your recorded preference, else it asks once |
 | `max_review_rounds` | `3` | review rounds before the orchestrator stops and asks you |

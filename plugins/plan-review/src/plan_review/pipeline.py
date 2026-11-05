@@ -26,6 +26,7 @@ class PipelineConfig(_Strict):
     review_rules: list[str] = []
     branch: str = "{issue}-{slug}"
     viewer: Viewer = Viewer()
+    grill: Literal["page", "chat"] | None = None  # where /ship --grill asks its questions
     max_review_rounds: int = Field(default=3, ge=1)
 
     @field_validator("branch")

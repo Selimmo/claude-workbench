@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import promptExample from '../../examples/prompt-plan.json'
 import { App } from './App'
 import { FakeServer } from './test/fakeServer'
+import { grill, question } from './test/grillData'
 
 function serve(status: number, body: unknown) {
   vi.stubGlobal(
@@ -285,4 +286,22 @@ test('with no branch yet, the header has no branch element', async () => {
   await loaded()
 
   expect(document.querySelector('.branch')).toBeNull()
+})
+
+test('the top bar switches between Grill and Plan once both exist', async () => {
+  const server = new FakeServer()
+  server.grill = grill([question('q1')])
+  server.install()
+  render(<App />)
+  await screen.findByRole('tablist')
+
+  const nav = await screen.findByRole('navigation', { name: 'Pages' })
+  expect(within(nav).getByRole('link', { name: 'Grill' })).toHaveAttribute('href', '/grill')
+  expect(within(nav).getByRole('link', { name: 'Plan' })).toHaveAttribute('aria-current', 'page')
+})
+
+test('without a grill the plan page has no page switch', async () => {
+  await loaded()
+
+  expect(screen.queryByRole('navigation', { name: 'Pages' })).not.toBeInTheDocument()
 })

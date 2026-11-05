@@ -9,5 +9,6 @@
   ],
   "branch": "{issue}-{slug}",
   "viewer": { "open": "browser" },
+  "grill": "page",
   "max_review_rounds": 3
 }

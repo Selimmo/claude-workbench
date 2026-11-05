@@ -5,12 +5,10 @@ import {
   approve,
   fetchApproval,
   fetchDrafts,
-  fetchLastEvent,
   fetchPlan,
-  fetchStatus,
   fetchThreads,
-  resend,
 } from './api'
+import { useClaude } from './useClaude'
 import { changedIds } from './revisions'
 import type { ClaudeStatus, Draft, LastEvent, Thread } from './threads'
 
@@ -40,15 +38,13 @@ export function useLive(): Live {
   const [result, setResult] = useState<PlanResult | null>(null)
   const [threads, setThreads] = useState<Thread[]>([])
   const [drafts, setDrafts] = useState<Draft[]>([])
-  const [status, setStatus] = useState<ClaudeStatus | null>(null)
-  const [lastEvent, setLastEvent] = useState<LastEvent | null>(null)
+  const { status, lastEvent, resend, refreshStatus, refreshLastEvent } = useClaude()
   const [revised, setRevised] = useState<Set<string>>(new Set())
   const [approved, setApproved] = useState(false)
   const shown = useRef<PlanResult | null>(null)
 
   const refreshThreads = useCallback(async () => setThreads(await fetchThreads()), [])
   const refreshDrafts = useCallback(async () => setDrafts(await fetchDrafts()), [])
-  const refreshLastEvent = useCallback(async () => setLastEvent(await fetchLastEvent()), [])
   const refreshReview = useCallback(
     async () => void (await Promise.all([refreshThreads(), refreshDrafts(), refreshLastEvent()])),
     [refreshThreads, refreshDrafts, refreshLastEvent],
@@ -72,7 +68,7 @@ export function useLive(): Live {
       refreshPlan(),
       refreshReview(),
       fetchApproval().then(setApproved),
-      fetchStatus().then(setStatus),
+      refreshStatus(),
     ])
     /* oxlint-enable react/set-state-in-effect */
     const socket = new WebSocket(`ws://${location.host}/api/updates`)
@@ -82,12 +78,12 @@ export function useLive(): Live {
       if (type === 'threads_changed') void refreshThreads()
       if (type === 'drafts_changed') void refreshDrafts()
       if (type === 'status_changed') {
-        void fetchStatus().then(setStatus)
+        void refreshStatus()
         void refreshLastEvent()
       }
     }
     return () => socket.close()
-  }, [refreshPlan, refreshReview, refreshThreads, refreshDrafts, refreshLastEvent])
+  }, [refreshPlan, refreshReview, refreshThreads, refreshDrafts, refreshLastEvent, refreshStatus])
 
   return {
     result,
@@ -99,15 +95,7 @@ export function useLive(): Live {
     refreshReview,
     revised,
     markSeen: () => setRevised(new Set()),
-    resend: async () => {
-      try {
-        const result = await resend()
-        if (!result.sent) setStatus(result.status)
-      } catch {
-        // Refused (nothing is kept) or the server is gone: the refresh below shows what is true.
-      }
-      await refreshLastEvent()
-    },
+    resend,
     approved,
     approvePlan: async () => {
       await approve()

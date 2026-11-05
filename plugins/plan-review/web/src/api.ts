@@ -1,3 +1,4 @@
+import type { AnswerDraft, Grill } from './grill'
 import type { Plan } from './plan'
 import type { ClaudeStatus, Draft, LastEvent, Thread } from './threads'
 
@@ -101,3 +102,36 @@ export async function fetchLastEvent(): Promise<LastEvent | null> {
 /** Sends the last event to Claude again, unless Claude already answered it. */
 export const resend = async () =>
   (await send('/api/resend')) as { sent: true } | { sent: false; status: ClaudeStatus }
+
+export type GrillResult = { ok: true; grill: Grill } | { ok: false; errors: string[] }
+
+/** Null when there is no grill yet (or no server): the page then has nothing to show. */
+export async function fetchGrill(): Promise<GrillResult | null> {
+  try {
+    const response = await fetch('/api/grill')
+    if (response.ok) return { ok: true, grill: (await response.json()) as Grill }
+    if (response.status !== 422) return null
+    return { ok: false, errors: ((await response.json()) as { errors: string[] }).errors }
+  } catch {
+    return null
+  }
+}
+
+export async function fetchGrillDrafts(): Promise<Record<string, AnswerDraft>> {
+  try {
+    const response = await fetch('/api/grill/drafts')
+    return ((await response.json()) as { drafts?: Record<string, AnswerDraft> }).drafts ?? {}
+  } catch {
+    return {}
+  }
+}
+
+export const saveGrillDraft = async (questionId: string, draft: AnswerDraft) =>
+  void (await send(`/api/grill/drafts/${questionId}`, draft, 'PUT'))
+export const discardGrillDraft = async (questionId: string) =>
+  void (await send(`/api/grill/drafts/${questionId}`, undefined, 'DELETE'))
+/** Records every draft as an answer and tells Claude. */
+export const submitGrill = async () => void (await send('/api/grill/submit'))
+
+export const confirmGrill = async () => void (await send('/api/grill/confirm'))
+export const reopenGrill = async (text: string) => void (await send('/api/grill/reopen', { text }))

@@ -1,14 +1,18 @@
+import { GrillPage } from './GrillPage'
+import { PageSwitch } from './PageSwitch'
 import { PlanView } from './PlanView'
 import { ThemeSwitch } from './ThemeSwitch'
 import { useLive } from './useLive'
 
 export function App() {
+  const onGrill = location.pathname === '/grill'
   return (
     <>
       <div className="top-bar">
+        <PageSwitch current={onGrill ? 'grill' : 'plan'} />
         <ThemeSwitch />
       </div>
-      <Content />
+      {onGrill ? <GrillPage /> : <Content />}
     </>
   )
 }
