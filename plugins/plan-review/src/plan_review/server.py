@@ -6,16 +6,20 @@ from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from plan_review.approval import approval_routes
 from plan_review.drafts import DraftNotFound, DraftStore
 from plan_review.events import ClaudeEvents, Subscribers
+from plan_review.grill import GrillError, GrillStore
+from plan_review.grill_drafts import GrillDraftStore
+from plan_review.grill_routes import grill_routes
 from plan_review.last_event import LastEventStore
 from plan_review.plan import PlanFileError, load_plan
 from plan_review.resend import resend_routes
 from plan_review.review import review_routes
+from plan_review.run_id import label
 from plan_review.status import StatusStore, status_routes
 from plan_review.thread_routes import thread_routes
 from plan_review.threads import BlankComment, ThreadNotFound, ThreadStore
@@ -56,10 +60,44 @@ async def _listen(socket: WebSocket, subscribers: Subscribers) -> None:
         subscribers.remove(socket)
 
 
+def _error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(ThreadNotFound)
+    async def not_found(_: Request, error: ThreadNotFound) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
+        return JSONResponse({"errors": [f"no thread '{error.args[0]}'"]}, status_code=404)
+
+    @app.exception_handler(DraftNotFound)
+    async def no_draft(_: Request, error: DraftNotFound) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
+        return JSONResponse({"errors": [f"no draft '{error.args[0]}'"]}, status_code=404)
+
+    @app.exception_handler(GrillError)
+    async def grill_refused(_: Request, error: GrillError) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
+        status = 404 if error.missing else 409 if error.conflict else 422
+        return JSONResponse({"errors": error.errors}, status_code=status)
+
+    @app.exception_handler(BlankComment)
+    async def blank(_: Request, error: BlankComment) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
+        return JSONResponse({"errors": [str(error)]}, status_code=422)
+
+
+def _page_routes(app: FastAPI, plan_file: Path, static_dir: Path) -> None:
+    @app.get("/grill", response_model=None)
+    def grill_page() -> FileResponse:  # pyright: ignore[reportUnusedFunction]
+        return FileResponse(static_dir / "index.html")
+
+    @app.get("/", response_model=None)
+    def root() -> FileResponse | RedirectResponse:  # pyright: ignore[reportUnusedFunction]
+        # Before there is a plan, the grill is the page to look at.
+        if not plan_file.exists():
+            return RedirectResponse("/grill")
+        return FileResponse(static_dir / "index.html")
+
+
 def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5) -> FastAPI:
     comments_file = plan_file.parent / "comments.json"  # sits next to the plan it comments on
     drafts_file = plan_file.parent / "drafts.json"  # the owner's unsent review comments
     status_file = plan_file.parent / "status.json"  # what Claude is doing, set by the CLI
+    grill_file = plan_file.parent / "grill.json"  # the grilling before the plan
+    grill_drafts_file = plan_file.parent / "grill_drafts.json"  # the owner's unsent answers
     subscribers = Subscribers()  # viewer pages, on /api/updates
     # Claude (through Monitor), on /events. Its last event is kept, but last_event.json is
     # not watched: pages are not told about it, so /api/updates is unchanged.
@@ -73,6 +111,8 @@ def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5)
             comments_file: "threads_changed",
             drafts_file: "drafts_changed",  # e.g. a second tab of the viewer
             status_file: "status_changed",
+            grill_file: "grill_changed",
+            grill_drafts_file: "grill_drafts_changed",
         }
         watcher = asyncio.create_task(_watch(watched, poll_interval, subscribers))
         yield
@@ -99,17 +139,7 @@ def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5)
     async def claude_events(socket: WebSocket) -> None:  # pyright: ignore[reportUnusedFunction]
         await _listen(socket, events)
 
-    @app.exception_handler(ThreadNotFound)
-    async def not_found(_: Request, error: ThreadNotFound) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
-        return JSONResponse({"errors": [f"no thread '{error.args[0]}'"]}, status_code=404)
-
-    @app.exception_handler(DraftNotFound)
-    async def no_draft(_: Request, error: DraftNotFound) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
-        return JSONResponse({"errors": [f"no draft '{error.args[0]}'"]}, status_code=404)
-
-    @app.exception_handler(BlankComment)
-    async def blank(_: Request, error: BlankComment) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
-        return JSONResponse({"errors": [str(error)]}, status_code=422)
+    _error_handlers(app)
 
     store = ThreadStore(comments_file)
     drafts = DraftStore(drafts_file)
@@ -118,7 +148,17 @@ def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5)
     statuses = StatusStore(status_file)
     app.include_router(status_routes(statuses))
     app.include_router(resend_routes(kept, statuses, events))
+    app.include_router(
+        grill_routes(
+            GrillStore(grill_file),
+            GrillDraftStore(grill_drafts_file),
+            events,
+            label=label(plan_file.parent.name),
+        )
+    )
     app.include_router(approval_routes(store, drafts, plan_file, events))
+
+    _page_routes(app, plan_file, static_dir)
 
     @app.middleware("http")
     async def revalidate(  # pyright: ignore[reportUnusedFunction]

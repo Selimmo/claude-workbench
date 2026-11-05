@@ -1211,3 +1211,91 @@ g[data-focused='true'] rect {
 .toast button.icon {
   color: inherit;
 }
+
+/* The grill page: decisions beside the rounds on wide screens, above them on narrow ones. */
+.grill-page {
+  display: grid;
+  gap: 1rem;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.grill-page > h1,
+.grill-page > .claude-banner,
+.grill-page > .confirm-bar,
+.grill-page > .approval {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 60rem) {
+  .grill-page {
+    grid-template-columns: minmax(0, 1fr) 20rem;
+  }
+
+  .decisions-panel {
+    grid-column: 2;
+    grid-row: 2 / span 20;
+    align-self: start;
+  }
+
+  .grill-page > :not(.decisions-panel, h1, .claude-banner, .confirm-bar, .approval) {
+    grid-column: 1;
+  }
+}
+
+.decisions-panel,
+.question-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+
+.decisions-panel li[data-replaced='true'] {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.question-card .choice {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0 0.5rem;
+}
+
+.question-card .choice-description {
+  grid-column: 2;
+  color: var(--muted);
+}
+
+.question-card textarea {
+  display: block;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.recommended,
+.updated-tag {
+  margin-left: 0.5rem;
+  padding: 0 0.4rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  background: var(--added-bg);
+  color: var(--added);
+}
+
+.updated-tag {
+  background: var(--modified-bg);
+  color: var(--modified);
+}
+
+.collapsed-round ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.page-switch a[aria-current='page'] {
+  font-weight: 600;
+  text-decoration: none;
+}

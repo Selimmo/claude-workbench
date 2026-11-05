@@ -1,7 +1,7 @@
 ---
 name: ship
 description: Take one issue (from GitHub, Jira, Linear or another tracker) or one plain prompt from plan to reviewed commit. The architect plans it, the owner reviews and approves the plan in the plan-review viewer, then the implementer builds it with TDD while a test reviewer and a code reviewer check the result.
-argument-hint: <issue number, issue link or prompt> [--grill]
+argument-hint: <issue number, issue link or prompt> [--grill[=page|chat]]
 disable-model-invocation: true
 ---
 
@@ -11,13 +11,13 @@ You are the **orchestrator**. You run the steps below for the input `$ARGUMENTS`
 
 **Which agents.** For each role (`architect`, `implementer`, `test-reviewer`, `code-reviewer`), use the project's own agent when `.claude/agents/<name>.md` exists in the project, otherwise `plan-review:<name>` from this plugin. Check once at the start and say which ones you are using. Below, `plan-review:<name>` means "the agent chosen for that role".
 
-Throughout, `ID` is the run id and `W` is `.claude/work/ID/`. Step 0 settles `ID` from `$ARGUMENTS` (optionally followed by `--grill`): the issue number or key (`42`, `PROJ-123`), or a dated name for a prompt (`add-dark-mode-2026-11-05`). The label of a run is `#42` when `ID` is all digits, otherwise `ID` itself; use it when you talk to the owner. Hand-offs between steps are files in `W`. Pass agents paths, not file contents, and keep your own context small. Only you read the issue from its tracker, once, in step 0. The agents read `W/issue.md`.
+Throughout, `ID` is the run id and `W` is `.claude/work/ID/`. Step 0 settles `ID` from `$ARGUMENTS` (optionally followed by `--grill`, `--grill=page` or `--grill=chat`): the issue number or key (`42`, `PROJ-123`), or a dated name for a prompt (`add-dark-mode-2026-11-05`). The label of a run is `#42` when `ID` is all digits, otherwise `ID` itself; use it when you talk to the owner. Hand-offs between steps are files in `W`. Pass agents paths, not file contents, and keep your own context small. Only you read the issue from its tracker, once, in step 0. The agents read `W/issue.md`.
 
 ## 0. Preconditions
 
 1. Run `plan-review config`. If it fails, show the errors and stop.
 2. Run `git status --porcelain`. If there are uncommitted changes, stop and ask the owner: the reviewers' read-only check needs a clean starting point.
-3. Read the input (without `--grill`) and decide what it is, in this order:
+3. Read the input (without `--grill`, `--grill=page` or `--grill=chat`) and decide what it is, in this order:
    - A GitHub issue: `42` or `#42` (read it with `gh issue view 42 --comments`), or a `https://github.com/<owner>/<repo>/issues/<n>` link (`gh issue view <link> --comments`). `ID` is the number.
    - Another tracker's link: pick the tracker by host (`*.atlassian.net` is Jira, `linear.app` is Linear) and read the issue with that tracker's connector (an MCP tool). `ID` is the tracker's key, such as `PROJ-123` or `ENG-42`.
    - A bare key such as `PROJ-123`: use the one issue-tracker connector that is available. If none fits, or several do, ask the owner which tracker it is, or whether it is a prompt.
@@ -41,11 +41,15 @@ Throughout, `ID` is the run id and `W` is `.claude/work/ID/`. Step 0 settles `ID
 
 If `W/decisions.md` already exists, the architect will use it, whatever produced it (a grilling session, the owner's notes, a doc). Mention it.
 
-Run this step only when the arguments include `--grill`. Then run the `grilling` skill on the run described in `W/issue.md` with the Skill tool. It is Matt Pocock's interview skill: facts are looked up, and every open decision is put to the owner in rounds until none is left. Follow it fully, including waiting for the owner to confirm that you have reached a shared understanding.
+Run this step only when the arguments include `--grill`, `--grill=page` or `--grill=chat`. If no `grilling` skill is available, tell the owner in one line that it comes from https://github.com/mattpocock/skills (`grill-me` and `grilling`), then continue without grilling.
 
-If `--grill` was given but no `grilling` skill is available, tell the owner in one line that it comes from https://github.com/mattpocock/skills (`grill-me` and `grilling`), then continue without it.
+**Which mode.** Settle it in this order:
+1. `--grill=page` or `--grill=chat` decides.
+2. For a plain `--grill`, run `plan-review prefs grill`. It prints `page` or `chat` from `grill` in `.claude/pipeline.json`, else from the owner's recorded preference, and exits 0.
+3. If it exits 1 (the preferences file or pipeline.json is unreadable), show the owner its message and stop: they fix the file or choose with `--grill=page` / `--grill=chat`.
+4. If it exits 3 (nothing is chosen), the skill asks once: "Answer the grilling questions on a page in the viewer, or here in the chat?" Record the answer with `plan-review prefs grill <mode>` and say in one line how to change it: `plan-review prefs grill page|chat`, or `--grill=page` / `--grill=chat` for one run.
 
-Once the owner confirms, write `W/decisions.md`. Write only what was settled, in the owner's terms, so the architect can follow it without the conversation:
+**Chat grill.** Run the `grilling` skill on the run described in `W/issue.md` with the Skill tool. It is Matt Pocock's interview skill: facts are looked up, and every open decision is put to the owner in rounds until none is left. Follow it fully, including waiting for the owner to confirm that you have reached a shared understanding. Once the owner confirms, write `W/decisions.md` by hand. Write only what was settled, in the owner's terms, so the architect can follow it without the conversation:
 
 ```
 # Decisions for <label>: <title>
@@ -57,12 +61,23 @@ Once the owner confirms, write `W/decisions.md`. Write only what was settled, in
 - <anything explicitly deferred>
 ```
 
+**Page grill.** Only the delivery changes: you still run the `grilling` skill, but each round it would ask in the chat goes into a turn file and `plan-review grill post ID FILE`, and the owner's answers come from the page at `/grill` of the same `plan-review serve`. `plan-review grill schema` prints the turn's JSON Schema: a first turn needs a `title` (the issue's title, or the name you gave a prompt) and a `round` of questions, each with an `id`, a `title`, an `explanation` and at least two `choices` (`id`, `label`, one-line `description`; the first is your recommendation). Later turns can carry `replies` (to every question the owner asked back about, optionally with a `revised` explanation and choices), `decisions` (each with an `id`, `topic`, `decision`, `choice`, optional `why`, `question_id` and `replaces`), `out_of_scope` items, the next `round`, or `done: true` once nothing is left to ask.
+
+1. Run `plan-review grill pending ID`. If it says the grill is `confirmed`, run `plan-review grill decisions ID` and skip to step 2. If `W/grill.json` exists but is not confirmed, you are resuming: start `plan-review serve ID` as in point 2, give the owner its `/grill` URL, then go to point 3 and catch up. Otherwise post the first turn.
+2. Post the first turn, then start `plan-review serve ID` with the Bash tool in the background (`run_in_background`) as in step 3, and read its first line, `plan-review: <label> at http://127.0.0.1:<port>/grill`. Give the owner that URL. The browser opens by itself unless `viewer.open` is `none`; in page mode `none` still uses the page, so give the owner the URL. If `serve` cannot start, delete the `W/grill.json` you just posted and run the chat grill above, with `W/decisions.md` written by hand.
+3. Subscribe with the **Monitor** tool's WebSocket source: `ws://127.0.0.1:<port>/events`, `timeout_ms: 1800000`, description `plan-review <label> grill`. When it expires, arm it again and catch up with `plan-review grill pending ID`, because events sent while no Monitor listens are lost: handle every pending owner action as below.
+4. Each notification is one event, and you answer each with `plan-review status ID "<text>"` first, so the viewer's banner knows you got it:
+   - `grill_submitted` with `answers`: status "Answers received". Answers come as `choice` (with `choice_id`, maybe a note), `own` (the owner's text) or `ask` (a question back). Settle what the answers settled as `decisions`, reply to every `ask` in `replies` (you must reply to all of them), and post the next `round` or `done: true`. A Resend repeats an event: if `plan-review grill pending ID` shows nothing pending, ignore it. When the turn is posted, `plan-review status ID "<what you posted>" --done`.
+   - `grill_reopened` with `text`: the owner said "not yet" and what is missing. Status "Reading your comment", grill that, and post more rounds.
+   - `grill_confirmed`: status "Confirmed, planning". Keep the server and the Monitor running: step 3 reuses them. Run `plan-review grill decisions ID` to write `W/decisions.md`, and go to step 2.
+
 ## 2. Plan
 
 Start the `plan-review:architect` agent with: "Plan mode. Run ID. The issue is in W/issue.md." When it finishes, go straight to step 3. Don't summarize the plan: the owner reads all of it in the viewer.
 
 ## 3. Review in the viewer
 
+If a page grill started `plan-review serve` for this run and it is already running, do not start another (point 1) or arm a second Monitor (point 2): the same Monitor receives the review events too. Then set `plan-review status ID "Plan ready for review" --done` (not `--clear`: that would make the owner's last grill event look unanswered), and give the owner the plan page's URL, `http://127.0.0.1:<port>/`.
 1. Start `plan-review serve ID` with the Bash tool in the background (`run_in_background`). Read its first output line, `plan-review: <label> at http://127.0.0.1:<port>/`, from the task's output file, and give the owner that URL. The browser opens by itself unless `viewer.open` is `none`.
 2. Subscribe to the owner's actions with the **Monitor** tool's WebSocket source: `ws://127.0.0.1:<port>/events`, `timeout_ms: 1800000`, description `plan-review <label>`. A Monitor lasts at most 30 minutes: when it expires before `approved`, arm it again. Events sent while no Monitor is listening are not replayed (the viewer keeps the last one only so the owner can press Resend), so each time you arm it again, catch up: run `plan-review threads ID` and treat every thread whose last message is the owner's (no reply from you yet) as part of a review, and handle it as below; if `W/approved.json` exists, the plan was approved: handle it as `approved` below.
 3. Each notification is one JSON event:

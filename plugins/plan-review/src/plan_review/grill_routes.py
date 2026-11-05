@@ -1,0 +1,81 @@
+"""The grill page: rounds of questions, the owner's drafts, and one submit that sends them all.
+
+Like the plan review, answers are drafts that only the owner sees until they submit. Submitting
+records every answer in grill.json and tells Claude with a single `grill_submitted` event.
+"""
+
+from typing import Any
+
+from fastapi import APIRouter, Response
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+from plan_review.events import ClaudeEvents
+from plan_review.grill import MAX_ASKS, GrillError, GrillStore, SubmittedAnswer
+from plan_review.grill_drafts import AnswerDraft, GrillDraftStore
+
+
+class Reopen(BaseModel):
+    text: str
+
+
+def grill_routes(
+    store: GrillStore, drafts: GrillDraftStore, events: ClaudeEvents, *, label: str
+) -> APIRouter:
+    router = APIRouter()
+
+    @router.get("/api/grill")
+    def get_grill() -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
+        state = store.get()  # GrillError(missing) becomes a 404
+        return JSONResponse({**state.model_dump(mode="json"), "label": label, "max_asks": MAX_ASKS})
+
+    @router.get("/api/grill/drafts")
+    def list_drafts() -> dict[str, dict[str, AnswerDraft]]:  # pyright: ignore[reportUnusedFunction]
+        return {"drafts": drafts.all()}
+
+    @router.put("/api/grill/drafts/{question_id}")
+    def put_draft(question_id: str, draft: AnswerDraft) -> AnswerDraft:  # pyright: ignore[reportUnusedFunction]
+        # Checked under the drafts lock, like submit, so a submit cannot answer the question
+        # between this check and the write.
+        with drafts.held():
+            question = store.get().question(question_id)
+            if question.answer is not None:
+                raise GrillError([f"question '{question_id}' is already answered"], missing=True)
+            if draft.kind == "ask" and question.asks() >= MAX_ASKS:
+                used = f"question '{question_id}' has used its {MAX_ASKS} asks back"
+                raise GrillError([f"{used}; pick or write one"])
+            return drafts.put(question_id, draft)
+
+    @router.delete("/api/grill/drafts/{question_id}", status_code=204)
+    def discard_draft(question_id: str) -> Response:  # pyright: ignore[reportUnusedFunction]
+        drafts.discard(question_id)
+        return Response(status_code=204)
+
+    @router.post("/api/grill/submit")
+    async def submit() -> dict[str, Any]:  # pyright: ignore[reportUnusedFunction]
+        # Drafts stay locked for the whole submit so an edit cannot land in between and be
+        # lost. Lock order: drafts, then grill.json (the store takes its own lock).
+        with drafts.held():
+            answers = [
+                SubmittedAnswer(question_id=qid, **draft.model_dump())
+                for qid, draft in drafts.all().items()
+            ]
+            store.submit(answers)
+            drafts.clear({a.question_id for a in answers})
+        sent = [a.model_dump(exclude_none=True) for a in answers]
+        await events.send({"type": "grill_submitted", "answers": sent})
+        return {"answers": sent}
+
+    @router.post("/api/grill/confirm")
+    async def confirm() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
+        store.confirm()
+        await events.send({"type": "grill_confirmed"})
+        return {"confirmed": True}
+
+    @router.post("/api/grill/reopen")
+    async def reopen(body: Reopen) -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
+        store.reopen(body.text)
+        await events.send({"type": "grill_reopened", "text": body.text})
+        return {"reopened": True}
+
+    return router

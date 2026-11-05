@@ -22,6 +22,19 @@ def ensure_work_dir(root: Path, run_id: str) -> Path:
     return work
 
 
+def preferences_path(root: Path) -> Path:
+    """Where `.claude/work/preferences.json` is, without creating anything."""
+    return root / ".claude" / "work" / "preferences.json"
+
+
+def preferences_file(root: Path) -> Path:
+    """`.claude/work/preferences.json`, with the folder and its `.gitignore` in place."""
+    folder = root / ".claude" / "work"
+    folder.mkdir(parents=True, exist_ok=True)
+    _ignore_work_folder(folder)
+    return preferences_path(root)
+
+
 def new_prompt_work_dir(root: Path, name: str, today: date) -> Path:
     """A new folder `<name>-<date>`, or `<name>-<date>-2`, `-3`, ... when that one exists."""
     base = f"{name}-{today.isoformat()}"

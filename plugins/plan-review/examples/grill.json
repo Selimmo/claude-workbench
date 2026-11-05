@@ -1,0 +1,82 @@
+{
+  "title": "Add hints to the quiz",
+  "rounds": [
+    {
+      "n": 1,
+      "questions": [
+        {
+          "id": "q-hint-cost",
+          "title": "What does a hint cost the player?",
+          "explanation": "A hint can be free, cost points, or be limited per game. This sets how the score is kept.",
+          "choices": [
+            { "id": "points", "label": "Costs points", "description": "Each hint takes 2 points off the question." },
+            { "id": "free", "label": "Free", "description": "Hints never change the score." }
+          ],
+          "updated": true,
+          "thread": [
+            { "author": "owner", "text": "Do hints work on timed questions?", "at": "2026-11-05T09:10:00Z" },
+            { "author": "claude", "text": "Yes. The timer keeps running while a hint is open.", "at": "2026-11-05T09:11:00Z" }
+          ],
+          "answer": { "kind": "choice", "choice_id": "points", "text": "but never below zero", "at": "2026-11-05T09:12:00Z" }
+        },
+        {
+          "id": "q-hint-source",
+          "title": "Where do hints come from?",
+          "explanation": "Hints are written by hand with the question, or generated when asked for.",
+          "choices": [
+            { "id": "written", "label": "Written with the question", "description": "Authors add a hint when they add a question." },
+            { "id": "generated", "label": "Generated on request", "description": "A model writes the hint when the player asks." }
+          ],
+          "updated": false,
+          "thread": [],
+          "answer": { "kind": "own", "choice_id": null, "text": "Written, and the author can mark a question as hint-free.", "at": "2026-11-05T09:12:00Z" }
+        }
+      ]
+    },
+    {
+      "n": 2,
+      "questions": [
+        {
+          "id": "q-hint-limit",
+          "title": "How many hints per question?",
+          "explanation": "One hint keeps it simple; several give a way to step up from vague to exact.",
+          "choices": [
+            { "id": "one", "label": "One", "description": "A single hint per question." },
+            { "id": "three", "label": "Up to three", "description": "Each hint is more explicit than the last." }
+          ],
+          "updated": false,
+          "thread": [],
+          "answer": null
+        }
+      ]
+    }
+  ],
+  "decisions": [
+    { "id": "d1", "topic": "Scoring", "decision": "A hint costs 2 points", "choice": "Costs points", "why": null, "question_id": "q-hint-cost", "replaces": null },
+    { "id": "d2", "topic": "Content", "decision": "Hints are written with the question", "choice": "Authors write them", "why": "A model call per hint is too costly.", "question_id": "q-hint-source", "replaces": null },
+    { "id": "d3", "topic": "Scoring", "decision": "A hint costs 2 points, never below zero", "choice": "Costs points, floored at zero", "why": "A floor was asked for.", "question_id": "q-hint-cost", "replaces": "d1" }
+  ],
+  "out_of_scope": ["Hints for timed rounds", "Translating hints"],
+  "done": false,
+  "confirmed_at": null,
+  "log": [
+    {
+      "kind": "answers",
+      "answers": [
+        { "question_id": "q-hint-cost", "kind": "ask", "choice_id": null, "text": "Do hints work on timed questions?" },
+        { "question_id": "q-hint-source", "kind": "own", "choice_id": null, "text": "Written, and the author can mark a question as hint-free." }
+      ],
+      "text": null,
+      "at": "2026-11-05T09:10:00Z"
+    },
+    {
+      "kind": "answers",
+      "answers": [
+        { "question_id": "q-hint-cost", "kind": "choice", "choice_id": "points", "text": "but never below zero" }
+      ],
+      "text": null,
+      "at": "2026-11-05T09:12:00Z"
+    }
+  ],
+  "handled": 2
+}
