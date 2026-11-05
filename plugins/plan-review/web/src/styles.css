@@ -1138,6 +1138,22 @@ g[data-focused='true'] rect {
   }
 }
 
+.broken-files {
+  margin: 0 0 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--removed);
+  border-radius: 8px;
+  background: var(--removed-bg);
+  color: var(--removed);
+  font-size: 1rem;
+}
+
+.broken-files ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  overflow-wrap: anywhere;
+}
+
 /* What Claude is doing with the review. */
 .claude-banner {
   display: flex;
@@ -1222,6 +1238,7 @@ g[data-focused='true'] rect {
 }
 
 .grill-page > h1,
+.grill-page > .broken-files,
 .grill-page > .claude-banner,
 .grill-page > .confirm-bar,
 .grill-page > .approval {
@@ -1239,7 +1256,7 @@ g[data-focused='true'] rect {
     align-self: start;
   }
 
-  .grill-page > :not(.decisions-panel, h1, .claude-banner, .confirm-bar, .approval) {
+  .grill-page > :not(.decisions-panel, h1, .broken-files, .claude-banner, .confirm-bar, .approval) {
     grid-column: 1;
   }
 }

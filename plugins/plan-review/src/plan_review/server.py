@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from plan_review.approval import approval_routes
 from plan_review.drafts import DraftNotFound, DraftStore
 from plan_review.events import ClaudeEvents, Subscribers
+from plan_review.file_errors import BrokenFile
 from plan_review.grill import GrillError, GrillStore
 from plan_review.grill_drafts import GrillDraftStore
 from plan_review.grill_routes import grill_routes
@@ -73,6 +74,10 @@ def _error_handlers(app: FastAPI) -> None:
     async def grill_refused(_: Request, error: GrillError) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
         status = 404 if error.missing else 409 if error.conflict else 422
         return JSONResponse({"errors": error.errors}, status_code=status)
+
+    @app.exception_handler(BrokenFile)
+    async def broken_file(_: Request, error: BrokenFile) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
+        return JSONResponse({"errors": error.errors}, status_code=422)
 
     @app.exception_handler(BlankComment)
     async def blank(_: Request, error: BlankComment) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]

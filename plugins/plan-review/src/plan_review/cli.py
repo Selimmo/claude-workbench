@@ -15,11 +15,12 @@ from fastapi import FastAPI
 from pydantic import ValidationError
 
 from plan_review.decisions_md import decisions_markdown
+from plan_review.file_errors import BrokenFile, named_errors
 from plan_review.grill import GrillError, GrillStore
 from plan_review.grill_turn import Turn
 from plan_review.orchestration import MalformedReview, branch_name, tree_hash, verdict
 from plan_review.pipeline import PipelineConfigError, load_pipeline
-from plan_review.plan import Plan, PlanFileError, load_plan, readable_errors, record_branch
+from plan_review.plan import Plan, PlanFileError, load_plan, record_branch
 from plan_review.prefs import GrillMode, grill_mode, load_preferences, record
 from plan_review.run_id import InvalidRunId, check_run_id, label
 from plan_review.server import create_app
@@ -171,7 +172,13 @@ def main(argv: list[str] | None = None) -> int:
         except InvalidRunId as error:
             print(error, file=sys.stderr)
             return 2
-    return run(args) if run else 0
+    if run is None:
+        return 0
+    try:
+        return run(args)
+    except BrokenFile as error:
+        print("\n".join(error.errors), file=sys.stderr)
+        return 1
 
 
 PIPELINE_FILE = Path(".claude", "pipeline.json")
@@ -210,10 +217,7 @@ def _prefs(setting: str, value: str | None) -> int:
     try:
         prefs_file = load_preferences(path)
     except ValidationError as error:
-        print(
-            "\n".join(f"{path.as_posix()}: {line}" for line in readable_errors(error)),
-            file=sys.stderr,
-        )
+        print("\n".join(named_errors(path, error)), file=sys.stderr)
         return 1
     chosen = grill_mode(config, prefs_file)
     if chosen is None:
@@ -360,12 +364,20 @@ def _status(run_id: str, text: str, *, done: bool, clear: bool) -> int:
             file=sys.stderr,
         )
         return 1
+    if not clear and not text.strip():
+        print("status text is empty", file=sys.stderr)  # before anything is moved aside
+        return 1
     store = StatusStore(work / "status.json")
-    if clear:
-        store.clear()
-        return 0
     try:
-        store.set(text, done=done)
+        moved = store.set_aside()
+        if moved:
+            print(
+                f"{store.path.as_posix()} was broken: moved to {moved.as_posix()}", file=sys.stderr
+            )
+        if clear:
+            store.clear()
+        else:
+            store.set(text, done=done)
     except ValueError as error:
         print(error, file=sys.stderr)
         return 1

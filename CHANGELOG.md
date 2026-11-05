@@ -4,6 +4,10 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
+### 0.1.10
+
+- A broken run file is named in its error. A bad `grill.json` or `plan.json` now reads `.claude/work/53/grill.json: Invalid JSON: ...` in the terminal and on the page, like `preferences.json` already did. The same goes for `comments.json`, `drafts.json`, `grill_drafts.json`, `status.json`, `last_event.json` and `approved.json`, which used to crash with a long technical error: a command prints the named lines and exits 1, and the viewer keeps the plan or the questions on screen under a red banner naming the broken file. plan-review only reports a broken file and never overwrites it, except `status.json` (only the status line): when Claude sets a new status over a broken one, it is renamed to `status.json.broken` first ([#55](https://github.com/Selimmo/claude-workbench/issues/55)).
+
 ### 0.1.9 (2026-11-05)
 
 - `/plan-review:ship --grill` can ask its questions on a page of its own: with `--grill=page` (or `grill` in `.claude/pipeline.json`, or a recorded preference set with `plan-review prefs grill page|chat`, or the answer to a one-time question) the grilling rounds move from the chat to `/grill` in the viewer. Pick a choice, write your own answer or ask back, submit the round at once, watch the decisions beside it, then confirm; `plan-review grill post|pending|decisions|schema` carry Claude's side. The chat grill is unchanged and stays the fallback ([#53](https://github.com/Selimmo/claude-workbench/issues/53)).

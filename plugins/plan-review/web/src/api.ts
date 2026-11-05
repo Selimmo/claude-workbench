@@ -2,7 +2,36 @@ import type { AnswerDraft, Grill } from './grill'
 import type { Plan } from './plan'
 import type { ClaudeStatus, Draft, LastEvent, Thread } from './threads'
 
-export type PlanResult = { ok: true; plan: Plan } | { ok: false; errors: string[] }
+export type PlanResult =
+  { ok: true; plan: Plan } | { ok: false; errors: string[]; missing: boolean; broken: boolean }
+
+/** A secondary file's content, with the lines naming it when the server says it is broken. */
+export interface Part<T> {
+  value: T
+  errors: string[]
+}
+
+/** No server, no such route or no file: the empty value and no errors; a 422 says what is broken. */
+/** The server's `errors` lines, or none for a body that has no such list. */
+function errorLines(body: unknown): string[] {
+  const errors = (body as { errors?: unknown } | null)?.errors
+  return Array.isArray(errors) ? (errors as string[]) : []
+}
+
+async function fetchPart<T>(
+  url: string,
+  pick: (body: unknown) => T | undefined,
+  empty: T,
+): Promise<Part<T>> {
+  try {
+    const response = await fetch(url)
+    const body: unknown = await response.json()
+    if (response.status === 422) return { value: empty, errors: errorLines(body) }
+    return { value: pick(body) ?? empty, errors: [] }
+  } catch {
+    return { value: empty, errors: [] }
+  }
+}
 
 export async function fetchPlan(): Promise<PlanResult> {
   let response: Response
@@ -12,11 +41,18 @@ export async function fetchPlan(): Promise<PlanResult> {
     return {
       ok: false,
       errors: ["Can't reach the plan-review server. Is `plan-review serve` still running?"],
+      missing: false,
+      broken: false,
     }
   }
   const body: unknown = await response.json()
   if (response.ok) return { ok: true, plan: body as Plan }
-  return { ok: false, errors: (body as { errors: string[] }).errors }
+  return {
+    ok: false,
+    errors: errorLines(body),
+    missing: response.status === 404,
+    broken: response.status === 422,
+  }
 }
 
 async function send(url: string, body?: object, method = 'POST'): Promise<unknown> {
@@ -32,25 +68,13 @@ async function send(url: string, body?: object, method = 'POST'): Promise<unknow
   return response.status === 204 ? null : response.json()
 }
 
-export async function fetchThreads(): Promise<Thread[]> {
-  // Threads are secondary to the plan: if they can't be loaded, show none rather than fail.
-  try {
-    const response = await fetch('/api/threads')
-    return ((await response.json()) as { threads?: Thread[] }).threads ?? []
-  } catch {
-    return []
-  }
-}
+// Threads are secondary to the plan: if they can't be loaded, show none rather than fail.
+export const fetchThreads = (): Promise<Part<Thread[]>> =>
+  fetchPart('/api/threads', (body) => (body as { threads?: Thread[] }).threads, [])
 
-export async function fetchDrafts(): Promise<Draft[]> {
-  // Like threads: if drafts can't be loaded (e.g. an older server), show none.
-  try {
-    const response = await fetch('/api/drafts')
-    return ((await response.json()) as { drafts?: Draft[] }).drafts ?? []
-  } catch {
-    return []
-  }
-}
+// Like threads: if drafts can't be loaded (e.g. an older server), show none.
+export const fetchDrafts = (): Promise<Part<Draft[]>> =>
+  fetchPart('/api/drafts', (body) => (body as { drafts?: Draft[] }).drafts, [])
 
 /** Comments and replies are drafts first; nothing reaches Claude until submitReview. */
 export const draftComment = async (anchor: string, text: string) =>
@@ -69,35 +93,21 @@ export async function submitReview(): Promise<number> {
 export const setResolved = async (id: string, resolved: boolean) =>
   void (await send(`/api/threads/${id}/${resolved ? 'resolve' : 'reopen'}`))
 
-export async function fetchStatus(): Promise<ClaudeStatus | null> {
-  try {
-    const response = await fetch('/api/status')
-    return ((await response.json()) as { status?: ClaudeStatus | null }).status ?? null
-  } catch {
-    return null
-  }
-}
+export const fetchStatus = (): Promise<Part<ClaudeStatus | null>> =>
+  fetchPart('/api/status', (body) => (body as { status?: ClaudeStatus | null }).status, null)
 
-export async function fetchApproval(): Promise<boolean> {
-  try {
-    const response = await fetch('/api/approve')
-    return ((await response.json()) as { approved: boolean }).approved === true
-  } catch {
-    return false
-  }
-}
+export const fetchApproval = (): Promise<Part<boolean>> =>
+  fetchPart('/api/approve', (body) => (body as { approved: boolean }).approved === true, false)
 
 export const approve = async () => void (await send('/api/approve'))
 
-export async function fetchLastEvent(): Promise<LastEvent | null> {
-  // Secondary, like status: an older server has no such route, so show nothing.
-  try {
-    const response = await fetch('/api/last-event')
-    return ((await response.json()) as { last_event?: LastEvent | null }).last_event ?? null
-  } catch {
-    return null
-  }
-}
+// Secondary, like status: an older server has no such route, so show nothing.
+export const fetchLastEvent = (): Promise<Part<LastEvent | null>> =>
+  fetchPart(
+    '/api/last-event',
+    (body) => (body as { last_event?: LastEvent | null }).last_event,
+    null,
+  )
 
 /** Sends the last event to Claude again, unless Claude already answered it. */
 export const resend = async () =>
@@ -117,14 +127,12 @@ export async function fetchGrill(): Promise<GrillResult | null> {
   }
 }
 
-export async function fetchGrillDrafts(): Promise<Record<string, AnswerDraft>> {
-  try {
-    const response = await fetch('/api/grill/drafts')
-    return ((await response.json()) as { drafts?: Record<string, AnswerDraft> }).drafts ?? {}
-  } catch {
-    return {}
-  }
-}
+export const fetchGrillDrafts = (): Promise<Part<Record<string, AnswerDraft>>> =>
+  fetchPart(
+    '/api/grill/drafts',
+    (body) => (body as { drafts?: Record<string, AnswerDraft> }).drafts,
+    {},
+  )
 
 export const saveGrillDraft = async (questionId: string, draft: AnswerDraft) =>
   void (await send(`/api/grill/drafts/${questionId}`, draft, 'PUT'))

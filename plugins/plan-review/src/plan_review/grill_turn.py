@@ -2,8 +2,8 @@
 
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
+from plan_review.file_errors import readable_errors
 from plan_review.grill import Choice, Decision, GrillError, GrillState, Question, Round
-from plan_review.plan import readable_errors
 from plan_review.threads import Message
 
 

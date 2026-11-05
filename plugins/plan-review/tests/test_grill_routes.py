@@ -255,3 +255,53 @@ def test_a_draft_cannot_land_on_a_question_a_submit_has_just_answered(
 
     assert status == [404]
     assert drafts.all() == {}
+
+
+def test_the_server_names_run_files_by_their_project_relative_path_as_serve_does(
+    tmp_path: Path, static_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)  # `plan-review serve` runs from the project root
+    work = Path(".claude/work/42")
+    (tmp_path / work).mkdir(parents=True)
+    issue = {"id": "42", "kind": "issue", "title": "x"}
+    (tmp_path / work / "plan.json").write_text(json.dumps({"issue": issue}))
+    for name in ("grill.json", "comments.json"):
+        (tmp_path / work / name).write_text("{bad")
+    client = TestClient(create_app(work / "plan.json", static_dir))
+    bad_json = "Invalid JSON: key must be a string at line 1 column 2"
+
+    expected = {
+        "/api/grill": f".claude/work/42/grill.json: {bad_json}",
+        "/api/plan": ".claude/work/42/plan.json: summary: Field required",
+        "/api/threads": f".claude/work/42/comments.json: {bad_json}",
+    }
+    for url, line in expected.items():
+        response = client.get(url)
+        assert response.status_code == 422
+        assert response.json() == {"errors": [line]}
+
+
+def test_a_broken_grill_drafts_json_is_422_while_the_grill_still_loads(
+    work: Path, static_dir: Path, store: GrillStore
+) -> None:
+    post(store, title="Add hints", round=[question("q1")])
+    drafts = work / "grill_drafts.json"
+    drafts.write_bytes(b"{bad")
+    client = TestClient(create_app(work / "plan.json", static_dir))
+    named = {
+        "errors": [f"{drafts.as_posix()}: Invalid JSON: key must be a string at line 1 column 2"]
+    }
+
+    assert client.get("/api/grill").status_code == 200
+    responses = [
+        client.get("/api/grill/drafts"),
+        client.put("/api/grill/drafts/q1", json={"kind": "choice", "choice_id": "a"}),
+        client.delete("/api/grill/drafts/q1"),
+        client.post("/api/grill/submit"),
+    ]
+
+    for response in responses:
+        assert response.status_code == 422
+        assert response.json() == named
+    assert drafts.read_bytes() == b"{bad"
+    assert not (work / "last_event.json").exists()  # nothing was sent to Claude

@@ -12,22 +12,33 @@ import {
 } from './api'
 import type { AnswerDraft, Grill } from './grill'
 import { useClaude } from './useClaude'
+import { useFileErrors } from './useFileErrors'
 
 /** The grill page's live state, kept current by the server's update pushes. */
 export function useGrill() {
   const [grill, setGrill] = useState<Grill | null>(null)
   const [grillErrors, setGrillErrors] = useState<string[] | null>(null)
   const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>({})
-  const claude = useClaude()
+  const { errors: brokenFiles, report } = useFileErrors()
+  const claude = useClaude(report)
   const { refreshStatus, refreshLastEvent } = claude
   const [planReady, setPlanReady] = useState(false)
-  const refreshPlan = useCallback(async () => setPlanReady((await fetchPlan()).ok), [])
+  const refreshPlan = useCallback(async () => {
+    const plan = await fetchPlan()
+    setPlanReady(plan.ok)
+    // No plan yet is the normal case while grilling; one the server calls invalid is not.
+    report('plan', !plan.ok && plan.broken ? plan.errors : [])
+  }, [report])
   const refreshGrill = useCallback(async () => {
     const result = await fetchGrill()
     setGrill(result?.ok ? result.grill : null)
     setGrillErrors(result && !result.ok ? result.errors : null)
   }, [])
-  const refreshDrafts = useCallback(async () => setDrafts(await fetchGrillDrafts()), [])
+  const refreshDrafts = useCallback(async () => {
+    const part = await fetchGrillDrafts()
+    report('grill drafts', part.errors)
+    setDrafts(part.value)
+  }, [report])
 
   useEffect(() => {
     // Syncing with an external system (the server) is what effects are for.
@@ -58,6 +69,7 @@ export function useGrill() {
     ...claude,
     grill,
     grillErrors,
+    brokenFiles,
     drafts,
     planReady,
     saveDraft: async (questionId: string, draft: AnswerDraft) => {

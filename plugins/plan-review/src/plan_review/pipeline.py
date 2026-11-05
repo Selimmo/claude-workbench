@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from plan_review.plan import readable_errors
+from plan_review.file_errors import named_errors
 
 
 class _Strict(BaseModel):
@@ -49,6 +49,4 @@ def load_pipeline(path: Path) -> PipelineConfig:
     try:
         return PipelineConfig.model_validate_json(path.read_text())
     except ValidationError as error:
-        raise PipelineConfigError(
-            [f"{path.as_posix()}: {line}" for line in readable_errors(error)]
-        ) from error
+        raise PipelineConfigError(named_errors(path, error)) from error

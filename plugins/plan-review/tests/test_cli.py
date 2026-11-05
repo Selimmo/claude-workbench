@@ -83,9 +83,11 @@ def test_validate_reports_each_error_with_its_location(
     exit_code = main(["validate", write_plan(tmp_path, plan)])
 
     err = capsys.readouterr().err
+    path = Path(write_plan(tmp_path, plan)).as_posix()
     assert exit_code == 1
-    assert "issue: 'number' must be a whole number" in err
-    assert "sumary: Extra inputs are not permitted" in err
+    assert f"{path}: issue: 'number' must be a whole number" in err
+    assert f"{path}: sumary: Extra inputs are not permitted" in err
+    assert all(line.startswith(f"{path}: ") for line in err.splitlines())
 
 
 @pytest.mark.parametrize("issue", [5, None])
@@ -116,7 +118,10 @@ def test_validate_malformed_json_is_reported_not_raised(
     exit_code = main(["validate", str(path)])
 
     assert exit_code == 1
-    assert "Invalid JSON" in capsys.readouterr().err
+    assert (
+        capsys.readouterr().err
+        == f"{path.as_posix()}: Invalid JSON: key must be a string at line 1 column 2\n"
+    )
 
 
 class FakeServer:
@@ -784,6 +789,20 @@ def test_serve_with_an_invalid_plan_still_exits_1_even_with_a_grill(
     assert server.addresses == []
 
 
+def test_serve_with_an_invalid_plan_names_the_file(
+    project: Path, server: FakeServer, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (project / ".claude" / "work" / "7" / "plan.json").write_text("{bad")
+
+    assert main(["serve", "7"]) == 1
+
+    err = capsys.readouterr().err
+    assert err.splitlines() == [
+        ".claude/work/7/plan.json: Invalid JSON: key must be a string at line 1 column 2"
+    ]
+    assert server.addresses == []
+
+
 def test_grill_with_no_subcommand_prints_help_and_exits_2(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -800,4 +819,51 @@ def test_grill_pending_with_an_unreadable_grill_json_exits_1(
 
     assert main(["grill", "pending", "7"]) == 1
 
-    assert capsys.readouterr().err
+    assert capsys.readouterr().err == (
+        ".claude/work/7/grill.json: Invalid JSON: key must be a string at line 1 column 2\n"
+    )
+
+
+@pytest.mark.parametrize("argv", [["threads", "7"], ["reply", "7", "t-1", "hi"]])
+def test_commands_print_a_broken_files_named_lines_and_exit_1(
+    argv: list[str], project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    comments = project / ".claude" / "work" / "7" / "comments.json"
+    comments.write_bytes(b"{bad")
+
+    assert main(argv) == 1
+
+    err = capsys.readouterr().err
+    assert err == (
+        ".claude/work/7/comments.json: Invalid JSON: key must be a string at line 1 column 2\n"
+    )
+    assert comments.read_bytes() == b"{bad"
+
+
+@pytest.mark.parametrize("extra", [["working"], ["--clear"]])
+def test_status_over_a_broken_status_json_says_where_it_was_moved(
+    extra: list[str], project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    work = project / ".claude" / "work" / "7"
+    (work / "status.json").write_bytes(b"{bad")
+
+    assert main(["status", "7", *extra]) == 0
+
+    assert capsys.readouterr().err == (
+        ".claude/work/7/status.json was broken: moved to .claude/work/7/status.json.broken\n"
+    )
+    assert (work / "status.json.broken").read_bytes() == b"{bad"
+    assert (work / "status.json").exists() == (extra == ["working"])
+
+
+def test_blank_status_text_over_a_broken_status_json_moves_nothing(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    work = project / ".claude" / "work" / "7"
+    (work / "status.json").write_bytes(b"{bad")
+
+    assert main(["status", "7", "  "]) == 1
+
+    assert capsys.readouterr().err == "status text is empty\n"
+    assert (work / "status.json").read_bytes() == b"{bad"
+    assert not (work / "status.json.broken").exists()

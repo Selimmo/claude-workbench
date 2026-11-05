@@ -8,8 +8,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, TypeAdapter
 
+from plan_review.file_errors import read_file
 from plan_review.status import Status
 from plan_review.threads import write_atomically
 
@@ -19,16 +20,18 @@ class LastEvent(BaseModel):
     sent_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+_LastEvent = TypeAdapter(LastEvent)
+
+
 class LastEventStore:
     def __init__(self, path: Path) -> None:
         self._path = path
 
     def get(self) -> LastEvent | None:
-        if not self._path.is_file():
-            return None
-        return LastEvent.model_validate_json(self._path.read_bytes())
+        return read_file(self._path, _LastEvent)
 
     def keep(self, event: dict[str, Any]) -> LastEvent:
+        self.get()  # a broken file is reported, never replaced
         last = LastEvent(event=event)
         write_atomically(self._path, last.model_dump_json(indent=2).encode())
         return last
