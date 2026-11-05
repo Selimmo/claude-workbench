@@ -4,7 +4,7 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
-### 0.1.9
+### 0.1.9 (2026-11-05)
 
 - `/plan-review:ship --grill` can ask its questions on a page of its own: with `--grill=page` (or `grill` in `.claude/pipeline.json`, or a recorded preference set with `plan-review prefs grill page|chat`, or the answer to a one-time question) the grilling rounds move from the chat to `/grill` in the viewer. Pick a choice, write your own answer or ask back, submit the round at once, watch the decisions beside it, then confirm; `plan-review grill post|pending|decisions|schema` carry Claude's side. The chat grill is unchanged and stays the fallback ([#53](https://github.com/Selimmo/claude-workbench/issues/53)).
 
