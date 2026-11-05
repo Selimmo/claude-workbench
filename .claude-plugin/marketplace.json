@@ -10,8 +10,8 @@
       "name": "plan-review",
       "source": {
         "source": "archive",
-        "url": "https://github.com/Selimmo/claude-workbench/releases/download/plan-review--v0.1.9/plan-review-0.1.9.zip",
-        "sha256": "b4f8ae5d64c1b222b2fc000136fe8a88ae001fc736c6e8e7624e6bff49062eb7"
+        "url": "https://github.com/Selimmo/claude-workbench/releases/download/plan-review--v0.1.10/plan-review-0.1.10.zip",
+        "sha256": "4772efed6bb19702c76760779bb530f1f7fd09b0769e9925ce97d854685b00e0"
       },
       "description": "Review an agent's implementation plan as interactive diagrams, comment on any element, and approve it before agents implement and review the code.",
       "category": "engineering",
@@ -22,7 +22,7 @@
         "agents",
         "diagrams"
       ],
-      "version": "0.1.9"
+      "version": "0.1.10"
     }
   ]
 }
