@@ -1,10 +1,21 @@
 """The plan format: the contract between the architect agent and the viewer."""
 
+import json
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Literal, Self, cast
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    model_validator,
+)
+
+from plan_review.run_id import check_run_id
+from plan_review.threads import write_atomically
 
 Status = Literal["added", "modified", "removed", "unchanged"]
 
@@ -16,9 +27,27 @@ class _Strict(BaseModel):
 
 
 class Issue(_Strict):
-    number: int
+    id: Annotated[str, AfterValidator(check_run_id)]
+    kind: Literal["issue", "prompt"]
     title: str
     url: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reads_old_number(cls, data: Any) -> Any:
+        """Plans written before text ids had `number: 42`; read it as id `"42"`, kind issue."""
+        if not isinstance(data, dict):
+            return data
+        old = cast("dict[str, Any]", data)
+        if "number" not in old:
+            return old
+        number = old["number"]
+        if not isinstance(number, int) or isinstance(number, bool):
+            raise ValueError("'number' must be a whole number (or use 'id' and 'kind')")
+        if "id" in old or "kind" in old:
+            raise ValueError("'number' is the old form of 'id' and 'kind'; use only one")
+        rest = {k: v for k, v in old.items() if k != "number"}
+        return {"id": str(number), "kind": "issue", **rest}
 
 
 class Member(_Strict):
@@ -148,10 +177,12 @@ class Plan(_Strict):
     files: list[FileChange] = []
     tests: list[PlannedTest] = []
     risks: list[Risk] = []
+    acceptance_criteria: list[str] = []
+    branch: str | None = None
 
     def element_ids(self) -> list[str]:
         """Every commentable element's id, in document order."""
-        ids: list[str] = []
+        ids = [f"criterion:{n}" for n in range(1, len(self.acceptance_criteria) + 1)]
         for c in self.classes:
             ids += [c.id, *(m.id for m in c.members)]
         ids += [r.id for r in self.relations]
@@ -162,6 +193,12 @@ class Plan(_Strict):
             ids += [e.id for e in self.architecture.edges]
         ids += [x.id for x in (*self.files, *self.tests, *self.risks)]
         return ids
+
+    @model_validator(mode="after")
+    def _prompt_lists_its_criteria(self) -> Self:
+        if self.issue.kind == "prompt" and not self.acceptance_criteria:
+            raise ValueError("acceptance_criteria: a prompt plan must list its acceptance criteria")
+        return self
 
     @model_validator(mode="after")
     def _ids_are_unique(self) -> Self:
@@ -217,3 +254,10 @@ def readable_errors(error: ValidationError) -> list[str]:
         message = e["msg"].removeprefix("Value error, ")  # pydantic's wrapper adds nothing
         lines.append(f"{where}: {message}" if where else message)
     return lines
+
+
+def record_branch(path: Path, branch: str) -> None:
+    """Set `branch` in the plan file, leaving the rest as the architect wrote it."""
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["branch"] = branch
+    write_atomically(path, (json.dumps(raw, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))

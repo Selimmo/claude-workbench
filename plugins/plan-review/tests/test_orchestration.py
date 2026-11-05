@@ -8,7 +8,8 @@ import pytest
 from conftest import WindowsStylePath
 
 from plan_review.cli import main
-from plan_review.orchestration import MalformedReview, slugify, tree_hash, verdict
+from plan_review.orchestration import MalformedReview, branch_name, slugify, tree_hash, verdict
+from plan_review.plan import Issue, load_plan
 
 EXAMPLE = Path(__file__).parents[1] / "examples" / "plan.json"
 
@@ -53,9 +54,23 @@ def test_slug_is_the_titles_first_five_words_lowercased_and_dashed(title: str, s
     assert slugify(title) == slug
 
 
-def test_branch_follows_the_pipeline_pattern(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_an_issue_branch_follows_the_pattern_with_the_text_id() -> None:
+    issue = Issue(id="PROJ-123", kind="issue", title="Add dark mode")
+
+    assert branch_name("PROJ-123", issue, "feat/{issue}-{slug}") == "feat/PROJ-123-add-dark-mode"
+
+
+@pytest.mark.parametrize("pattern", ["{issue}-{slug}", "feat/{issue}-{slug}"])
+def test_a_prompt_branch_is_its_id_whatever_the_pattern(pattern: str) -> None:
+    run_id = "add-dark-mode-2026-11-05"
+    prompt = Issue(id=run_id, kind="prompt", title="Add dark mode")
+
+    assert branch_name(run_id, prompt, pattern) == run_id
+
+
+@pytest.fixture
+def branch_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A project root (the cwd) with the example plan for issue 42 and a branch pattern."""
     monkeypatch.chdir(tmp_path)
     work = tmp_path / ".claude" / "work" / "42"
     work.mkdir(parents=True)
@@ -63,9 +78,47 @@ def test_branch_follows_the_pipeline_pattern(
     (tmp_path / ".claude" / "pipeline.json").write_text(
         json.dumps({"branch": "feat/{issue}-{slug}"})
     )
+    return work / "plan.json"
 
+
+def test_branch_follows_the_pipeline_pattern(
+    branch_project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     assert main(["branch", "42"]) == 0
     assert capsys.readouterr().out.strip() == "feat/42-let-candidates-request-a-hint"
+
+
+def test_branch_records_its_name_in_the_plan(
+    branch_project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    main(["branch", "42"])
+
+    assert load_plan(branch_project).branch == "feat/42-let-candidates-request-a-hint"
+
+
+def test_branch_reuses_the_recorded_branch(
+    branch_project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    raw = json.loads(branch_project.read_text())
+    branch_project.write_text(json.dumps({**raw, "branch": "old-name"}))
+    before = branch_project.read_text()
+
+    assert main(["branch", "42"]) == 0
+
+    assert capsys.readouterr().out.strip() == "old-name"
+    assert branch_project.read_text() == before
+
+
+def test_branch_reuses_the_recorded_branch_even_with_a_broken_pipeline(
+    branch_project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    raw = json.loads(branch_project.read_text())
+    branch_project.write_text(json.dumps({**raw, "branch": "old-name"}))
+    (branch_project.parents[2] / "pipeline.json").write_text('{"viewer": 3}')
+
+    assert main(["branch", "42"]) == 0
+
+    assert capsys.readouterr().out.strip() == "old-name"
 
 
 def git(repo: Path, *args: str) -> None:

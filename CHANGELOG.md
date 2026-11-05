@@ -4,6 +4,10 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
+### 0.1.8
+
+- `/plan-review:ship` takes any tracker issue or a plain prompt: a GitHub issue number or link, a Jira or Linear link or a bare key (read through the tracker's connector), or any other text as a prompt. It reads the input once into `.claude/work/<id>/issue.md`, and the agents read that file instead of calling `gh`. Runs are keyed by a text id (`42`, `PROJ-123`, `add-dark-mode-2026-11-05`) in every command; `plan-review init --prompt <name>` creates a dated run folder. A prompt run's plan carries `acceptance_criteria`, shown on their own first tab where each one can be commented on. `plan-review branch` records the branch in `plan.json` and the page shows it. `/ship` no longer comments on or closes anything in a tracker, and the commit references the issue without a closing keyword (unless the project's CLAUDE.md says otherwise). Plans with `issue.number` still load. Only the GitHub and prompt inputs are proven end to end. **If you copied the agents into `.claude/agents/`, copy them again**: the 0.1.7 copies still call `gh` ([#47](https://github.com/Selimmo/claude-workbench/issues/47), supersedes [#40](https://github.com/Selimmo/claude-workbench/issues/40)).
+
 ### 0.1.7 (2026-11-04)
 
 - Windows (with Git for Windows) is supported: files are locked with the `filelock` package, a write retries while another process has the file open, and CI runs the backend tests on Windows. `plan-review upgrade` also works with an npm-installed Claude Code on Windows. The minimum Python is now 3.15 and the minimum uv 0.13.0 ([#39](https://github.com/Selimmo/claude-workbench/issues/39)).

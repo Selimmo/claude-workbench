@@ -2,12 +2,14 @@
 
 import type { FileChange, Plan, Risk } from './plan'
 
-export type TabId = 'classes' | 'flows' | 'architecture' | 'files' | 'tests' | 'risks'
+export type TabId = 'criteria' | 'classes' | 'flows' | 'architecture' | 'files' | 'tests' | 'risks'
 
 export interface Tab {
   id: TabId
   label: string
 }
+
+const CRITERIA_TAB: Tab = { id: 'criteria', label: 'Acceptance criteria' }
 
 const TABS: Tab[] = [
   { id: 'classes', label: 'Classes' },
@@ -18,8 +20,19 @@ const TABS: Tab[] = [
   { id: 'risks', label: 'Risks & open questions' },
 ]
 
+/** A run's label, as the CLI prints it: `#42` for an all-digit id, otherwise the id itself. */
+export function issueLabel(id: string): string {
+  return /^\d+$/.test(id) ? `#${id}` : id
+}
+
+export const criteriaOf = (plan: Plan): string[] => plan.acceptance_criteria ?? []
+
+/** The element id of the criterion at `index` (0-based), as the plan numbers them from 1. */
+export const criterionId = (index: number): string => `criterion:${index + 1}`
+
 export function tabsFor(plan: Plan): Tab[] {
-  return TABS.filter((tab) => tab.id !== 'architecture' || plan.architecture !== null)
+  const tabs = TABS.filter((tab) => tab.id !== 'architecture' || plan.architecture !== null)
+  return criteriaOf(plan).length > 0 ? [CRITERIA_TAB, ...tabs] : tabs
 }
 
 const FILE_KINDS = ['code', 'test', 'config', 'doc'] as const
@@ -55,6 +68,7 @@ export function risksByKind(plan: Plan): { risks: Risk[]; questions: Risk[] } {
 
 function idsOnTab(plan: Plan): Record<TabId, string[]> {
   return {
+    criteria: criteriaOf(plan).map((_, index) => criterionId(index)),
     classes: [
       ...plan.classes.flatMap((c) => [c.id, ...c.members.map((m) => m.id)]),
       ...plan.relations.map((r) => r.id),

@@ -13,16 +13,16 @@ You are the code reviewer in an issue → plan → TDD → review pipeline. The 
 
 ## Inputs
 
-- The issue and its acceptance criteria: `gh issue view <issue>`.
-- The approved plan: `.claude/work/<issue>/plan.json`.
-- The implementer's report: `.claude/work/<issue>/impl-report.md`.
+- The issue and its acceptance criteria: `.claude/work/<id>/issue.md` (the orchestrator read it from the tracker, or it is the owner's prompt). For a prompt run the plan's `acceptance_criteria` are the criteria to check; otherwise use the criteria in `issue.md`.
+- The approved plan: `.claude/work/<id>/plan.json`.
+- The implementer's report: `.claude/work/<id>/impl-report.md`.
 - The change: `git diff` against the branch point (`git merge-base HEAD <default branch>`) plus untracked files from `git status`.
 - The project's rules: `CLAUDE.md` (or `AGENTS.md`); `plan-review config` gives the check commands (`checks`) and extra rules (`review_rules`).
 
 ## What to check
 
 1. **Correctness.** Bugs, unhandled errors, wrong edge-case behaviour, races, resource leaks, security problems (injection, secrets, unsafe defaults). For each finding, give the concrete input that breaks it.
-2. **Scope.** The change does what the issue and plan say, and nothing else. Name files changed that the plan doesn't list, and acceptance criteria that aren't met. Deviations the implementer reported are fine only if they are justified.
+2. **Scope.** The change does what the issue (or the plan's `acceptance_criteria`) and plan say, and nothing else. Name files changed that the plan doesn't list, and acceptance criteria that aren't met. Deviations the implementer reported are fine only if they are justified.
 3. **The project's rules.** Every rule in `CLAUDE.md` and every `review_rules` entry. Quote the rule a finding breaks.
 4. **Fit.** It reads like the surrounding code (naming, structure, comment density), with no dead code and no needless abstraction.
 5. **Docs.** The README and other docs are updated where the project's rules require it.

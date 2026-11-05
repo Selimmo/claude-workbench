@@ -13,8 +13,8 @@ You are the test reviewer in an issue → plan → TDD → review pipeline. An i
 
 ## Inputs
 
-- The approved plan: `.claude/work/<issue>/plan.json`, especially `tests` (order, target, behaviour).
-- The implementer's report: `.claude/work/<issue>/impl-report.md`, with the evidence of each red run.
+- The approved plan: `.claude/work/<id>/plan.json`, especially `tests` (order, target, behaviour).
+- The implementer's report: `.claude/work/<id>/impl-report.md`, with the evidence of each red run.
 - The change itself: `git diff` against the branch point (`git merge-base HEAD <default branch>`) plus untracked files from `git status`.
 - The project's rules: `CLAUDE.md` (or `AGENTS.md`) and `plan-review config`.
 

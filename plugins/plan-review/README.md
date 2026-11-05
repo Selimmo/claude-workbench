@@ -6,7 +6,7 @@ Review an agent's implementation plan as interactive diagrams, comment on any el
 
 ## Install
 
-Runs on macOS, Linux, or Windows with [Git for Windows](https://gitforwindows.org/). You need [Claude Code](https://claude.com/claude-code) v2.1.292 or later, `git` (Claude Code clones the marketplace from GitHub), [uv](https://docs.astral.sh/uv/) 0.13.0 or later and [`gh`](https://cli.github.com/), logged in (`/plan-review:ship` reads the issue and posts the approved plan); nothing else: no clone, no build, no Node.js.
+Runs on macOS, Linux, or Windows with [Git for Windows](https://gitforwindows.org/). You need [Claude Code](https://claude.com/claude-code) v2.1.292 or later, `git` (Claude Code clones the marketplace from GitHub), [uv](https://docs.astral.sh/uv/) 0.13.0 or later and, only for GitHub issues, [`gh`](https://cli.github.com/), logged in (`/plan-review:ship` reads the issue with it; Jira and Linear issues are read through your Claude Code connector for them); nothing else: no clone, no build, no Node.js.
 
 ```bash
 claude plugin install plan-review --marketplace Selimmo/claude-workbench
@@ -16,7 +16,7 @@ This adds the `claude-workbench` marketplace and installs the latest release: a 
 
 **Coming from a local clone's marketplace?** It is also named `claude-workbench`, so remove it first: `claude plugin marketplace remove claude-workbench` (this uninstalls its plan-review), then run the install command above.
 
-Then run `/plan-review:ship <issue>` in your project, optionally with a `.claude/pipeline.json` (see below). There is no other setup: plan-review keeps its files in `.claude/work/`, and creates `.claude/work/.gitignore` (`*`) the first time it writes there, so they are never committed.
+Then run `/plan-review:ship <issue number, issue link or prompt>` in your project, optionally with a `.claude/pipeline.json` (see below). There is no other setup: plan-review keeps its files in `.claude/work/`, and creates `.claude/work/.gitignore` (`*`) the first time it writes there, so they are never committed.
 
 ### Upgrade
 
@@ -33,6 +33,8 @@ Claude Code keeps a copy of each installed version and only fetches a new one wh
 ```bash
 plan-review --version
 plan-review init 42              # create .claude/work/42/ (and .claude/work/.gitignore); /ship runs it first
+plan-review init PROJ-123        # a run id is an issue number or key: letters, digits, '.', '_' and '-'
+plan-review init --prompt add-dark-mode   # a prompt run: creates .claude/work/add-dark-mode-<today>/ (-2, -3, ... if taken)
 plan-review upgrade              # update the installed plugin to its latest release
 plan-review schema               # print the plan.json JSON Schema
 plan-review validate plan.json   # check a plan; exit 0 = valid, 1 = invalid, 2 = file not found
@@ -42,14 +44,14 @@ plan-review config               # this project's pipeline settings, defaults fi
 plan-review threads 42           # open comment threads, as JSON (for Claude)
 plan-review reply 42 t-1a2b3c4d "Because ..."   # answer a thread as Claude
 plan-review status 42 "Answering questions"     # tell the owner what Claude is doing (--done when finished, --clear to remove)
-plan-review branch 42            # branch name from pipeline.json's pattern and the plan title
+plan-review branch 42            # the branch: the one recorded in plan.json, else made from pipeline.json's pattern and the plan title, and recorded there
 plan-review verdict review.md    # a review's last line: exit 0 PASS, 1 FINDINGS, 2 malformed
 plan-review tree-hash            # fingerprint of uncommitted changes (gitignored files excluded)
 ```
 
 ### `serve`
 
-Run it from the project root. It reads `.claude/work/<issue>/plan.json`, refuses to start if the plan is missing or invalid, and serves the viewer on `127.0.0.1` (never other interfaces) on a free port. It prints `plan-review: issue #42 at http://127.0.0.1:<port>/` and opens your default browser.
+Run it from the project root. It reads `.claude/work/<id>/plan.json`, refuses to start if the plan is missing or invalid, and serves the viewer on `127.0.0.1` (never other interfaces) on a free port. It prints `plan-review: #42 at http://127.0.0.1:<port>/` (`plan-review: PROJ-123 at ...` for a key) and opens your default browser.
 
 `--open browser|none` decides whether the browser opens. Without it, `viewer.open` in the project's `.claude/pipeline.json` decides, and the default is `browser`:
 
@@ -114,24 +116,26 @@ The page has a theme switch (top right): **Auto** follows your OS, or pick **Lig
 
 ### Comment threads
 
-Threads live in `.claude/work/<issue>/comments.json`, next to the plan; unsent drafts in `drafts.json` beside it (the CLI and Claude never read them). Every read-modify-write of these files holds an OS file lock (a `<file>.lock` sibling), so the server and `plan-review reply` never lose each other's updates. Each thread is anchored to a plan element id (such as `class:HintPolicy`), to the plan's header (`header:title`, `header:summary`) or to a whole tab (`tab:classes`, `tab:flows`, `tab:architecture`, `tab:files`, `tab:tests`, `tab:risks`), and holds ordered messages from `owner` or `claude` plus a `resolved` flag. The page writes as the owner; Claude answers with `plan-review reply`, never by editing the file. A thread whose element disappears from a revised plan is **orphaned**: kept, and shown separately. Header and tab threads never orphan.
+Threads live in `.claude/work/<id>/comments.json`, next to the plan; unsent drafts in `drafts.json` beside it (the CLI and Claude never read them). Every read-modify-write of these files holds an OS file lock (a `<file>.lock` sibling), so the server and `plan-review reply` never lose each other's updates. Each thread is anchored to a plan element id (such as `class:HintPolicy`), to the plan's header (`header:title`, `header:summary`) or to a whole tab (`tab:criteria`, `tab:classes`, `tab:flows`, `tab:architecture`, `tab:files`, `tab:tests`, `tab:risks`), and holds ordered messages from `owner` or `claude` plus a `resolved` flag. The page writes as the owner; Claude answers with `plan-review reply`, never by editing the file. A thread whose element disappears from a revised plan is **orphaned**: kept, and shown separately. Header and tab threads never orphan.
 
 `validate` prints one line per problem, as `location: message`:
 
 ```
-issue.number: Input should be a valid integer, unable to parse string as an integer
+issue.kind: Field required
 sumary: Extra inputs are not permitted
 rel:orch-llm: 'to' points at unknown class id 'class:LLM'
 ```
 
 ## The plan format (`plan.json`)
 
-The architect agent writes it and the viewer renders it. [`examples/plan.json`](examples/plan.json) uses every part of the format.
+The architect agent writes it and the viewer renders it. [`examples/plan.json`](examples/plan.json) uses every part of the format for an issue, and [`examples/prompt-plan.json`](examples/prompt-plan.json) is a prompt run with `acceptance_criteria` and `branch`.
 
 | Section | What it holds | Shown on tab |
 |---|---|---|
-| `issue` | `number`, `title`, optional `url` | header |
+| `issue` | `id` (the run id), `kind` (`issue` or `prompt`), `title`, optional `url`. An old `number: 42` still loads, as id `"42"`, kind `issue` | header |
 | `summary` | one paragraph: what changes and why | header |
+| `acceptance_criteria` | a list of strings, required when `issue.kind` is `prompt`. Numbered from 1; each is commentable as `criterion:<n>` | Acceptance criteria (first tab, only when present) |
+| `branch` | optional: the branch name; `plan-review branch` records it | header |
 | `classes` | `id`, `name`, `kind` (class, dataclass, protocol, enum, interface, function, module, type), `status`, `members` (`id`, `signature`, `status`) | Classes |
 | `relations` | `id`, `from`, `to` (class ids), `kind` (inherits, implements, uses, creates, contains, depends_on), `status` | Classes |
 | `flows` | `kind: "sequence"`: `participants` and ordered `steps` (`from`, `to`, `label`); `kind: "flowchart"`: `nodes` and `edges` (optional `label`) | Flows |
@@ -143,6 +147,7 @@ The architect agent writes it and the viewer renders it. [`examples/plan.json`](
 Rules:
 
 - **`status`** is `added`, `modified`, `removed` or `unchanged`; the viewer colours elements by it.
+- **Criteria are numbered by position** (`criterion:1`, ...), so a revision should append criteria and keep existing ones in place; a comment on a removed row becomes orphaned.
 - **Every element has an `id`, unique across the whole plan.** Comment threads attach to ids, so keep an element's id stable when revising a plan. Prefixes such as `class:`, `flow:`, `test:` are a convention, not a rule.
 - **References must exist:** relation ends, flow step and edge ends (within their own flow), architecture edge ends, and test targets.
 - **Unknown fields are errors**, so typos are caught rather than ignored.
@@ -160,17 +165,17 @@ plan-review threads 7      # read the comments from scripts or other agents
 
 Use as much or as little of the rest as you like.
 
-## The pipeline: `/plan-review:ship <issue>`
+## The pipeline: `/plan-review:ship <issue number, issue link or prompt>`
 
-One command takes an issue to a reviewed commit:
+One command takes an issue, or a plain prompt, to a reviewed commit. The input can be a GitHub issue (`42`, `#42` or its link), a Jira or Linear link or a bare key such as `PROJ-123` (read through the connector Claude Code has for that tracker), or any other text, which is a prompt. Only the GitHub and prompt inputs are proven end to end. `/ship` reads the issue once, with its comments, into `.claude/work/<id>/issue.md` (a prompt is written there exactly as given); the agents read that file and never call a tracker. The run id `<id>` names the work folder: `42`, `PROJ-123`, or `<prompt name>-<date>`.
 
-0. **Settle decisions (optional).** Anything already decided can go in `.claude/work/<issue>/decisions.md`: notes, a doc, the outcome of any discussion. The architect treats it as settled. With `/ship <issue> --grill`, `/ship` first runs Matt Pocock's [`grilling`](https://github.com/mattpocock/skills) skill, if you have it, and saves the outcome there.
-1. **Plan.** The `architect` writes `.claude/work/<issue>/plan.json`.
+0. **Settle decisions (optional).** Anything already decided can go in `.claude/work/<id>/decisions.md`: notes, a doc, the outcome of any discussion. The architect treats it as settled. With `/ship <input> --grill`, `/ship` first runs Matt Pocock's [`grilling`](https://github.com/mattpocock/skills) skill, if you have it, and saves the outcome there.
+1. **Plan.** The `architect` writes `.claude/work/<id>/plan.json`. For a prompt run it also writes the `acceptance_criteria`, which you approve with the plan; they open as the first tab.
 2. **Review.** The viewer opens. Your comments and replies are drafts until you press **Submit review**; the submitted review wakes Claude through the `/events` socket: questions are answered in the thread, change requests go back to the architect, the page updates live, and a banner shows what Claude is doing (or offers Resend if it hears nothing). Approve when no draft is left unsent and every thread is resolved.
-3. **Branch.** Named by `plan-review branch`.
+3. **Branch.** Named by `plan-review branch` and recorded in `plan.json`; the viewer shows it the next time it opens. A prompt run's branch is its id.
 4. **Implement and review the tests.** `implementer` ⇄ `test-reviewer` until `VERDICT: PASS`.
 5. **Review the code.** `implementer` ⇄ `code-reviewer` until `VERDICT: PASS`. Each loop stops and asks you after `max_review_rounds`, and a review that changed files (detected by `plan-review tree-hash` before and after) is discarded.
-6. **Hand back.** You get a summary. Claude commits with `Closes #<issue>` only after your OK, and posts the approved plan on the issue. Nothing is pushed or merged unless you ask.
+6. **Hand back.** You get a summary. Claude commits only after your OK, referencing the issue without a closing keyword (`Refs #42`, or `PROJ-123`; nothing for a prompt) unless your CLAUDE.md says otherwise. Nothing is written to the tracker, and nothing is pushed or merged unless you ask.
 
 Every pass or fail decision goes through `plan-review verdict` and `tree-hash`, not Claude's own reading.
 
@@ -180,14 +185,14 @@ The plugin ships four subagents. Claude Code lists them as `plan-review:<name>`.
 
 | Agent | Model | Can edit files? | Job |
 |---|---|---|---|
-| `architect` | Opus | writes only `plan.json` | Reads the issue, `decisions.md` (if any), the project's rules and code; writes or revises `.claude/work/<issue>/plan.json` and validates it. In revise mode it keeps element ids stable so comment threads stay attached. |
+| `architect` | Opus | writes only `plan.json` | Reads `issue.md`, `decisions.md` (if any), the project's rules and code; writes or revises `.claude/work/<id>/plan.json` and validates it. In revise mode it keeps element ids stable so comment threads stay attached. |
 | `implementer` | Sonnet | yes | Works through the plan's `tests` in order with strict TDD (red for the right reason, minimal green, refactor), runs the checks, and writes `impl-report.md` with the evidence of each red run. Fixes review findings in later rounds. Never commits. |
 | `test-reviewer` | Opus | no | Checks the plan's tests exist, one behaviour per test, the red evidence, no untested code, edge cases. Ends with `VERDICT: PASS` or `VERDICT: FINDINGS`. |
 | `code-reviewer` | Opus | no | Checks correctness, scope against the issue and plan, the project's rules, docs, and runs every configured check. Same verdict line. |
 
 No agent can start other agents. The reviewers have no edit tools; because they keep Bash to run tests, the orchestrator also compares the working tree before and after each review and discards a review that changed anything.
 
-**Your own copies.** To commit the agents in a project and adapt them, copy them in: `cp <clone>/plugins/plan-review/agents/*.md .claude/agents/`. `/ship` then uses the project's `architect`, `implementer`, `test-reviewer` and `code-reviewer` in place of the plugin's, role by role, for any role whose file exists. Keep each file's frontmatter `name` the same as its file name, and keep the reviewers' last-line verdict format, because `/ship` reads it with `plan-review verdict`.
+**Your own copies.** To commit the agents in a project and adapt them, copy them in: `cp <clone>/plugins/plan-review/agents/*.md .claude/agents/`. `/ship` then uses the project's `architect`, `implementer`, `test-reviewer` and `code-reviewer` in place of the plugin's, role by role, for any role whose file exists. Copy them again after you upgrade: copies from 0.1.7 still call `gh` and expect an issue number. Keep each file's frontmatter `name` the same as its file name, and keep the reviewers' last-line verdict format, because `/ship` reads it with `plan-review verdict`.
 
 Every project-specific rule comes from the project itself: its `CLAUDE.md` (or `AGENTS.md`) and `.claude/pipeline.json`.
 
@@ -199,6 +204,6 @@ All fields are optional. `plan-review config` prints the resolved settings, and 
 |---|---|---|
 | `checks` | `[]` | `{"name", "run"}` commands the implementer and code reviewer run from the project root; each must pass |
 | `review_rules` | `[]` | extra rules the code reviewer enforces, in plain words |
-| `branch` | `"{issue}-{slug}"` | the branch name for an issue; must contain `{issue}` |
+| `branch` | `"{issue}-{slug}"` | the branch name for an issue; must contain `{issue}`, which is the run id (`42`, `PROJ-123`). A prompt run's branch is just its id |
 | `viewer.open` | `"browser"` | `"none"` to only print the viewer's URL |
 | `max_review_rounds` | `3` | review rounds before the orchestrator stops and asks you |

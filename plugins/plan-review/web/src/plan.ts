@@ -85,8 +85,11 @@ export interface Risk {
 }
 
 export interface Plan {
-  issue: { number: number; title: string; url?: string | null }
+  issue: { id: string; kind: 'issue' | 'prompt'; title: string; url?: string | null }
   summary: string
+  /** Absent in a plan served as written; read it through `viewModels`, which defaults it to []. */
+  acceptance_criteria?: string[]
+  branch?: string | null
   classes: PlanClass[]
   relations: Relation[]
   flows: Flow[]
