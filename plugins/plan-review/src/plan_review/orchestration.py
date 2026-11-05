@@ -6,6 +6,8 @@ import subprocess
 from pathlib import Path
 from typing import Literal
 
+from plan_review.plan import Issue
+
 Verdict = Literal["PASS", "FINDINGS"]
 
 
@@ -30,6 +32,13 @@ def slugify(title: str, words: int = 5) -> str:
     """A branch-safe slug: the title's first few words, lowercased, joined by dashes."""
     cleaned = re.sub(r"[^a-z0-9\s-]", "", title.lower())
     return "-".join(cleaned.split()[:words])
+
+
+def branch_name(run_id: str, issue: Issue, pattern: str) -> str:
+    """A prompt run's branch is its id (already dated and unique); an issue's follows `pattern`."""
+    if issue.kind == "prompt":
+        return run_id
+    return pattern.format(issue=run_id, slug=slugify(issue.title))
 
 
 def _git(repo: Path, *args: str) -> bytes:

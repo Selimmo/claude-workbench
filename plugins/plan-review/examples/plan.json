@@ -1,6 +1,7 @@
 {
   "issue": {
-    "number": 42,
+    "id": "42",
+    "kind": "issue",
     "title": "Let candidates request a hint during an interview",
     "url": "https://github.com/example/interview-app/issues/42"
   },

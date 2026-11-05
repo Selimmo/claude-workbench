@@ -4,6 +4,7 @@ import { architectureDiagram, classDiagram } from './diagram'
 import { CommentLayer } from './comments/CommentLayer'
 import { DiagramView } from './DiagramView'
 import type { Plan } from './plan'
+import { CriteriaTab } from './tabs/CriteriaTab'
 import { FilesTab } from './tabs/FilesTab'
 import { FlowsTab } from './tabs/FlowsTab'
 import { RisksTab } from './tabs/RisksTab'
@@ -13,7 +14,7 @@ import { ApprovalBar } from './ApprovalBar'
 import { HEADER_ANCHORS, threadsFor } from './threadGroups'
 import type { Live } from './useLive'
 import { useMarkElements, useMarkRevised } from './useMarkRevised'
-import { type TabId, tabOf, tabsFor } from './viewModels'
+import { type TabId, issueLabel, tabOf, tabsFor } from './viewModels'
 
 /** Rows in a list scroll into view; diagram elements are already in the fitted view. */
 const scrollToRow = (element: HTMLElement) =>
@@ -23,7 +24,7 @@ const scrollToRow = (element: HTMLElement) =>
 const DIAGRAM_TABS: TabId[] = ['classes', 'flows', 'architecture']
 
 export function PlanView({ plan, live }: { plan: Plan; live: Live }) {
-  const [active, setActive] = useState<TabId>('classes')
+  const [active, setActive] = useState<TabId>(() => tabsFor(plan)[0].id)
   const [fullSummary, setFullSummary] = useState(false)
   const tabs = tabsFor(plan)
   const {
@@ -58,8 +59,9 @@ export function PlanView({ plan, live }: { plan: Plan; live: Live }) {
       <ClaudeBanner status={status} lastEvent={lastEvent} onResend={resend} />
       <div className="header-row">
         <h1 data-element-id={HEADER_ANCHORS.title}>
-          #{plan.issue.number} {plan.issue.title}
+          {issueLabel(plan.issue.id)} {plan.issue.title}
         </h1>
+        {plan.branch && <code className="branch">{plan.branch}</code>}
         <ApprovalBar
           approved={approved}
           unresolved={threadsFor(threads, plan, active).unresolved}
@@ -121,6 +123,7 @@ export function PlanView({ plan, live }: { plan: Plan; live: Live }) {
         aria-labelledby={`tab-${active}`}
         data-fill={DIAGRAM_TABS.includes(active)}
       >
+        {active === 'criteria' && <CriteriaTab plan={plan} />}
         {active === 'classes' && <DiagramView diagram={classes} empty="No classes in this plan." />}
         {active === 'flows' && <FlowsTab plan={plan} focus={focus} />}
         {active === 'architecture' && (

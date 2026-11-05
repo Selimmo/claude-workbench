@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 
+import promptExample from '../../examples/prompt-plan.json'
 import { App } from './App'
 import { FakeServer } from './test/fakeServer'
 
@@ -234,4 +235,54 @@ test('changing tab clears the highlight of a test target', async () => {
 
   await screen.findByText('HintPolicy')
   expect(document.querySelector('[data-focused]')).toBeNull()
+})
+
+async function loadedPrompt() {
+  const server = new FakeServer()
+  server.plan = promptExample
+  server.install()
+  render(<App />)
+  await screen.findByRole('tablist')
+}
+
+test('a prompt plan opens on its acceptance criteria, each one commentable', async () => {
+  await loadedPrompt()
+
+  expect(screen.getAllByRole('tab')[0]).toHaveTextContent('Acceptance criteria')
+  expect(screen.getByRole('tab', { name: 'Acceptance criteria' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  const rows = within(screen.getByRole('tabpanel')).getAllByRole('listitem')
+  expect(rows.map((row) => row.textContent)).toEqual(promptExample.acceptance_criteria)
+  expect(rows.map((row) => row.getAttribute('data-element-id'))).toEqual([
+    'criterion:1',
+    'criterion:2',
+    'criterion:3',
+    'criterion:4',
+  ])
+  fireEvent.click(rows[1])
+  expect(screen.getByRole('dialog')).toHaveAccessibleName('New comment on criterion:2')
+})
+
+test('an issue plan still starts on Classes, with no criteria tab', async () => {
+  await loaded()
+
+  expect(screen.queryByRole('tab', { name: 'Acceptance criteria' })).toBeNull()
+  expect(screen.getByRole('tab', { name: 'Classes' })).toHaveAttribute('aria-selected', 'true')
+})
+
+test('the header shows the issue label, and the branch once there is one', async () => {
+  await loadedPrompt()
+
+  const heading = screen.getByRole('heading', { level: 1 })
+  expect(heading).toHaveTextContent('add-dark-mode-2026-11-05 Add a dark mode to the settings page')
+  expect(heading.textContent).not.toContain('#')
+  expect(screen.getByText('add-dark-mode-2026-11-05', { selector: '.branch' })).toBeInTheDocument()
+})
+
+test('with no branch yet, the header has no branch element', async () => {
+  await loaded()
+
+  expect(document.querySelector('.branch')).toBeNull()
 })

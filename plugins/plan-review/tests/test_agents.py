@@ -54,3 +54,39 @@ def test_no_agent_can_start_other_agents(name: str) -> None:
 def test_agents_work_unchanged_when_copied_into_a_project(name: str) -> None:
     # ${CLAUDE_PLUGIN_ROOT} is only substituted for the plugin's own copy (#30).
     assert "${CLAUDE_PLUGIN_ROOT}" not in (AGENTS / f"{name}.md").read_text()
+
+
+def body_of(name: str) -> str:
+    return (AGENTS / f"{name}.md").read_text()
+
+
+@pytest.mark.parametrize("name", ["architect", "implementer", "test-reviewer", "code-reviewer"])
+def test_no_agent_reads_the_issue_with_gh(name: str) -> None:
+    # /ship reads the issue once, from any tracker, into issue.md; agents only read that file.
+    assert "gh issue" not in body_of(name)
+
+
+@pytest.mark.parametrize("name", ["architect", "code-reviewer"])
+def test_the_agents_that_need_the_issue_read_issue_md(name: str) -> None:
+    assert ".claude/work/<id>/issue.md" in body_of(name)
+
+
+def test_the_architect_writes_criteria_for_a_prompt_and_the_reviewer_checks_them() -> None:
+    architect, reviewer = body_of("architect"), body_of("code-reviewer")
+
+    assert "acceptance_criteria" in architect
+    assert "prompt" in architect
+    assert "acceptance_criteria" in reviewer
+    assert "issue.md" in reviewer
+
+
+@pytest.mark.parametrize("name", ["architect", "implementer", "test-reviewer", "code-reviewer"])
+def test_agents_find_their_files_by_run_id(name: str) -> None:
+    text = body_of(name)
+
+    assert ".claude/work/<id>/" in text
+    assert ".claude/work/<issue>/" not in text
+
+
+def test_the_architect_leaves_branch_out_of_the_plan() -> None:
+    assert "leave `branch` out" in body_of("architect").lower()

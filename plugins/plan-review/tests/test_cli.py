@@ -3,6 +3,7 @@ import queue
 import socket
 import subprocess
 import threading
+from datetime import date
 from pathlib import Path
 from typing import IO
 
@@ -60,7 +61,10 @@ def write_plan(tmp_path: Path, plan: object) -> str:
     return str(path)
 
 
-VALID_PLAN = {"issue": {"number": 7, "title": "Add hints"}, "summary": "Hint button."}
+VALID_PLAN = {
+    "issue": {"id": "7", "kind": "issue", "title": "Add hints"},
+    "summary": "Hint button.",
+}
 
 
 def test_validate_accepts_a_valid_plan(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -79,8 +83,18 @@ def test_validate_reports_each_error_with_its_location(
 
     err = capsys.readouterr().err
     assert exit_code == 1
-    assert "issue.number: Input should be a valid integer" in err
+    assert "issue: 'number' must be a whole number" in err
     assert "sumary: Extra inputs are not permitted" in err
+
+
+@pytest.mark.parametrize("issue", [5, None])
+def test_validate_reports_an_issue_that_is_not_an_object(
+    issue: object, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    exit_code = main(["validate", write_plan(tmp_path, {**VALID_PLAN, "issue": issue})])
+
+    assert exit_code == 1
+    assert "issue:" in capsys.readouterr().err
 
 
 def test_validate_missing_file_exits_2_with_a_clear_message(
@@ -390,7 +404,7 @@ def test_paths_in_messages_use_forward_slashes_on_every_os(
 
     captured = capsys.readouterr()
     assert ".claude/work/8/plan.json: file not found" in captured.err
-    assert "no .claude/work/99/ for issue #99" in captured.err
+    assert "no .claude/work/99/ for #99" in captured.err
     assert captured.out == ".claude/work/42\n"
 
 
@@ -411,3 +425,179 @@ def test_a_pipeline_path_is_reported_with_forward_slashes(tmp_path: Path) -> Non
         load_pipeline(bad)
 
     assert error.value.errors[0].startswith(f"{(tmp_path / 'pipeline.json').as_posix()}: ")
+
+
+def key_project(project: Path) -> Path:
+    """The project with a second run, keyed `PROJ-123`, next to issue 7's."""
+    work = project / ".claude" / "work" / "PROJ-123"
+    work.mkdir()
+    plan = {**VALID_PLAN, "issue": {"id": "PROJ-123", "kind": "issue", "title": "Add hints"}}
+    (work / "plan.json").write_text(json.dumps(plan))
+    (project / ".claude" / "pipeline.json").write_text(json.dumps({"branch": "{issue}-{slug}"}))
+    return work
+
+
+def run_command(name: str, run_id: str) -> int:
+    commands = {
+        "init": ["init", run_id],
+        "serve": ["serve", run_id, "--open", "none"],
+        "threads": ["threads", run_id],
+        "reply": ["reply", run_id, "t-nope", "hi"],
+        "status": ["status", run_id, "Working"],
+        "branch": ["branch", run_id],
+    }
+    return main(commands[name])
+
+
+COMMANDS = ["init", "serve", "threads", "reply", "status", "branch"]
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected_out"),
+    [
+        (["init", "PROJ-123"], ".claude/work/PROJ-123\n"),
+        (["branch", "PROJ-123"], "PROJ-123-add-hints\n"),
+    ],
+)
+def test_run_commands_take_a_text_id(
+    argv: list[str],
+    expected_out: str,
+    project: Path,
+    server: FakeServer,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    key_project(project)
+
+    exit_code = main(argv)
+
+    out, err = capsys.readouterr()
+    assert exit_code == 0, err
+    assert out == expected_out
+
+
+def test_status_writes_into_the_text_id_folder(project: Path) -> None:
+    work = key_project(project)
+
+    main(["status", "PROJ-123", "Working"])
+
+    assert StatusStore(work / "status.json").get() is not None
+
+
+def test_threads_reads_the_text_id_folder(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    work = key_project(project)
+    thread = ThreadStore(work / "comments.json").create("step:1", "why?")
+
+    exit_code = main(["threads", "PROJ-123"])
+
+    assert exit_code == 0
+    assert thread.id in capsys.readouterr().out
+
+
+def test_reply_writes_into_the_text_id_folder(project: Path) -> None:
+    work = key_project(project)
+    store = ThreadStore(work / "comments.json")
+    thread = store.create("step:1", "why?")
+
+    exit_code = main(["reply", "PROJ-123", thread.id, "because"])
+
+    assert exit_code == 0
+    assert [m.text for m in store.all()[0].messages] == ["why?", "because"]
+
+
+@pytest.mark.parametrize("name", COMMANDS)
+@pytest.mark.parametrize("bad", ["../x", "#42"])
+def test_a_bad_run_id_is_rejected_before_anything_runs(
+    name: str, bad: str, project: Path, server: FakeServer, capsys: pytest.CaptureFixture[str]
+) -> None:
+    before = sorted(p.name for p in (project / ".claude" / "work").iterdir())
+
+    exit_code = run_command(name, bad)  # main() returns; it must not raise SystemExit
+
+    out, err = capsys.readouterr()
+    assert exit_code == 2
+    assert out == ""
+    assert len(err.splitlines()) == 1
+    assert f"'{bad}'" in err
+    assert "letters, digits" in err
+    assert sorted(p.name for p in (project / ".claude" / "work").iterdir()) == before
+    assert not (project / ".claude" / "x").exists()
+    assert server.addresses == []
+
+
+def test_init_prompt_creates_a_dated_run_and_prints_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "today", lambda: date(2026, 11, 5))
+
+    first = main(["init", "--prompt", "add-dark-mode"])
+    second = main(["init", "--prompt", "add-dark-mode"])
+
+    assert (first, second) == (0, 0)
+    assert capsys.readouterr().out.splitlines() == [
+        ".claude/work/add-dark-mode-2026-11-05",
+        ".claude/work/add-dark-mode-2026-11-05-2",
+    ]
+
+
+def test_init_prompt_rejects_a_name_that_cannot_make_a_run_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["init", "--prompt", "../x"])
+
+    assert exit_code == 2
+    assert "invalid run id" in capsys.readouterr().err
+    assert not (tmp_path / ".claude").exists()
+
+
+def test_init_needs_either_a_run_id_or_a_prompt_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["init"]) == 2
+    assert main(["init", "42", "--prompt", "x"]) == 2
+    assert not (tmp_path / ".claude").exists()
+    assert capsys.readouterr().err.count("plan-review init:") == 2
+
+
+def test_serve_announces_the_run_by_its_label(
+    project: Path, server: FakeServer, capsys: pytest.CaptureFixture[str]
+) -> None:
+    key_project(project)
+
+    main(["serve", "7", "--open", "none"])
+    main(["serve", "PROJ-123", "--open", "none"])
+
+    first, second = capsys.readouterr().out.splitlines()
+    port = server.addresses[0][1]
+    assert first == f"plan-review: #7 at http://127.0.0.1:{port}/ (Ctrl+C to stop)"
+    assert second.startswith("plan-review: PROJ-123 at http://127.0.0.1:")
+
+
+def test_cli_messages_use_the_label(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    prompt = {
+        "issue": {"id": "add-dark-mode-2026-11-05", "kind": "prompt", "title": "Dark"},
+        "summary": "s",
+        "acceptance_criteria": ["Dark works"],
+    }
+    comments(project).create("tab:files", "Q")
+
+    assert main(["validate", write_plan(project, VALID_PLAN)]) == 0
+    assert main(["validate", write_plan(project, prompt)]) == 0
+    assert main(["status", "99", "Working"]) == 1
+    assert main(["reply", "7", "t-nope", "hi"]) == 1
+
+    out, err = capsys.readouterr()
+    assert out.splitlines() == [
+        "OK: plan for #7 (0 elements)",
+        "OK: plan for add-dark-mode-2026-11-05 (1 elements)",
+    ]
+    assert err.splitlines() == [
+        "no .claude/work/99/ for #99: is this the project root?",
+        "no thread 't-nope' for #7",
+    ]

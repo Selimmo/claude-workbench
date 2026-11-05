@@ -13,12 +13,12 @@ def parts() -> tuple[dict[str, str], str]:
     return {k.strip(): v.strip() for k, v in pairs}, body
 
 
-def test_only_the_owner_can_start_it_with_an_issue() -> None:
+def test_ship_takes_an_issue_number_link_or_prompt() -> None:
     meta, _ = parts()
 
     assert meta["name"] == "ship"
     assert meta["disable-model-invocation"] == "true"  # side effects: branches, commits
-    assert meta["argument-hint"].startswith("<issue number or URL>")
+    assert meta["argument-hint"].startswith("<issue number, issue link or prompt>")
 
 
 @pytest.mark.parametrize(
@@ -53,7 +53,7 @@ def test_project_agents_take_precedence_over_the_plugins() -> None:
 def test_grilling_is_opt_in_and_the_hand_off_is_a_plain_file() -> None:
     meta, body = parts()
 
-    assert meta["argument-hint"] == "<issue number or URL> [--grill]"
+    assert meta["argument-hint"] == "<issue number, issue link or prompt> [--grill]"
     assert "--no-grill" not in body  # never on by default
     for required in ["--grill", "`grilling` skill", "decisions.md", "github.com/mattpocock/skills"]:
         assert required in body
@@ -79,7 +79,7 @@ def test_a_review_sent_while_the_monitor_was_down_is_picked_up_after_re_arming()
     _, body = parts()
     step_3 = body.split("## 3. Review in the viewer", 1)[1].split("## 4.", 1)[0]
 
-    assert "plan-review threads N" in step_3
+    assert "plan-review threads ID" in step_3
     assert "no reply" in step_3
 
 
@@ -87,7 +87,7 @@ def test_it_creates_the_work_folder_with_the_cli_before_anything_writes_there() 
     _, body = parts()
     step_0 = body.split("## 0. Preconditions", 1)[1].split("## 1.", 1)[0]
 
-    assert "plan-review init N" in step_0
+    assert "plan-review init ID" in step_0
 
 
 def _step_3() -> str:
@@ -96,7 +96,7 @@ def _step_3() -> str:
 
 
 def test_an_approval_gets_a_status_before_moving_on() -> None:
-    assert 'plan-review status N "Approved, implementing"' in _step_3()
+    assert 'plan-review status ID "Approved, implementing"' in _step_3()
 
 
 def test_a_review_already_being_handled_is_ignored() -> None:
@@ -110,7 +110,7 @@ def test_re_arming_also_checks_for_an_approval() -> None:
     step_3 = _step_3()
 
     assert "approved.json" in step_3
-    assert "plan-review threads N" in step_3
+    assert "plan-review threads ID" in step_3
     assert "no reply" in step_3
 
 
@@ -124,3 +124,50 @@ def test_an_approval_found_on_re_arming_is_handled_like_an_approved_event() -> N
 def test_the_skill_calls_the_status_line_a_banner() -> None:
     assert "status line of what you are doing" not in _step_3()
     assert "banner" in _step_3()
+
+
+def _step_0() -> str:
+    _, body = parts()
+    return body.split("## 0. Preconditions", 1)[1].split("## 1.", 1)[0]
+
+
+def test_ship_reads_the_input_once_into_issue_md() -> None:
+    step_0 = _step_0()
+
+    for required in [
+        "W/issue.md",
+        "`#42`",
+        "https://github.com/",
+        "bare key",
+        "plan-review init --prompt",
+        "exactly as given",
+        "paste",
+    ]:
+        assert required in step_0, required
+    assert "as a prompt" in step_0  # the one-line stop for an unreadable issue
+
+
+def test_the_grilling_covers_whatever_issue_md_describes() -> None:
+    _, body = parts()
+    step_1 = body.split("## 1.", 1)[1].split("## 2.", 1)[0]
+
+    assert "W/issue.md" in step_1
+    assert "issue N" not in step_1
+
+
+def test_ship_never_writes_to_the_tracker() -> None:
+    _, body = parts()
+    step_7 = body.split("## 7.", 1)[1].split("## If something", 1)[0]
+
+    for forbidden in ["gh issue comment", "gh issue close", "Closes #"]:
+        assert forbidden not in body, forbidden
+    assert "Refs #" in step_7
+    assert "prompt run" in step_7
+    assert "CLAUDE.md" in step_7
+
+
+def test_ship_reads_the_serve_line_by_label() -> None:
+    step_3 = _step_3()
+
+    assert "plan-review: <label> at http://127.0.0.1:<port>/" in step_3
+    assert "issue #N at" not in step_3

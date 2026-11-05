@@ -40,8 +40,20 @@ def test_api_plan_returns_the_plan_with_json_field_names(plan_file: Path, static
     response = client.get("/api/plan")
 
     assert response.status_code == 200
-    assert response.json()["issue"]["number"] == 42
     assert response.json()["relations"][0]["from"] == "class:Orchestrator"
+
+
+def test_the_api_serves_an_old_plan_in_the_new_form(plan_file: Path, static_dir: Path) -> None:
+    old = json.loads(plan_file.read_text())
+    del old["issue"]["id"], old["issue"]["kind"]
+    old["issue"]["number"] = 42
+    plan_file.write_text(json.dumps(old))
+    client = TestClient(create_app(plan_file, static_dir))
+
+    issue = client.get("/api/plan").json()["issue"]
+
+    assert (issue["id"], issue["kind"]) == ("42", "issue")
+    assert "number" not in issue
 
 
 def test_api_plan_missing_file_is_404_naming_the_path(plan_file: Path, static_dir: Path) -> None:
@@ -57,7 +69,7 @@ def test_api_plan_missing_file_is_404_naming_the_path(plan_file: Path, static_di
 def test_api_plan_invalid_file_is_422_with_readable_errors(
     plan_file: Path, static_dir: Path
 ) -> None:
-    plan_file.write_text(json.dumps({"issue": {"number": 1, "title": "x"}}))
+    plan_file.write_text(json.dumps({"issue": {"id": "1", "kind": "issue", "title": "x"}}))
     client = TestClient(create_app(plan_file, static_dir))
 
     response = client.get("/api/plan")

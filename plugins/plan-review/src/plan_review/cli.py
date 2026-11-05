@@ -6,20 +6,22 @@ import socket
 import sys
 import webbrowser
 from collections.abc import Callable
+from datetime import date
 from importlib.metadata import version
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
 
-from plan_review.orchestration import MalformedReview, slugify, tree_hash, verdict
+from plan_review.orchestration import MalformedReview, branch_name, tree_hash, verdict
 from plan_review.pipeline import PipelineConfigError, load_pipeline
-from plan_review.plan import Plan, PlanFileError, load_plan
+from plan_review.plan import Plan, PlanFileError, load_plan, record_branch
+from plan_review.run_id import InvalidRunId, check_run_id, label
 from plan_review.server import create_app
 from plan_review.status import StatusStore
 from plan_review.threads import BlankComment, ThreadNotFound, ThreadStore
 from plan_review.upgrade import upgrade
-from plan_review.workdir import ensure_work_dir, work_dir
+from plan_review.workdir import ensure_work_dir, new_prompt_work_dir, work_dir
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -49,16 +51,18 @@ def _parser() -> argparse.ArgumentParser:
         return sub
 
     command("schema", "print the plan.json JSON Schema", lambda a: _schema())
-    command(
-        "init", "create an issue's .claude/work/<issue>/ folder", lambda a: _init(a.issue)
-    ).add_argument("issue", type=int)
+    init = command(
+        "init",
+        "create a run's .claude/work/<id>/ folder (or --prompt <name>: <name>-<date>)",
+        lambda a: _init(a.run_id, a.prompt),
+    )
+    init.add_argument("run_id", nargs="?", help="an issue number or key, e.g. 42 or PROJ-123")
+    init.add_argument("--prompt", metavar="NAME", help="start a prompt run named NAME-<today>")
     command("validate", "check a plan.json file", lambda a: _validate(a.file)).add_argument(
         "file", type=Path
     )
-    serve = command(
-        "serve", "open the viewer for an issue's plan", lambda a: _serve(a.issue, a.open)
-    )
-    serve.add_argument("issue", type=int)
+    serve = command("serve", "open the viewer for a run's plan", lambda a: _serve(a.run_id, a.open))
+    serve.add_argument("run_id")
     serve.add_argument(
         "--open",
         choices=["browser", "none"],
@@ -69,26 +73,30 @@ def _parser() -> argparse.ArgumentParser:
         "config", "print this project's pipeline settings, defaults filled in", lambda a: _config()
     )
     command(
-        "threads", "list an issue's open comment threads as JSON", lambda a: _threads(a.issue)
-    ).add_argument("issue", type=int)
+        "threads", "list a run's open comment threads as JSON", lambda a: _threads(a.run_id)
+    ).add_argument("run_id")
     reply = command(
-        "reply", "answer a comment thread as Claude", lambda a: _reply(a.issue, a.thread_id, a.text)
+        "reply",
+        "answer a comment thread as Claude",
+        lambda a: _reply(a.run_id, a.thread_id, a.text),
     )
-    reply.add_argument("issue", type=int)
+    reply.add_argument("run_id")
     reply.add_argument("thread_id")
     reply.add_argument("text")
     status = command(
         "status",
         "show the owner what Claude is doing with their review (latest text wins)",
-        lambda a: _status(a.issue, a.text, done=a.done, clear=a.clear),
+        lambda a: _status(a.run_id, a.text, done=a.done, clear=a.clear),
     )
-    status.add_argument("issue", type=int)
+    status.add_argument("run_id")
     status.add_argument("text", nargs="?", default="")
     status.add_argument("--done", action="store_true", help="mark it finished")
     status.add_argument("--clear", action="store_true", help="remove the status line")
     command(
-        "branch", "the branch name for an issue, from its plan", lambda a: _branch(a.issue)
-    ).add_argument("issue", type=int)
+        "branch",
+        "the branch name for a run: recorded in its plan, else made",
+        lambda a: _branch(a.run_id),
+    ).add_argument("run_id")
     command(
         "verdict",
         "a review's verdict: exit 0 PASS, 1 FINDINGS, 2 malformed",
@@ -105,6 +113,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"plan-review {version('plan-review')}")
         return 0
     run: Callable[[argparse.Namespace], int] | None = getattr(args, "run", None)
+    # Checked here, not as an argparse `type`: a failed type check calls sys.exit().
+    run_id: str | None = getattr(args, "run_id", None)
+    if run_id is not None:
+        try:
+            check_run_id(run_id)
+        except InvalidRunId as error:
+            print(error, file=sys.stderr)
+            return 2
     return run(args) if run else 0
 
 
@@ -121,13 +137,29 @@ def _config() -> int:
     return 0
 
 
-def _work_dir(issue: int) -> Path:
-    """Where an issue's plan, comments and reports live, relative to the project root."""
-    return work_dir(Path(), issue)
+def _work_dir(run_id: str) -> Path:
+    """Where a run's plan, comments and reports live, relative to the project root."""
+    return work_dir(Path(), run_id)
 
 
-def _init(issue: int) -> int:
-    print(ensure_work_dir(Path(), issue).as_posix())
+def today() -> date:
+    return date.today()
+
+
+def _init(run_id: str | None, prompt: str | None) -> int:
+    if (run_id is None) == (prompt is None):
+        print("plan-review init: give either a run id or --prompt <name>", file=sys.stderr)
+        return 2
+    if prompt is not None:
+        try:
+            check_run_id(f"{prompt}-{today().isoformat()}")
+        except InvalidRunId as error:
+            print(error, file=sys.stderr)
+            return 2
+        print(new_prompt_work_dir(Path(), prompt, today()).as_posix())
+        return 0
+    assert run_id is not None
+    print(ensure_work_dir(Path(), run_id).as_posix())
     return 0
 
 
@@ -137,11 +169,11 @@ def _validate(file: Path) -> int:
     except PlanFileError as error:
         print("\n".join(error.errors), file=sys.stderr)
         return 2 if error.missing else 1
-    print(f"OK: plan for #{plan.issue.number} ({len(plan.element_ids())} elements)")
+    print(f"OK: plan for {label(plan.issue.id)} ({len(plan.element_ids())} elements)")
     return 0
 
 
-def _serve(issue: int, open_flag: str | None) -> int:
+def _serve(run_id: str, open_flag: str | None) -> int:
     try:
         open_mode = open_flag or load_pipeline(PIPELINE_FILE).viewer.open
     except PipelineConfigError as error:
@@ -153,13 +185,13 @@ def _serve(issue: int, open_flag: str | None) -> int:
             file=sys.stderr,
         )
         return 2
-    plan_file = _work_dir(issue) / "plan.json"
+    plan_file = _work_dir(run_id) / "plan.json"
     try:
         load_plan(plan_file)
     except PlanFileError as error:
         print("\n".join(error.errors), file=sys.stderr)
         return 2 if error.missing else 1
-    ensure_work_dir(Path(), issue)  # the page writes comments and drafts there
+    ensure_work_dir(Path(), run_id)  # the page writes comments and drafts there
     # Bind and listen before opening the browser: its first request then waits in the
     # socket's queue until uvicorn accepts it, instead of racing the server's startup.
     # Port 0 lets the OS pick a free port.
@@ -167,26 +199,27 @@ def _serve(issue: int, open_flag: str | None) -> int:
         sock.bind(("127.0.0.1", 0))
         sock.listen()
         url = f"http://127.0.0.1:{sock.getsockname()[1]}/"
-        print(f"plan-review: issue #{issue} at {url} (Ctrl+C to stop)", flush=True)
+        print(f"plan-review: {label(run_id)} at {url} (Ctrl+C to stop)", flush=True)
         if open_mode == "browser":
             webbrowser.open(url)
         run_server(create_app(plan_file, STATIC_DIR), sock)
     return 0
 
 
-def _threads(issue: int) -> int:
+def _threads(run_id: str) -> int:
     open_threads = [
-        t for t in ThreadStore(_work_dir(issue) / "comments.json").all() if not t.resolved
+        t for t in ThreadStore(_work_dir(run_id) / "comments.json").all() if not t.resolved
     ]
     print(json.dumps([t.model_dump(mode="json") for t in open_threads], indent=2))
     return 0
 
 
-def _status(issue: int, text: str, *, done: bool, clear: bool) -> int:
-    work = _work_dir(issue)
+def _status(run_id: str, text: str, *, done: bool, clear: bool) -> int:
+    work = _work_dir(run_id)
     if not work.is_dir():
         print(
-            f"no {work.as_posix()}/ for issue #{issue}: is this the project root?", file=sys.stderr
+            f"no {work.as_posix()}/ for {label(run_id)}: is this the project root?",
+            file=sys.stderr,
         )
         return 1
     store = StatusStore(work / "status.json")
@@ -201,11 +234,11 @@ def _status(issue: int, text: str, *, done: bool, clear: bool) -> int:
     return 0
 
 
-def _reply(issue: int, thread_id: str, text: str) -> int:
+def _reply(run_id: str, thread_id: str, text: str) -> int:
     try:
-        ThreadStore(_work_dir(issue) / "comments.json").reply(thread_id, text, author="claude")
+        ThreadStore(_work_dir(run_id) / "comments.json").reply(thread_id, text, author="claude")
     except ThreadNotFound:
-        print(f"no thread '{thread_id}' for issue #{issue}", file=sys.stderr)
+        print(f"no thread '{thread_id}' for {label(run_id)}", file=sys.stderr)
         return 1
     except BlankComment as error:
         print(error, file=sys.stderr)
@@ -228,12 +261,18 @@ def _verdict(file: Path) -> int:
     return 0 if result == "PASS" else 1
 
 
-def _branch(issue: int) -> int:
+def _branch(run_id: str) -> int:
+    plan_file = _work_dir(run_id) / "plan.json"
     try:
-        plan = load_plan(_work_dir(issue) / "plan.json")
+        plan = load_plan(plan_file)
+        if plan.branch:  # already named (and maybe created): never name it again
+            print(plan.branch)
+            return 0
         pattern = load_pipeline(PIPELINE_FILE).branch
     except (PlanFileError, PipelineConfigError) as error:
         print("\n".join(error.errors), file=sys.stderr)
         return 1
-    print(pattern.format(issue=issue, slug=slugify(plan.issue.title)))
+    branch = branch_name(run_id, plan.issue, pattern)
+    record_branch(plan_file, branch)
+    print(branch)
     return 0

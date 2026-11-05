@@ -1,0 +1,76 @@
+{
+  "issue": {
+    "id": "add-dark-mode-2026-11-05",
+    "kind": "prompt",
+    "title": "Add a dark mode to the settings page"
+  },
+  "summary": "A Theme setting with light, dark and system choices. The choice is saved in local storage and applied to the page root as a data-theme attribute before first paint.",
+  "acceptance_criteria": [
+    "The settings page offers Light, Dark and System.",
+    "The chosen theme survives a reload.",
+    "System follows the operating system's preference and reacts when it changes.",
+    "No flash of the wrong theme on first paint."
+  ],
+  "branch": "add-dark-mode-2026-11-05",
+  "classes": [
+    {
+      "id": "class:ThemeStore",
+      "name": "ThemeStore",
+      "kind": "class",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:ThemeStore.get",
+          "signature": "get() -> 'light' | 'dark' | 'system'",
+          "status": "added"
+        },
+        {
+          "id": "class:ThemeStore.set",
+          "signature": "set(theme: 'light' | 'dark' | 'system') -> void",
+          "status": "added"
+        }
+      ]
+    }
+  ],
+  "relations": [],
+  "flows": [],
+  "architecture": null,
+  "files": [
+    {
+      "id": "file:theme-store",
+      "path": "src/theme.ts",
+      "kind": "code",
+      "change": "added",
+      "reason": "Reads, saves and applies the theme."
+    },
+    {
+      "id": "file:theme-test",
+      "path": "src/theme.test.ts",
+      "kind": "test",
+      "change": "added",
+      "reason": "The store's behaviour."
+    }
+  ],
+  "tests": [
+    {
+      "id": "test:1",
+      "name": "the chosen theme survives a reload",
+      "target": "criterion:2",
+      "behaviour": "set('dark') then a new ThemeStore().get() is 'dark'."
+    },
+    {
+      "id": "test:2",
+      "name": "system follows the OS preference",
+      "target": "class:ThemeStore.get",
+      "behaviour": "With 'system' saved and the OS preferring dark, the root gets data-theme=dark."
+    }
+  ],
+  "risks": [
+    {
+      "id": "risk:1",
+      "kind": "question",
+      "text": "Should the choice follow the account across devices, or stay per browser?",
+      "severity": "low"
+    }
+  ]
+}

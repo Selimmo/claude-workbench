@@ -1,8 +1,10 @@
 import example from '../../examples/plan.json'
+import promptExample from '../../examples/prompt-plan.json'
 import type { Plan } from './plan'
-import { filesByKind, risksByKind, tabOf, tabsFor } from './viewModels'
+import { filesByKind, issueLabel, risksByKind, tabOf, tabsFor } from './viewModels'
 
 const plan = example as Plan
+const promptPlan = promptExample as Plan
 
 test('tabs list every section, architecture only when the plan has one', () => {
   expect(tabsFor(plan).map((t) => t.id)).toEqual([
@@ -68,4 +70,19 @@ test.each([
 
 test('an id not in the plan has no tab', () => {
   expect(tabOf(plan, 'class:Gone')).toBeNull()
+})
+
+test.each([
+  ['42', '#42'],
+  ['PROJ-123', 'PROJ-123'],
+  ['add-dark-mode-2026-11-05', 'add-dark-mode-2026-11-05'],
+])("issueLabel('%s') is '%s', as the CLI labels it", (id, label) => {
+  expect(issueLabel(id)).toBe(label)
+})
+
+test('the criteria tab comes first, only when the plan has criteria', () => {
+  expect(tabsFor(plan).map((t) => t.id)).not.toContain('criteria')
+  expect(tabsFor(promptPlan)[0]).toEqual({ id: 'criteria', label: 'Acceptance criteria' })
+  expect(tabOf(promptPlan, 'criterion:2')).toBe('criteria')
+  expect(tabOf(promptPlan, 'criterion:99')).toBeNull()
 })
