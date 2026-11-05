@@ -66,16 +66,14 @@ def test_api_plan_missing_file_is_404_naming_the_path(plan_file: Path, static_di
     assert response.json() == {"errors": [f"{plan_file.as_posix()}: file not found"]}
 
 
-def test_api_plan_invalid_file_is_422_with_readable_errors(
-    plan_file: Path, static_dir: Path
-) -> None:
+def test_api_plan_invalid_file_is_422_with_named_errors(plan_file: Path, static_dir: Path) -> None:
     plan_file.write_text(json.dumps({"issue": {"id": "1", "kind": "issue", "title": "x"}}))
     client = TestClient(create_app(plan_file, static_dir))
 
     response = client.get("/api/plan")
 
     assert response.status_code == 422
-    assert response.json() == {"errors": ["summary: Field required"]}
+    assert response.json() == {"errors": [f"{plan_file.as_posix()}: summary: Field required"]}
 
 
 def test_root_serves_the_built_page(plan_file: Path, static_dir: Path) -> None:
@@ -569,3 +567,126 @@ def test_resend_works_after_a_server_restart(plan_file: Path, static_dir: Path) 
     ):
         assert restarted.post("/api/resend").json() == {"sent": True}
         assert events.receive_json() == {"type": "approved"}
+
+
+def test_an_event_still_reaches_claude_when_last_event_json_is_broken(
+    plan_file: Path, static_dir: Path
+) -> None:
+    kept = plan_file.parent / "last_event.json"
+    kept.write_bytes(b"{bad")
+
+    with (
+        TestClient(create_app(plan_file, static_dir)) as client,
+        client.websocket_connect("/events") as events,
+    ):
+        assert client.post("/api/approve").status_code == 200
+
+        assert events.receive_json() == {"type": "approved"}
+    assert kept.read_bytes() == b"{bad"
+
+
+BAD_JSON = "Invalid JSON: key must be a string at line 1 column 2"
+
+
+def _named(path: Path, line: str = BAD_JSON) -> dict[str, list[str]]:
+    return {"errors": [f"{path.as_posix()}: {line}"]}
+
+
+def test_a_broken_comments_json_is_422_naming_it_while_the_plan_still_loads(
+    plan_file: Path, static_dir: Path
+) -> None:
+    comments = plan_file.parent / "comments.json"
+    comments.write_bytes(b"{bad")
+    client = TestClient(create_app(plan_file, static_dir))
+
+    for response in (client.get("/api/threads"), client.post("/api/threads/t-1/resolve")):
+        assert response.status_code == 422
+        assert response.json() == _named(comments)
+    assert client.get("/api/plan").status_code == 200
+    assert comments.read_bytes() == b"{bad"
+
+
+def test_drafts_review_and_approve_refuse_with_the_broken_files_name(
+    plan_file: Path, static_dir: Path
+) -> None:
+    drafts = plan_file.parent / "drafts.json"
+    drafts.write_bytes(b"{bad")
+    client = TestClient(create_app(plan_file, static_dir))
+
+    responses = [
+        client.get("/api/drafts"),
+        client.post("/api/drafts", json={"anchor": "tab:plan", "text": "hi"}),
+        client.post("/api/review"),
+        client.post("/api/approve"),
+    ]
+
+    for response in responses:
+        assert response.status_code == 422
+        assert response.json() == _named(drafts)
+    assert not (plan_file.parent / "approved.json").exists()
+    assert drafts.read_bytes() == b"{bad"
+
+
+def test_a_broken_status_or_last_event_json_is_422_naming_it(
+    plan_file: Path, static_dir: Path
+) -> None:
+    status = plan_file.parent / "status.json"
+    last_event = plan_file.parent / "last_event.json"
+    client = TestClient(create_app(plan_file, static_dir))
+    client.post("/api/approve")  # keeps a valid last_event.json
+    status.write_bytes(b"{bad")
+
+    for response in (
+        client.get("/api/status"),
+        client.get("/api/last-event"),
+        client.post("/api/resend"),
+    ):
+        assert response.status_code == 422
+        assert response.json() == _named(status)
+
+    status.unlink()
+    StatusStore(status).set("working")
+    last_event.write_bytes(b"{bad")
+
+    for response in (client.get("/api/last-event"), client.post("/api/resend")):
+        assert response.status_code == 422
+        assert response.json() == _named(last_event)
+
+
+@pytest.mark.parametrize(
+    ("content", "line"),
+    [
+        (b"{bad", BAD_JSON),
+        (b"[]", "Input should be an object"),
+    ],
+)
+def test_a_broken_approved_json_is_422_and_approving_leaves_it(
+    plan_file: Path, static_dir: Path, content: bytes, line: str
+) -> None:
+    approved = plan_file.parent / "approved.json"
+    approved.write_bytes(content)
+    client = TestClient(create_app(plan_file, static_dir))
+
+    for response in (client.get("/api/approve"), client.post("/api/approve")):
+        assert response.status_code == 422
+        assert response.json() == _named(approved, line)
+    assert approved.read_bytes() == content
+
+
+def test_an_approved_json_with_extra_fields_still_reads_and_answers_only_the_known_ones(
+    plan_file: Path, static_dir: Path
+) -> None:
+    approved = plan_file.parent / "approved.json"
+    approved.write_text(
+        json.dumps({"approved_at": "2026-01-01T00:00:00+00:00", "plan_sha256": "abc", "by": "me"})
+    )
+    client = TestClient(create_app(plan_file, static_dir))
+
+    response = client.get("/api/approve")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "approved": True,
+        "approved_at": "2026-01-01T00:00:00+00:00",
+        "plan_sha256": "abc",
+    }

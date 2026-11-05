@@ -12,6 +12,7 @@ import pytest
 from conftest import posix_only
 
 from plan_review import threads
+from plan_review.file_errors import BrokenFile
 from plan_review.threads import Author, ThreadNotFound, ThreadStore
 
 
@@ -305,3 +306,23 @@ def test_a_write_while_a_reader_holds_the_file_lands_once_it_lets_go(
 
     assert errors == []
     assert [t.anchor for t in store.all()] == ["risk:1", "risk:2"]
+
+
+def test_a_broken_comments_json_is_reported_and_left_as_it_is(tmp_path: Path) -> None:
+    path = tmp_path / "comments.json"
+    path.write_bytes(b"{bad")
+    store = ThreadStore(path)
+    named = [f"{path.as_posix()}: Invalid JSON: key must be a string at line 1 column 2"]
+    changes: list[Callable[[], object]] = [
+        store.all,
+        lambda: store.create("tab:plan", "hi"),
+        lambda: store.reply("t-1", "hi", author="claude"),
+        lambda: store.set_resolved("t-1", True),
+    ]
+
+    for change in changes:
+        with pytest.raises(BrokenFile) as error:
+            change()
+        assert error.value.errors == named
+
+    assert path.read_bytes() == b"{bad"

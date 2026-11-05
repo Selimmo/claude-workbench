@@ -13,6 +13,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, TypeAdapter, model_validator
 
+from plan_review.file_errors import read_file
 from plan_review.threads import file_lock, write_atomically
 
 
@@ -61,9 +62,7 @@ class GrillDraftStore:
                 yield
 
     def all(self) -> dict[str, AnswerDraft]:
-        if not self._path.is_file():
-            return {}
-        return _Drafts.validate_json(self._path.read_bytes())
+        return read_file(self._path, _Drafts) or {}
 
     def put(self, question_id: str, draft: AnswerDraft) -> AnswerDraft:
         with self._lock():

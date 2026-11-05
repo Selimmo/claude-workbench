@@ -1,9 +1,11 @@
 """Push-only WebSocket audiences: viewer pages and Claude."""
 
+from contextlib import suppress
 from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 
+from plan_review.file_errors import BrokenFile
 from plan_review.last_event import LastEventStore
 
 
@@ -35,5 +37,6 @@ class ClaudeEvents(Subscribers):
         self._kept = kept
 
     async def send(self, message: dict[str, Any]) -> None:
-        self._kept.keep(message)
+        with suppress(BrokenFile):  # the event is more urgent than keeping it for a resend
+            self._kept.keep(message)
         await super().send(message)

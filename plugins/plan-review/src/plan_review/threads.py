@@ -14,6 +14,8 @@ from typing import Literal
 from filelock import FileLock
 from pydantic import BaseModel, Field, TypeAdapter, field_validator
 
+from plan_review.file_errors import read_file
+
 Author = Literal["owner", "claude"]
 
 # Anchors that are always on the page, whatever the plan holds.
@@ -60,9 +62,7 @@ class ThreadStore:
         self._path = path
 
     def all(self) -> list[Thread]:
-        if not self._path.is_file():
-            return []
-        return _Threads.validate_json(self._path.read_bytes())
+        return read_file(self._path, _Threads) or []
 
     def get(self, thread_id: str) -> Thread:
         thread = next((t for t in self.all() if t.id == thread_id), None)

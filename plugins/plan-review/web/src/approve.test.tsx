@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 
 import { App } from './App'
 import { FakeServer, draft, thread } from './test/fakeServer'
@@ -101,4 +101,18 @@ test('in a read-only (approved) plan, leftover drafts show no pins', async () =>
   await screen.findByText(/Approved/)
 
   expect(screen.queryByRole('button', { name: 'Draft on header:title' })).not.toBeInTheDocument()
+})
+
+test('a broken approved.json shows in the banner, and Approve shows the same message', async () => {
+  const line =
+    '.claude/work/42/approved.json: Invalid JSON: key must be a string at line 1 column 2'
+  server.brokenFiles['/api/approve'] = [line]
+  await open()
+
+  expect(await screen.findByRole('alert', { name: 'Broken files' })).toHaveTextContent(line)
+  fireEvent.click(await screen.findByRole('button', { name: 'Approve plan' }))
+
+  const bar = document.querySelector<HTMLElement>('.approval')
+  expect(await vi.waitFor(() => within(bar!).getByText(line))).toBeInTheDocument()
+  expect(screen.queryByText(/read-only/)).not.toBeInTheDocument()
 })

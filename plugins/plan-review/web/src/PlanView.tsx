@@ -9,6 +9,7 @@ import { FilesTab } from './tabs/FilesTab'
 import { FlowsTab } from './tabs/FlowsTab'
 import { RisksTab } from './tabs/RisksTab'
 import { TestsTab } from './tabs/TestsTab'
+import { BrokenFilesBanner } from './BrokenFilesBanner'
 import { ClaudeBanner } from './ClaudeBanner'
 import { ApprovalBar } from './ApprovalBar'
 import { HEADER_ANCHORS, threadsFor } from './threadGroups'
@@ -38,6 +39,7 @@ export function PlanView({ plan, live }: { plan: Plan; live: Live }) {
     markSeen,
     approved,
     approvePlan,
+    brokenFiles,
   } = live
   useMarkRevised(revised)
   // The element a test's target link points at: shown and outlined until the tab changes.
@@ -56,6 +58,7 @@ export function PlanView({ plan, live }: { plan: Plan; live: Live }) {
 
   const header = (
     <header>
+      <BrokenFilesBanner errors={brokenFiles} />
       <ClaudeBanner status={status} lastEvent={lastEvent} onResend={resend} />
       <div className="header-row">
         <h1 data-element-id={HEADER_ANCHORS.title}>

@@ -451,10 +451,11 @@ test('a refused draft or submit says why and does not keep the draft', async () 
 
 test('a grill.json that does not parse shows its errors instead of loading forever', async () => {
   const server = new FakeServer()
-  server.grillErrors = ['grill.json: rounds: Field required']
+  const line = '.claude/work/42/grill.json: Invalid JSON: key must be a string at line 1 column 2'
+  server.grillErrors = [line]
   open(server)
 
-  expect(await screen.findByText('grill.json: rounds: Field required')).toBeInTheDocument()
+  expect(await screen.findByText(line)).toBeInTheDocument()
   expect(screen.queryByText('Loading the grill…')).not.toBeInTheDocument()
 })
 
@@ -482,4 +483,73 @@ test('the Grill and Plan switch appears when the plan shows up, without a reload
   act(() => server.push({ type: 'plan_changed' }))
 
   expect(await screen.findByRole('navigation', { name: 'Pages' })).toBeInTheDocument()
+})
+
+const BAD_JSON = 'Invalid JSON: key must be a string at line 1 column 2'
+
+test('a broken grill_drafts.json keeps the questions and decisions visible under a banner naming it', async () => {
+  const line = `.claude/work/42/grill_drafts.json: ${BAD_JSON}`
+  const server = new FakeServer()
+  server.grill = grill([question('q1')])
+  server.brokenFiles['/api/grill/drafts'] = [line]
+  open(server)
+
+  expect(await screen.findByRole('group', { name: 'Question q1?' })).toBeInTheDocument()
+  expect(await screen.findByRole('alert', { name: 'Broken files' })).toHaveTextContent(line)
+})
+
+test('picking a choice while grill_drafts.json is broken shows the same named message', async () => {
+  const line = `.claude/work/42/grill_drafts.json: ${BAD_JSON}`
+  const server = new FakeServer()
+  server.grill = grill([question('q1')])
+  server.brokenFiles['/api/grill/drafts'] = [line]
+  server.brokenFiles['/api/grill/drafts/q1'] = [line]
+  open(server)
+  const card = await screen.findByRole('group', { name: 'Question q1?' })
+
+  fireEvent.click(within(card).getByRole('radio', { name: 'Choice a' }))
+
+  await waitFor(() => expect(document.querySelector('p.error')).toHaveTextContent(line))
+})
+
+test("an invalid plan.json shows in the grill page's banner, a missing one does not", async () => {
+  const line = `.claude/work/42/plan.json: summary: Field required`
+  const server = new FakeServer()
+  server.grill = grill([question('q1')])
+  open(server) // plan is null: 404, the normal case while grilling
+  await screen.findByRole('group', { name: 'Question q1?' })
+  await vi.waitFor(() => expect(server.calls.some((c) => c.url === '/api/plan')).toBe(true))
+  expect(screen.queryByRole('alert', { name: 'Broken files' })).not.toBeInTheDocument()
+
+  server.brokenFiles['/api/plan'] = [line]
+  act(() => server.push({ type: 'plan_changed' }))
+
+  expect(await screen.findByRole('alert', { name: 'Broken files' })).toHaveTextContent(line)
+})
+
+test('a plan fetch that cannot reach the server is not listed as a broken file', async () => {
+  const server = new FakeServer()
+  server.grill = grill([question('q1')])
+  open(server)
+  await screen.findByRole('group', { name: 'Question q1?' })
+
+  server.down.add('/api/plan')
+  act(() => server.push({ type: 'plan_changed' }))
+  await vi.waitFor(() =>
+    expect(server.calls.filter((c) => c.url === '/api/plan').length).toBeGreaterThan(1),
+  )
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
+
+  expect(screen.queryByRole('alert', { name: 'Broken files' })).not.toBeInTheDocument()
+})
+
+test('a 422 without errors is not shown as an empty broken-file line', async () => {
+  const server = new FakeServer()
+  server.grill = grill([question('q1')])
+  server.rawBroken['/api/grill/drafts'] = { detail: [{ msg: 'bad' }] }
+  open(server)
+  await screen.findByRole('group', { name: 'Question q1?' })
+  await vi.waitFor(() => expect(server.calls.some((c) => c.url === '/api/grill/drafts')).toBe(true))
+
+  expect(screen.queryByRole('alert', { name: 'Broken files' })).not.toBeInTheDocument()
 })

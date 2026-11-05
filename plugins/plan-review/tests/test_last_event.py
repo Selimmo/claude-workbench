@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from plan_review.file_errors import BrokenFile
 from plan_review.last_event import LastEvent, LastEventStore, answered
 from plan_review.status import Status
 
@@ -62,3 +63,18 @@ def test_a_status_after_the_event_is_answered() -> None:
     status = _status(datetime(2026, 11, 4, 10, 2, tzinfo=UTC))
 
     assert answered(status, _last(datetime(2026, 11, 4, 10, 1, tzinfo=UTC)))
+
+
+def test_a_broken_last_event_json_is_reported_and_never_replaced(tmp_path: Path) -> None:
+    path = tmp_path / "last_event.json"
+    path.write_bytes(b"{bad")
+    store = LastEventStore(path)
+    named = [f"{path.as_posix()}: Invalid JSON: key must be a string at line 1 column 2"]
+
+    with pytest.raises(BrokenFile) as read:
+        store.get()
+    with pytest.raises(BrokenFile) as kept:
+        store.keep({"type": "approved"})
+
+    assert read.value.errors == kept.value.errors == named
+    assert path.read_bytes() == b"{bad"

@@ -1,5 +1,6 @@
 import { Fragment, useState } from 'react'
 
+import { BrokenFilesBanner } from './BrokenFilesBanner'
 import { ClaudeBanner } from './ClaudeBanner'
 import { CollapsedRound } from './grill/CollapsedRound'
 import { ConfirmBar } from './grill/ConfirmBar'
@@ -12,6 +13,7 @@ export function GrillPage() {
   const {
     grill,
     grillErrors,
+    brokenFiles,
     drafts,
     planReady,
     status,
@@ -42,6 +44,7 @@ export function GrillPage() {
   if (grill === null) return <p className="status">Loading the grill…</p>
   return (
     <main className="grill-page">
+      <BrokenFilesBanner errors={brokenFiles} />
       <ClaudeBanner status={status} lastEvent={lastEvent} onResend={resend} />
       <h1>
         {grill.label} {grill.title}

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from plan_review.plan import readable_errors
+from plan_review.file_errors import named_errors
 from plan_review.threads import Message, file_lock, write_atomically
 
 if TYPE_CHECKING:
@@ -269,4 +269,4 @@ def load_grill(path: Path) -> GrillState:
     try:
         return GrillState.model_validate_json(path.read_bytes())
     except ValidationError as error:
-        raise GrillError(readable_errors(error)) from error
+        raise GrillError(named_errors(path, error)) from error

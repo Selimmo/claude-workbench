@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from plan_review.grill import MAX_ASKS, GrillError, GrillStore, SubmittedAnswer
+from plan_review.grill import MAX_ASKS, GrillError, GrillStore, SubmittedAnswer, load_grill
 from plan_review.grill_turn import Turn
 
 
@@ -498,3 +498,18 @@ def test_a_grill_json_that_does_not_parse_is_a_grill_error(tmp_path: Path) -> No
         GrillStore(path).get()
 
     assert raised.value.errors
+
+
+def test_load_grill_names_the_file_in_every_error_line(tmp_path: Path) -> None:
+    path = tmp_path / "grill.json"
+    path.write_text("{bad")
+    with pytest.raises(GrillError) as bad_json:
+        load_grill(path)
+    assert bad_json.value.errors == [
+        f"{path.as_posix()}: Invalid JSON: key must be a string at line 1 column 2"
+    ]
+
+    path.write_text("{}")
+    with pytest.raises(GrillError) as no_title:
+        load_grill(path)
+    assert no_title.value.errors == [f"{path.as_posix()}: title: Field required"]

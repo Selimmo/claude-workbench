@@ -9,6 +9,7 @@ import {
   fetchThreads,
 } from './api'
 import { useClaude } from './useClaude'
+import { useFileErrors } from './useFileErrors'
 import { changedIds } from './revisions'
 import type { ClaudeStatus, Draft, LastEvent, Thread } from './threads'
 
@@ -30,6 +31,8 @@ export interface Live {
   /** Send the last event to Claude again (a no-op if Claude has answered it). */
   resend: () => Promise<void>
   approved: boolean
+  /** The lines naming each broken file: comments, drafts, status, last event, approval. */
+  brokenFiles: string[]
   approvePlan: () => Promise<void>
 }
 
@@ -38,13 +41,22 @@ export function useLive(): Live {
   const [result, setResult] = useState<PlanResult | null>(null)
   const [threads, setThreads] = useState<Thread[]>([])
   const [drafts, setDrafts] = useState<Draft[]>([])
-  const { status, lastEvent, resend, refreshStatus, refreshLastEvent } = useClaude()
+  const { errors: brokenFiles, report } = useFileErrors()
+  const { status, lastEvent, resend, refreshStatus, refreshLastEvent } = useClaude(report)
   const [revised, setRevised] = useState<Set<string>>(new Set())
   const [approved, setApproved] = useState(false)
   const shown = useRef<PlanResult | null>(null)
 
-  const refreshThreads = useCallback(async () => setThreads(await fetchThreads()), [])
-  const refreshDrafts = useCallback(async () => setDrafts(await fetchDrafts()), [])
+  const refreshThreads = useCallback(async () => {
+    const part = await fetchThreads()
+    report('comments', part.errors)
+    setThreads(part.value)
+  }, [report])
+  const refreshDrafts = useCallback(async () => {
+    const part = await fetchDrafts()
+    report('drafts', part.errors)
+    setDrafts(part.value)
+  }, [report])
   const refreshReview = useCallback(
     async () => void (await Promise.all([refreshThreads(), refreshDrafts(), refreshLastEvent()])),
     [refreshThreads, refreshDrafts, refreshLastEvent],
@@ -67,7 +79,10 @@ export function useLive(): Live {
     void Promise.all([
       refreshPlan(),
       refreshReview(),
-      fetchApproval().then(setApproved),
+      fetchApproval().then((part) => {
+        report('approval', part.errors)
+        setApproved(part.value)
+      }),
       refreshStatus(),
     ])
     /* oxlint-enable react/set-state-in-effect */
@@ -83,7 +98,15 @@ export function useLive(): Live {
       }
     }
     return () => socket.close()
-  }, [refreshPlan, refreshReview, refreshThreads, refreshDrafts, refreshLastEvent, refreshStatus])
+  }, [
+    refreshPlan,
+    refreshReview,
+    refreshThreads,
+    refreshDrafts,
+    refreshLastEvent,
+    refreshStatus,
+    report,
+  ])
 
   return {
     result,
@@ -97,6 +120,7 @@ export function useLive(): Live {
     markSeen: () => setRevised(new Set()),
     resend,
     approved,
+    brokenFiles,
     approvePlan: async () => {
       await approve()
       setApproved(true)

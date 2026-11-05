@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from plan_review.plan import Plan, load_plan, record_branch
+from plan_review.plan import Plan, PlanFileError, load_plan, record_branch
 
 ISSUE = {"id": "7", "kind": "issue", "title": "Add hints"}
 
@@ -366,3 +366,31 @@ def test_recording_the_branch_keeps_non_ascii_text_readable(tmp_path: Path) -> N
     record_branch(path, "feat/x")
 
     assert "red → green" in path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("content", "first_line"),
+    [
+        (b"{bad", "Invalid JSON: key must be a string at line 1 column 2"),
+        (b"{}", "issue: Field required"),
+        (b"\xff\xfe", "Invalid JSON"),
+    ],
+)
+def test_load_plan_names_the_file_in_every_error_line(
+    tmp_path: Path, content: bytes, first_line: str
+) -> None:
+    path = tmp_path / "plan.json"
+    path.write_bytes(content)
+
+    with pytest.raises(PlanFileError) as error:
+        load_plan(path)
+
+    assert error.value.errors[0].startswith(f"{path.as_posix()}: {first_line}")
+    assert all(line.startswith(f"{path.as_posix()}: ") for line in error.value.errors)
+
+
+def test_a_missing_plan_names_the_file_once(tmp_path: Path) -> None:
+    with pytest.raises(PlanFileError) as error:
+        load_plan(tmp_path / "plan.json")
+
+    assert error.value.errors == [f"{(tmp_path / 'plan.json').as_posix()}: file not found"]

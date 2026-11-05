@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 
 import { App } from './App'
 import { FakeServer, draft, thread } from './test/fakeServer'
@@ -646,4 +646,76 @@ test("a draft's Edit in the review panel while writing keeps the comment being w
   fireEvent.click(within(review).getByRole('button', { name: 'Edit' }))
 
   stillWriting()
+})
+
+const BAD_JSON = 'Invalid JSON: key must be a string at line 1 column 2'
+const brokenLine = (file: string) => `.claude/work/42/${file}: ${BAD_JSON}`
+
+test('a broken comments.json shows a banner naming it, and the plan stays', async () => {
+  await open()
+  expect(screen.queryByRole('alert', { name: 'Broken files' })).not.toBeInTheDocument()
+  cleanup()
+  server.brokenFiles['/api/threads'] = [brokenLine('comments.json')]
+
+  await open()
+
+  expect(
+    screen.getByRole('heading', { name: '#42 Let candidates request a hint during an interview' }),
+  ).toBeInTheDocument()
+  const banner = await screen.findByRole('alert', { name: 'Broken files' })
+  expect(banner).toHaveTextContent(brokenLine('comments.json'))
+})
+
+test('adding a comment while drafts.json is broken shows the same named message', async () => {
+  server.brokenFiles['/api/drafts'] = [brokenLine('drafts.json')]
+  await open()
+  await screen.findByText('HintPolicy')
+  expect(await screen.findByRole('alert', { name: 'Broken files' })).toHaveTextContent(
+    brokenLine('drafts.json'),
+  )
+
+  fireEvent.click(element('class:Orchestrator.parse_command'))
+  const composer = screen.getByRole('dialog', {
+    name: 'New comment on class:Orchestrator.parse_command',
+  })
+  write(composer, 'Keep it?')
+  fireEvent.click(within(composer).getByRole('button', { name: 'Add to review' }))
+
+  expect(await within(composer).findByText(brokenLine('drafts.json'))).toBeInTheDocument()
+})
+
+test('a broken status.json or last_event.json shows in the banner beside the plan', async () => {
+  server.brokenFiles['/api/status'] = [brokenLine('status.json')]
+  server.brokenFiles['/api/last-event'] = [brokenLine('last_event.json')]
+  await open()
+
+  const banner = await screen.findByRole('alert', { name: 'Broken files' })
+  await vi.waitFor(() => {
+    expect(banner).toHaveTextContent(brokenLine('status.json'))
+    expect(banner).toHaveTextContent(brokenLine('last_event.json'))
+  })
+  expect(screen.queryByRole('status', { name: 'Claude' })).not.toBeInTheDocument()
+})
+
+test('one broken file named by two routes is listed once', async () => {
+  server.brokenFiles['/api/status'] = [brokenLine('status.json')]
+  server.brokenFiles['/api/last-event'] = [brokenLine('status.json')]
+  await open()
+
+  const banner = await screen.findByRole('alert', { name: 'Broken files' })
+
+  await vi.waitFor(() => expect(within(banner).getAllByRole('listitem')).toHaveLength(1))
+})
+
+test('a banner line goes away once the file is fixed and the server pushes a change', async () => {
+  server.brokenFiles['/api/threads'] = [brokenLine('comments.json')]
+  await open()
+  await screen.findByRole('alert', { name: 'Broken files' })
+
+  delete server.brokenFiles['/api/threads']
+  await act(async () => server.push({ type: 'threads_changed' }))
+
+  await vi.waitFor(() =>
+    expect(screen.queryByRole('alert', { name: 'Broken files' })).not.toBeInTheDocument(),
+  )
 })

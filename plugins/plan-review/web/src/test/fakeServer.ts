@@ -28,8 +28,14 @@ export class FakeServer {
   approved = false
   /** When set, the grill's drafts, submit, confirm and reopen are refused with this message (409). */
   grillRefusal: string | null = null
-  /** When set, GET /api/grill answers 422 with these errors, as for a grill.json that does not parse. */
+  /** When set, the routes that read grill.json answer 422 with these errors, as for a grill.json that does not parse. */
   grillErrors: string[] | null = null
+  /** Url -> lines: that route answers 422 for every method, as for a broken file behind it. */
+  brokenFiles: Record<string, string[]> = {}
+  /** Url -> body: that route answers 422 with this body as is, e.g. FastAPI's own validation reply. */
+  rawBroken: Record<string, unknown> = {}
+  /** Urls whose fetch is rejected, as when the server has stopped. */
+  down = new Set<string>()
   calls: Call[] = []
 
   install() {
@@ -43,9 +49,13 @@ export class FakeServer {
     const body: unknown = init?.body ? JSON.parse(String(init.body)) : null
     this.calls.push({ method, url, body })
     const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status })
+    if (this.down.has(url)) throw new TypeError('Failed to fetch')
+    if (url in this.rawBroken) return json(this.rawBroken[url], 422)
+    const broken = this.brokenFiles[url]
+    if (broken) return json({ errors: broken }, 422)
     if (url === '/api/plan')
       return this.plan === null
-        ? json({ errors: ['plan.json: file not found'] }, 404)
+        ? json({ errors: ['.claude/work/42/plan.json: file not found'] }, 404)
         : json(this.plan)
     const grillReply = this.handleGrill(url, method, body, json)
     if (grillReply) return grillReply
@@ -134,12 +144,18 @@ export class FakeServer {
     json: (data: unknown, status?: number) => Response,
   ): Response | null {
     if (!url.startsWith('/api/grill')) return null
-    if (this.grillErrors) return json({ errors: this.grillErrors }, 422)
-    const grill = this.grill
-    if (!grill) return json({ errors: ['grill.json: file not found'] }, 404)
-    if (url === '/api/grill') return json(grill)
-    if (url === '/api/grill/drafts') return json({ drafts: this.grillDrafts })
     const one = url.match(/^\/api\/grill\/drafts\/([^/]+)$/)
+    const readsGrill =
+      url === '/api/grill' ||
+      (one && method === 'PUT') ||
+      ['/api/grill/submit', '/api/grill/confirm', '/api/grill/reopen'].includes(url)
+    if (this.grillErrors && readsGrill) return json({ errors: this.grillErrors }, 422)
+    const grill = this.grill
+    if (!grill && readsGrill)
+      return json({ errors: ['.claude/work/42/grill.json: file not found'] }, 404)
+    if (url === '/api/grill/drafts') return json({ drafts: this.grillDrafts })
+    if (!grill) return json({ errors: [`no route ${method} ${url}`] }, 404)
+    if (url === '/api/grill') return json(grill)
     if (this.grillRefusal && ((one && method === 'PUT') || url === '/api/grill/submit'))
       return json({ errors: [this.grillRefusal] }, 409)
     if (one && method === 'PUT') {

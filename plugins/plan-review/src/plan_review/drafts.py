@@ -14,6 +14,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, TypeAdapter
 
+from plan_review.file_errors import read_file
 from plan_review.threads import file_lock, require_text, write_atomically
 
 
@@ -62,9 +63,7 @@ class DraftStore:
                 yield
 
     def all(self) -> list[Draft]:
-        if not self._path.is_file():
-            return []
-        return _Drafts.validate_json(self._path.read_bytes())
+        return read_file(self._path, _Drafts) or []
 
     def add(self, anchor: str, text: str, *, thread_id: str | None = None) -> Draft:
         require_text(text)

@@ -5,6 +5,7 @@ from threading import Thread
 import pytest
 
 from plan_review.drafts import DraftNotFound, DraftStore
+from plan_review.file_errors import BrokenFile
 
 
 @pytest.fixture
@@ -150,3 +151,24 @@ def test_concurrent_discard_all_and_add_keep_the_new_draft(tmp_path: Path) -> No
     run_together(discard_batches, add_many)
 
     assert sorted(d.anchor for d in DraftStore(path).all()) == sorted(f"new:{i}" for i in range(40))
+
+
+def test_a_broken_drafts_json_is_reported_and_left_as_it_is(tmp_path: Path) -> None:
+    path = tmp_path / "drafts.json"
+    path.write_bytes(b"{bad")
+    store = DraftStore(path)
+    named = [f"{path.as_posix()}: Invalid JSON: key must be a string at line 1 column 2"]
+    changes: list[Callable[[], object]] = [
+        store.all,
+        lambda: store.add("tab:plan", "hi"),
+        lambda: store.edit("d-1", "hi"),
+        lambda: store.discard("d-1"),
+        lambda: store.discard_all({"d-1"}),
+    ]
+
+    for change in changes:
+        with pytest.raises(BrokenFile) as error:
+            change()
+        assert error.value.errors == named
+
+    assert path.read_bytes() == b"{bad"

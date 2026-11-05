@@ -93,6 +93,8 @@ While it runs:
 
 Errors come back as `{"errors": [...]}`: 404 for an unknown thread or draft, 422 for blank text.
 
+A run file that is there but broken (`plan.json`, `grill.json`, `comments.json`, `drafts.json`, `grill_drafts.json`, `status.json`, `last_event.json`, `approved.json`) answers 422 on the routes that read it, with lines that start with its path, such as `.claude/work/42/comments.json: Invalid JSON: key must be a string at line 1 column 2`. The viewer shows them in a red banner and keeps the rest on screen. A command that reads such a file prints the same lines on stderr and exits 1. plan-review never deletes or overwrites a broken file. The one exception is `status.json`, which holds only the status line: when Claude sets or clears a status over a broken one, the old file is renamed to `status.json.broken` (replacing an older copy), the command says so on stderr, and the new status is written.
+
 ### Events for Claude (`WS /events`)
 
 The page grill adds three events: `{"type": "grill_submitted", "answers": [{"question_id", "kind": "choice"|"own"|"ask", "choice_id"?, "text"?}]}`, `{"type": "grill_confirmed"}` and `{"type": "grill_reopened", "text"}`. They are kept and resent like the others.
