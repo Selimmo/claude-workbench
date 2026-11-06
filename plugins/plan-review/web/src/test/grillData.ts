@@ -29,7 +29,7 @@ export function grill(...rounds: GrillQuestion[][]): Grill {
     confirmed_at: null,
     log: [],
     handled: 0,
-    max_asks: 3,
+    max_replies: 3,
   }
 }
 

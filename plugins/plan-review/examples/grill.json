@@ -9,27 +9,56 @@
           "title": "What does a hint cost the player?",
           "explanation": "A hint can be free, cost points, or be limited per game. This sets how the score is kept.",
           "choices": [
-            { "id": "points", "label": "Costs points", "description": "Each hint takes 2 points off the question." },
-            { "id": "free", "label": "Free", "description": "Hints never change the score." }
+            {
+              "id": "points",
+              "label": "Costs points",
+              "description": "Each hint takes 2 points off the question."
+            },
+            {
+              "id": "free",
+              "label": "Free",
+              "description": "Hints never change the score."
+            }
           ],
-          "updated": true,
-          "thread": [
-            { "author": "owner", "text": "Do hints work on timed questions?", "at": "2026-11-05T09:10:00Z" },
-            { "author": "claude", "text": "Yes. The timer keeps running while a hint is open.", "at": "2026-11-05T09:11:00Z" }
-          ],
-          "answer": { "kind": "choice", "choice_id": "points", "text": "but never below zero", "at": "2026-11-05T09:12:00Z" }
+          "updated": false,
+          "thread": [],
+          "answer": {
+            "kind": "choice",
+            "choice_id": "points",
+            "text": "but never below zero",
+            "at": "2026-11-05T09:12:00Z"
+          }
         },
         {
           "id": "q-hint-source",
           "title": "Where do hints come from?",
           "explanation": "Hints are written by hand with the question, or generated when asked for.",
           "choices": [
-            { "id": "written", "label": "Written with the question", "description": "Authors add a hint when they add a question." },
-            { "id": "generated", "label": "Generated on request", "description": "A model writes the hint when the player asks." }
+            {
+              "id": "written",
+              "label": "Written with the question",
+              "description": "Authors add a hint when they add a question."
+            },
+            {
+              "id": "generated",
+              "label": "Generated on request",
+              "description": "A model writes the hint when the player asks."
+            }
           ],
           "updated": false,
-          "thread": [],
-          "answer": { "kind": "own", "choice_id": null, "text": "Written, and the author can mark a question as hint-free.", "at": "2026-11-05T09:12:00Z" }
+          "thread": [
+            {
+              "author": "owner",
+              "text": "Written, and the author can mark a question as hint-free.",
+              "at": "2026-11-05T09:12:00Z"
+            }
+          ],
+          "answer": {
+            "kind": "other",
+            "choice_id": null,
+            "text": "Written, and the author can mark a question as hint-free.",
+            "at": "2026-11-05T09:13:00Z"
+          }
         }
       ]
     },
@@ -41,42 +70,206 @@
           "title": "How many hints per question?",
           "explanation": "One hint keeps it simple; several give a way to step up from vague to exact.",
           "choices": [
-            { "id": "one", "label": "One", "description": "A single hint per question." },
-            { "id": "three", "label": "Up to three", "description": "Each hint is more explicit than the last." }
+            {
+              "id": "one",
+              "label": "One",
+              "description": "A single hint per question."
+            },
+            {
+              "id": "three",
+              "label": "Up to three",
+              "description": "Each hint is more explicit than the last."
+            }
           ],
           "updated": false,
           "thread": [],
+          "answer": null
+        },
+        {
+          "id": "q-hint-timer",
+          "title": "Do hints work on timed questions?",
+          "explanation": "On a timed question the clock can keep running, pause, or hints can be switched off.",
+          "choices": [
+            {
+              "id": "run",
+              "label": "The timer keeps running",
+              "description": "Reading a hint costs time as well as points."
+            },
+            {
+              "id": "pause",
+              "label": "The timer pauses",
+              "description": "The player reads the hint without a clock."
+            },
+            {
+              "id": "off",
+              "label": "No hints on timed questions",
+              "description": "Timed questions stay as they are."
+            }
+          ],
+          "updated": true,
+          "thread": [
+            {
+              "author": "owner",
+              "text": "Can the player see how many hints are left before asking?",
+              "at": "2026-11-05T10:00:00Z"
+            },
+            {
+              "author": "claude",
+              "text": "Yes. The button shows the number left, so I added a third choice that turns hints off for timed questions.",
+              "at": "2026-11-05T10:01:00Z"
+            }
+          ],
+          "answer": null
+        },
+        {
+          "id": "q-hint-final",
+          "title": "Who sees a hint after it is used?",
+          "explanation": "Once a player has used a hint, it can stay visible in the review at the end, or be hidden again.",
+          "choices": [
+            {
+              "id": "keep",
+              "label": "Keep it in the review",
+              "description": "The review shows every hint that was used."
+            },
+            {
+              "id": "hide",
+              "label": "Hide it again",
+              "description": "The review shows only the answers."
+            }
+          ],
+          "updated": false,
+          "thread": [
+            {
+              "author": "owner",
+              "text": "Show it only to the player who used it.",
+              "at": "2026-11-05T10:10:00Z"
+            },
+            {
+              "author": "claude",
+              "text": "Players answer alone, so that is already the case. Do you want the review to show it or not?",
+              "at": "2026-11-05T10:11:00Z"
+            },
+            {
+              "author": "owner",
+              "text": "Only on request.",
+              "at": "2026-11-05T10:12:00Z"
+            },
+            {
+              "author": "claude",
+              "text": "'On request' needs a button on every answer. Is a plain yes or no enough?",
+              "at": "2026-11-05T10:13:00Z"
+            },
+            {
+              "author": "owner",
+              "text": "Show it on request, that is the point.",
+              "at": "2026-11-05T10:14:00Z"
+            },
+            {
+              "author": "claude",
+              "text": "That adds a second screen. Pick one of the two, or add your own wording to a pick.",
+              "at": "2026-11-05T10:15:00Z"
+            }
+          ],
           "answer": null
         }
       ]
     }
   ],
   "decisions": [
-    { "id": "d1", "topic": "Scoring", "decision": "A hint costs 2 points", "choice": "Costs points", "why": null, "question_id": "q-hint-cost", "replaces": null },
-    { "id": "d2", "topic": "Content", "decision": "Hints are written with the question", "choice": "Authors write them", "why": "A model call per hint is too costly.", "question_id": "q-hint-source", "replaces": null },
-    { "id": "d3", "topic": "Scoring", "decision": "A hint costs 2 points, never below zero", "choice": "Costs points, floored at zero", "why": "A floor was asked for.", "question_id": "q-hint-cost", "replaces": "d1" }
+    {
+      "id": "d1",
+      "topic": "Scoring",
+      "decision": "A hint costs 2 points",
+      "choice": "Costs points",
+      "why": null,
+      "question_id": "q-hint-cost",
+      "replaces": null
+    },
+    {
+      "id": "d2",
+      "topic": "Content",
+      "decision": "Hints are written with the question",
+      "choice": "Authors write them",
+      "why": "A model call per hint is too costly.",
+      "question_id": "q-hint-source",
+      "replaces": null
+    },
+    {
+      "id": "d3",
+      "topic": "Scoring",
+      "decision": "A hint costs 2 points, never below zero",
+      "choice": "Costs points, floored at zero",
+      "why": "A floor was asked for.",
+      "question_id": "q-hint-cost",
+      "replaces": "d1"
+    }
   ],
-  "out_of_scope": ["Hints for timed rounds", "Translating hints"],
+  "out_of_scope": [
+    "Hints for timed rounds",
+    "Translating hints"
+  ],
   "done": false,
   "confirmed_at": null,
   "log": [
     {
       "kind": "answers",
       "answers": [
-        { "question_id": "q-hint-cost", "kind": "ask", "choice_id": null, "text": "Do hints work on timed questions?" },
-        { "question_id": "q-hint-source", "kind": "own", "choice_id": null, "text": "Written, and the author can mark a question as hint-free." }
+        {
+          "question_id": "q-hint-cost",
+          "kind": "choice",
+          "choice_id": "points",
+          "text": "but never below zero"
+        },
+        {
+          "question_id": "q-hint-source",
+          "kind": "other",
+          "text": "Written, and the author can mark a question as hint-free."
+        }
       ],
       "text": null,
-      "at": "2026-11-05T09:10:00Z"
+      "at": "2026-11-05T09:12:00Z"
     },
     {
       "kind": "answers",
       "answers": [
-        { "question_id": "q-hint-cost", "kind": "choice", "choice_id": "points", "text": "but never below zero" }
+        {
+          "question_id": "q-hint-timer",
+          "kind": "other",
+          "text": "Can the player see how many hints are left before asking?"
+        },
+        {
+          "question_id": "q-hint-final",
+          "kind": "other",
+          "text": "Show it only to the player who used it."
+        }
       ],
       "text": null,
-      "at": "2026-11-05T09:12:00Z"
+      "at": "2026-11-05T10:00:00Z"
+    },
+    {
+      "kind": "answers",
+      "answers": [
+        {
+          "question_id": "q-hint-final",
+          "kind": "other",
+          "text": "Only on request."
+        }
+      ],
+      "text": null,
+      "at": "2026-11-05T10:05:00Z"
+    },
+    {
+      "kind": "answers",
+      "answers": [
+        {
+          "question_id": "q-hint-final",
+          "kind": "other",
+          "text": "Show it on request, that is the point."
+        }
+      ],
+      "text": null,
+      "at": "2026-11-05T10:14:00Z"
     }
   ],
-  "handled": 2
+  "handled": 4
 }

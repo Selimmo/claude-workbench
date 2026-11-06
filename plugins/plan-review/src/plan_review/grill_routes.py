@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from plan_review.events import ClaudeEvents
-from plan_review.grill import MAX_ASKS, GrillError, GrillStore, SubmittedAnswer
+from plan_review.grill import MAX_REPLIES, GrillError, GrillStore, SubmittedAnswer
 from plan_review.grill_drafts import AnswerDraft, GrillDraftStore
 
 
@@ -27,7 +27,9 @@ def grill_routes(
     @router.get("/api/grill")
     def get_grill() -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
         state = store.get()  # GrillError(missing) becomes a 404
-        return JSONResponse({**state.model_dump(mode="json"), "label": label, "max_asks": MAX_ASKS})
+        return JSONResponse(
+            {**state.model_dump(mode="json"), "label": label, "max_replies": MAX_REPLIES}
+        )
 
     @router.get("/api/grill/drafts")
     def list_drafts() -> dict[str, dict[str, AnswerDraft]]:  # pyright: ignore[reportUnusedFunction]
@@ -41,9 +43,6 @@ def grill_routes(
             question = store.get().question(question_id)
             if question.answer is not None:
                 raise GrillError([f"question '{question_id}' is already answered"], missing=True)
-            if draft.kind == "ask" and question.asks() >= MAX_ASKS:
-                used = f"question '{question_id}' has used its {MAX_ASKS} asks back"
-                raise GrillError([f"{used}; pick or write one"])
             return drafts.put(question_id, draft)
 
     @router.delete("/api/grill/drafts/{question_id}", status_code=204)
@@ -56,6 +55,10 @@ def grill_routes(
         # Drafts stay locked for the whole submit so an edit cannot land in between and be
         # lost. Lock order: drafts, then grill.json (the store takes its own lock).
         with drafts.held():
+            # A draft for a question that is no longer open (Claude closed it meanwhile) is
+            # dropped rather than refusing the whole submit.
+            open_ids = {q.id for q in store.get().open_questions()}
+            drafts.keep_only(open_ids)
             answers = [
                 SubmittedAnswer(question_id=qid, **draft.model_dump())
                 for qid, draft in drafts.all().items()

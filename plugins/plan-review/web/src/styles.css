@@ -1154,8 +1154,41 @@ g[data-focused='true'] rect {
   overflow-wrap: anywhere;
 }
 
+:root {
+  /* How far down the sticky head reaches: the theme switch's room at least, more with notices. */
+  --head-clear: max(3.75rem, var(--sticky-head-height, 0px));
+}
+
+/* The notices at the top of a page. Stuck, the wrapper runs from the top of the window down on a
+   solid background, so scrolled content never shows above, beside or between its parts. The
+   padding is the room for the theme switch; the negative margin gives it back, so unscrolled the
+   notices sit where they would anyway. The flow-root keeps the gap below the last notice inside
+   the background. */
+.sticky-head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flow-root;
+  margin-top: -3.75rem;
+  padding-top: 3.75rem;
+  background: var(--bg);
+  box-shadow: 0 0 0 100vmax var(--bg);
+  clip-path: inset(-100vmax -100vmax 0);
+}
+
+/* The plan page has only the 10px of page padding above it, so the notices there start below the
+   switch instead of being pulled up into room that is not there. */
+header .sticky-head {
+  margin-top: -10px;
+}
+
+.sticky-head:empty {
+  display: none;
+}
+
 /* What Claude is doing with the review. */
 .claude-banner {
+  background: var(--surface);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1228,37 +1261,54 @@ g[data-focused='true'] rect {
   color: inherit;
 }
 
-/* The grill page: decisions beside the rounds on wide screens, above them on narrow ones. */
+/* The grill page: the rounds in a column, the decisions in a sticky column beside them on wide
+   screens (above the rounds on narrow ones). The top padding leaves room for the top bar. */
 .grill-page {
-  display: grid;
-  gap: 1rem;
   max-width: 72rem;
   margin: 0 auto;
-  padding: 1rem;
+  padding: 3.5rem 1rem 2rem;
 }
 
-.grill-page > h1,
-.grill-page > .broken-files,
-.grill-page > .claude-banner,
-.grill-page > .confirm-bar,
-.grill-page > .approval {
-  grid-column: 1 / -1;
+.grill-page > h1 {
+  margin: 0.5rem 0 1rem;
+  font-size: 1.5rem;
+}
+
+.grill-body {
+  display: grid;
+  gap: 1.5rem;
+  align-items: start;
 }
 
 @media (min-width: 60rem) {
-  .grill-page {
+  .grill-body {
     grid-template-columns: minmax(0, 1fr) 20rem;
   }
 
-  .decisions-panel {
-    grid-column: 2;
-    grid-row: 2 / span 20;
-    align-self: start;
+  .rounds {
+    grid-column: 1;
+    grid-row: 1;
   }
 
-  .grill-page > :not(.decisions-panel, h1, .broken-files, .claude-banner, .confirm-bar, .approval) {
-    grid-column: 1;
+  /* Its top sits below the theme switch and the banner, so the two never overlap. */
+  .decisions-panel {
+    grid-column: 2;
+    grid-row: 1;
+    position: sticky;
+    top: calc(var(--head-clear) + 0.5rem);
+    max-height: calc(100vh - var(--head-clear) - 1rem);
+    overflow-y: auto;
   }
+}
+
+.rounds {
+  display: grid;
+  gap: 1rem;
+}
+
+.round h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
 }
 
 .decisions-panel,
@@ -1269,15 +1319,77 @@ g[data-focused='true'] rect {
   padding: 0.75rem 1rem;
 }
 
+.question-card {
+  margin: 0 0 1rem;
+}
+
+.decisions-panel h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.decisions-panel h3 {
+  margin: 0.75rem 0 0.25rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.panel-toggle {
+  font: inherit;
+  font-weight: 600;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.panel-toggle::before {
+  content: '▾ ';
+}
+
+.panel-toggle[aria-expanded='false']::before {
+  content: '▸ ';
+}
+
+.decisions-panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.decisions-panel li {
+  display: grid;
+  padding: 0.3rem 0;
+}
+
 .decisions-panel li[data-replaced='true'] {
   text-decoration: line-through;
   color: var(--muted);
+}
+
+.decision-choice,
+.decision-why {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.decisions-panel button.link {
+  margin: 0.5rem 0 0;
+  font-family: inherit;
+}
+
+.question-card .option {
+  margin-top: 0.5rem;
 }
 
 .question-card .choice {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 0 0.5rem;
+  align-items: baseline;
+  cursor: pointer;
 }
 
 .question-card .choice-description {
@@ -1285,10 +1397,21 @@ g[data-focused='true'] rect {
   color: var(--muted);
 }
 
+/* Under the picked option, lined up with its label and as wide as the card allows. */
 .question-card textarea {
   display: block;
+  box-sizing: border-box;
+  width: calc(100% - 1.6rem);
+  margin: 0.4rem 0 0.25rem 1.6rem;
+  font: inherit;
+}
+
+.confirm-bar textarea {
+  display: block;
+  box-sizing: border-box;
   width: 100%;
-  margin-top: 0.5rem;
+  margin: 0.5rem 0;
+  font: inherit;
 }
 
 .recommended,
@@ -1306,13 +1429,103 @@ g[data-focused='true'] rect {
   color: var(--modified);
 }
 
-.collapsed-round ul {
+/* Answered questions: a tick, the title, the answer in bold and the note in grey. */
+.answered-list {
   list-style: none;
-  margin: 0;
+  margin: 0 0 1rem;
   padding: 0;
+}
+
+.answered-row {
+  border-bottom: 1px solid var(--line);
+}
+
+.answered-row > button {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.75rem;
+  width: 100%;
+  padding: 0.55rem 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.answered-row .tick {
+  color: var(--added);
+  font-weight: 700;
+}
+
+.answered-row .answered-title {
+  flex: 0 1 auto;
+}
+
+.answered-row .answer-note {
+  flex-basis: 100%;
+  padding-left: 1.6rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.collapsed-detail {
+  padding: 0 0 0.75rem 1.6rem;
+  color: var(--muted);
+}
+
+/* Yes and No side by side, the same size. */
+.confirm-bar {
+  margin: 1rem 0;
+}
+
+.confirm-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.confirm-buttons button,
+.confirm-bar button {
+  font: inherit;
+  font-weight: 600;
+  min-width: 5rem;
+  padding: 7px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.confirm-bar button.primary {
+  border-color: transparent;
+  background: var(--added);
+  color: var(--surface);
+}
+
+.confirm-bar button:disabled {
+  background: var(--line);
+  color: var(--muted);
+  cursor: not-allowed;
 }
 
 .page-switch a[aria-current='page'] {
   font-weight: 600;
   text-decoration: none;
+}
+
+/* The sticky Claude banner sits over the top of the page while scrolling. Anything the browser
+   scrolls to (focus, links, scrollIntoView) must stop below it, not hide under it. */
+html {
+  scroll-padding-top: calc(var(--head-clear) + 1rem);
+}
+
+.round h2,
+.question-card,
+.card,
+.thread-card,
+.decisions-panel {
+  scroll-margin-top: calc(var(--head-clear) + 1rem);
 }

@@ -11,6 +11,7 @@ import { RisksTab } from './tabs/RisksTab'
 import { TestsTab } from './tabs/TestsTab'
 import { BrokenFilesBanner } from './BrokenFilesBanner'
 import { ClaudeBanner } from './ClaudeBanner'
+import { StickyHead } from './StickyHead'
 import { ApprovalBar } from './ApprovalBar'
 import { HEADER_ANCHORS, threadsFor } from './threadGroups'
 import type { Live } from './useLive'
@@ -58,8 +59,10 @@ export function PlanView({ plan, live }: { plan: Plan; live: Live }) {
 
   const header = (
     <header>
-      <BrokenFilesBanner errors={brokenFiles} />
-      <ClaudeBanner status={status} lastEvent={lastEvent} onResend={resend} />
+      <StickyHead>
+        <BrokenFilesBanner errors={brokenFiles} />
+        <ClaudeBanner status={status} lastEvent={lastEvent} onResend={resend} />
+      </StickyHead>
       <div className="header-row">
         <h1 data-element-id={HEADER_ANCHORS.title}>
           {issueLabel(plan.issue.id)} {plan.issue.title}

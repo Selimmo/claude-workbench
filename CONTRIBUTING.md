@@ -36,6 +36,15 @@ claude --plugin-dir ~/src/claude-workbench/plugins/plan-review
 
 Edits take effect at the next session start or `/reload-plugins`. Normal sessions keep using the released version.
 
+**Looking at the grill page with demo data.** Build the page once, then serve a copy of an example (`grill.json` is an open round, `grill-done.json` shows the Yes/No step) from the repo root:
+
+```bash
+npm --prefix plugins/plan-review/web run build
+mkdir -p .claude/work/grill-demo
+cp plugins/plan-review/examples/grill.json .claude/work/grill-demo/grill.json   # or grill-done.json
+uv run --project plugins/plan-review plan-review serve grill-demo
+```
+
 Changing anything that ships in the plugin's zip (including `plugins/plan-review/README.md`) means bumping its version; see [Version guard](RELEASING.md#version-guard). Add a line for it to [CHANGELOG.md](CHANGELOG.md).
 
 ## Project structure
@@ -64,7 +73,7 @@ claude-workbench/
         ├── README.md                   # commands, plan.json, agents, pipeline.json
         ├── agents/                     # architect, implementer, test-reviewer, code-reviewer
         ├── skills/ship/SKILL.md        # /plan-review:ship — the orchestrator
-        ├── examples/                   # plan.json and pipeline.json samples
+        ├── examples/                   # plan.json, pipeline.json and grill demo samples
         ├── src/plan_review/            # CLI, plan schema, server, comment threads, review drafts, /ship helpers, init, upgrade
         │   └── static/                 # built viewer page (generated, gitignored)
         ├── tests/                      # pytest

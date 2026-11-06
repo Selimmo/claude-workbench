@@ -116,3 +116,14 @@ test('a broken approved.json shows in the banner, and Approve shows the same mes
   expect(await vi.waitFor(() => within(bar!).getByText(line))).toBeInTheDocument()
   expect(screen.queryByText(/read-only/)).not.toBeInTheDocument()
 })
+
+test('the broken-files alert and the Claude banner share one sticky header on the plan page', async () => {
+  server.brokenFiles['/api/approve'] = ['.claude/work/42/approved.json: Invalid JSON']
+  server.lastEvent = { type: 'plan', sent_at: new Date().toISOString(), answered: false }
+  await open()
+
+  const alert = await screen.findByRole('alert', { name: 'Broken files' })
+  const banner = await screen.findByRole('status')
+  expect(alert.parentElement).toHaveClass('sticky-head')
+  expect(banner.parentElement).toBe(alert.parentElement)
+})

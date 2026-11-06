@@ -1,36 +1,34 @@
 import type { AnswerDraft } from './grill'
 import {
-  answerLine,
-  asksLeft,
+  answerParts,
   canSubmit,
+  decisionsByTopic,
   openQuestions,
+  otherIsFinal,
+  pick,
+  replacedCount,
   responded,
-  roundIsOpen,
 } from './grillModel'
 import { answered, grill, question } from './test/grillData'
 
 test('open questions come from every round', () => {
   const g = grill(
-    [question('q1', { answer: answered('own', { text: 'x' }) }), question('q2')],
+    [question('q1', { answer: answered('choice', { choice_id: 'a' }) }), question('q2')],
     [question('q3')],
   )
 
   expect(openQuestions(g).map((q) => q.id)).toEqual(['q2', 'q3'])
-  expect(roundIsOpen(g.rounds[0])).toBe(true)
-  expect(roundIsOpen({ n: 9, questions: [question('q9', { answer: answered('own') })] })).toBe(
-    false,
-  )
 })
 
-test('a response is a pick that still exists, or a written answer or ask', () => {
+test('a response is a pick that still exists, or an Other with text', () => {
   const q = question('q1')
 
   expect(responded(q)).toBe(false)
   expect(responded(q, { kind: 'choice', choice_id: 'a' })).toBe(true)
   expect(responded(q, { kind: 'choice', choice_id: 'gone' })).toBe(false) // revised away
-  expect(responded(q, { kind: 'own', text: '  ' })).toBe(false)
-  expect(responded(q, { kind: 'own', text: 'Mine' })).toBe(true)
-  expect(responded(q, { kind: 'ask', text: 'Why?' })).toBe(true)
+  expect(responded(q, { kind: 'other', text: '  ' })).toBe(false)
+  expect(responded(q, { kind: 'other' })).toBe(false)
+  expect(responded(q, { kind: 'other', text: 'Mine' })).toBe(true)
 })
 
 test('submit needs a response to every open question, and the owner’s turn', () => {
@@ -46,26 +44,105 @@ test('submit needs a response to every open question, and the owner’s turn', (
   expect(canSubmit(grill([]), {})).toBe(false)
 })
 
-test('asks left counts the owner’s messages against the limit', () => {
-  const thread = [
-    { author: 'owner' as const, text: '?', at: '' },
-    { author: 'claude' as const, text: '.', at: '' },
-    { author: 'owner' as const, text: '??', at: '' },
-  ]
+test('picking another option keeps the text already typed', () => {
+  const typed: AnswerDraft = { kind: 'choice', choice_id: 'b', text: 'x' }
 
-  expect(asksLeft(question('q1'), 3)).toBe(3)
-  expect(asksLeft(question('q1', { thread }), 3)).toBe(1)
+  expect(pick(typed, { kind: 'choice', choice_id: 'c' })).toEqual({
+    kind: 'choice',
+    choice_id: 'c',
+    text: 'x',
+  })
+  expect(pick(typed, { kind: 'other' })).toEqual({ kind: 'other', text: 'x' })
+  expect(pick(undefined, { kind: 'choice', choice_id: 'a' })).toEqual({
+    kind: 'choice',
+    choice_id: 'a',
+  })
+  expect(pick(undefined, { kind: 'other' })).toEqual({ kind: 'other' })
+  expect(pick({ kind: 'other', text: 'y' }, { kind: 'choice', choice_id: 'a' })).toEqual({
+    kind: 'choice',
+    choice_id: 'a',
+    text: 'y',
+  })
 })
 
-test('an answer line reads title → answer', () => {
+test('Other is final once Claude has replied the limit', () => {
+  const thread = (claude: number) =>
+    Array.from({ length: claude }, () => [
+      { author: 'owner' as const, text: '?', at: '' },
+      { author: 'claude' as const, text: '.', at: '' },
+    ]).flat()
+
+  expect(otherIsFinal(question('q1', { thread: thread(2) }), 3)).toBe(false)
+  expect(otherIsFinal(question('q1', { thread: thread(3) }), 3)).toBe(true)
+})
+
+test('an answered question reads as its answer and note', () => {
   const picked = question('q1', {
     answer: answered('choice', { choice_id: 'b', text: 'for now' }),
   })
-  const own = question('q2', { answer: answered('own', { text: 'Mine' }) })
+  const plain = question('q3', { answer: answered('choice', { choice_id: 'a' }) })
 
-  expect(answerLine(picked)).toBe('Question q1? → Choice b (for now)')
-  expect(answerLine(own)).toBe('Question q2? → Mine')
-  expect(answerLine(question('q3', { answer: answered('choice', { choice_id: 'a' }) }))).toBe(
-    'Question q3? → Choice a',
-  )
+  expect(answerParts(picked)).toEqual({ answer: 'Choice b', note: 'for now' })
+  expect(answerParts(plain)).toEqual({ answer: 'Choice a', note: null })
+  expect(answerParts(question('q2', { answer: answered('other', { text: 'Mine' }) }))).toEqual({
+    answer: 'Mine',
+    note: null,
+  })
+  expect(answerParts(question('q4', { answer: answered('own', { text: 'Old' }) }))).toEqual({
+    answer: 'Old',
+    note: null,
+  })
+})
+
+test('decisions are grouped by topic, replaced ones only when asked', () => {
+  const decision = (id: string, topic: string, replaces: string | null = null) => ({
+    id,
+    topic,
+    decision: `Decision ${id}`,
+    choice: 'Yes',
+    why: null,
+    question_id: null,
+    replaces,
+  })
+  const g = grill([question('q1')])
+  g.decisions = [
+    decision('d1', 'Scoring'),
+    decision('d2', 'Content'),
+    decision('d3', 'Scoring', 'd1'),
+  ]
+
+  expect(decisionsByTopic(g, false).map((t) => [t.topic, t.decisions.map((d) => d.id)])).toEqual([
+    ['Scoring', ['d3']],
+    ['Content', ['d2']],
+  ])
+  const all = decisionsByTopic(g, true)
+  expect(all.map((t) => [t.topic, t.decisions.map((d) => [d.id, d.replaced])])).toEqual([
+    [
+      'Scoring',
+      [
+        ['d1', true],
+        ['d3', false],
+      ],
+    ],
+    ['Content', [['d2', false]]],
+  ])
+  expect(replacedCount(g)).toBe(1)
+  expect(replacedCount(grill([]))).toBe(0)
+})
+
+test('a topic whose decisions are all replaced is left out until replaced ones show', () => {
+  const decision = (id: string, topic: string, replaces: string | null = null) => ({
+    id,
+    topic,
+    decision: `Decision ${id}`,
+    choice: 'Yes',
+    why: null,
+    question_id: null,
+    replaces,
+  })
+  const g = grill([question('q1')])
+  g.decisions = [decision('d1', 'Old topic'), decision('d2', 'New topic', 'd1')]
+
+  expect(decisionsByTopic(g, false).map((t) => t.topic)).toEqual(['New topic'])
+  expect(decisionsByTopic(g, true).map((t) => t.topic)).toEqual(['Old topic', 'New topic'])
 })

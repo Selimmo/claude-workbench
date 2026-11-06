@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from plan_review.decisions_md import decisions_markdown
 from plan_review.file_errors import BrokenFile, named_errors
 from plan_review.grill import GrillError, GrillStore
+from plan_review.grill_drafts import GrillDraftStore
 from plan_review.grill_turn import Turn
 from plan_review.orchestration import MalformedReview, branch_name, tree_hash, verdict
 from plan_review.pipeline import PipelineConfigError, load_pipeline
@@ -239,9 +240,17 @@ def _grill_post(run_id: str, file: Path) -> int:
     if not file.is_file():
         print(f"{file.as_posix()}: file not found", file=sys.stderr)
         return 2
-    store = GrillStore(ensure_work_dir(Path(), run_id) / "grill.json")
+    work = ensure_work_dir(Path(), run_id)
+    store = GrillStore(work / "grill.json")
+    drafts = GrillDraftStore(work / "grill_drafts.json")
     try:
-        state = store.post(Turn.parse(file.read_bytes()))
+        with drafts.held():
+            state = store.post(Turn.parse(file.read_bytes()))
+            # a draft must not outlive its question being open
+            try:
+                drafts.keep_only({q.id for q in state.open_questions()})
+            except BrokenFile as error:
+                print(error, file=sys.stderr)  # the turn is posted; the page reports this file
     except GrillError as error:
         print("\n".join(error.errors), file=sys.stderr)
         return 1

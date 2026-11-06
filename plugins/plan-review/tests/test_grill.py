@@ -7,7 +7,14 @@ from typing import Any
 
 import pytest
 
-from plan_review.grill import MAX_ASKS, GrillError, GrillStore, SubmittedAnswer, load_grill
+from plan_review.grill import (
+    MAX_REPLIES,
+    GrillError,
+    GrillState,
+    GrillStore,
+    SubmittedAnswer,
+    load_grill,
+)
 from plan_review.grill_turn import Turn
 
 
@@ -79,13 +86,16 @@ def answer(qid: str, kind: str, **fields: Any) -> SubmittedAnswer:
     return SubmittedAnswer(question_id=qid, kind=kind, **fields)  # pyright: ignore[reportArgumentType]
 
 
-def test_submitting_records_choices_and_own_answers_next_to_their_questions(
+def test_submitting_records_choices_and_their_notes_next_to_their_questions(
     store: GrillStore,
 ) -> None:
     store.post(turn(title="T", round=[question("q1"), question("q2")]))
 
     action = store.submit(
-        [answer("q1", "choice", choice_id="b", text="only for now"), answer("q2", "own", text="Z")]
+        [
+            answer("q1", "choice", choice_id="b", text="only for now"),
+            answer("q2", "choice", choice_id="a"),
+        ]
     )
 
     state = store.get()
@@ -96,13 +106,32 @@ def test_submitting_records_choices_and_own_answers_next_to_their_questions(
         "only for now",
     )
     assert (second.answer.kind, second.answer.choice_id, second.answer.text) == (  # pyright: ignore[reportOptionalMemberAccess]
-        "own",
+        "choice",
+        "a",
         None,
-        "Z",
     )
     assert state.open_questions() == []
     assert [a.kind for a in state.log] == ["answers"]
     assert action.answers[0].question_id == "q1"
+
+
+def test_an_other_answer_goes_into_the_thread_and_keeps_the_question_open(
+    store: GrillStore,
+) -> None:
+    store.post(turn(title="T", round=[question("q1"), question("q2")]))
+
+    store.submit(
+        [
+            answer("q1", "other", text="What does a hint cost?"),
+            answer("q2", "choice", choice_id="a"),
+        ]
+    )
+
+    asked = store.get().open_questions()[0]
+    assert asked.id == "q1"
+    assert asked.answer is None
+    assert [(m.author, m.text) for m in asked.thread] == [("owner", "What does a hint cost?")]
+    assert asked.awaiting_reply()
 
 
 def snapshot(store: GrillStore) -> str:
@@ -117,41 +146,41 @@ def snapshot(store: GrillStore) -> str:
             [
                 answer("q1", "choice", choice_id="a"),
                 answer("q1", "choice", choice_id="zz"),
-                answer("q2", "own", text="fine"),
+                answer("q2", "other", text="fine"),
             ],
             "answers.1.question_id: 'q1' is answered twice",
         ),
         (
             [
-                answer("q1", "own", text="x"),
-                answer("q2", "own", text="fine"),
-                answer("q9", "own", text="x"),
+                answer("q1", "other", text="x"),
+                answer("q2", "other", text="fine"),
+                answer("q9", "other", text="x"),
             ],
             "answers.2.question_id: no open question 'q9'",
         ),
         (
             [
-                answer("q1", "own", text="x"),
-                answer("q2", "own", text="fine"),
+                answer("q1", "other", text="x"),
+                answer("q2", "other", text="fine"),
                 answer("q9", "choice", choice_id="a"),
             ],
             "answers.2.question_id: no open question 'q9'",
         ),
         (
-            [answer("q1", "choice", choice_id="zz"), answer("q2", "own", text="fine")],
+            [answer("q1", "choice", choice_id="zz"), answer("q2", "other", text="fine")],
             "answers.0.choice_id: 'zz' is not a choice of 'q1'",
         ),
         (
-            [answer("q1", "choice"), answer("q2", "own", text="fine")],
+            [answer("q1", "choice"), answer("q2", "other", text="fine")],
             "answers.0.choice_id: needed to pick a choice",
         ),
         (
-            [answer("q1", "own", text="  "), answer("q2", "own", text="fine")],
-            "answers.0.text: needed for an own answer",
+            [answer("q1", "other", text="  "), answer("q2", "choice", choice_id="a")],
+            "answers.0.text: needed for Other",
         ),
         (
-            [answer("q1", "ask", text=""), answer("q2", "own", text="fine")],
-            "answers.0.text: needed for an ask back",
+            [answer("q1", "other", text=""), answer("q2", "other", text="fine")],
+            "answers.0.text: needed for Other",
         ),
     ],
 )
@@ -169,6 +198,173 @@ def test_a_submit_needs_exactly_one_valid_response_per_open_question(
     assert snapshot(store) == before
 
 
+@pytest.mark.parametrize("kind", ["own", "ask"])
+def test_own_and_ask_submissions_are_no_longer_accepted(store: GrillStore, kind: str) -> None:
+    store.post(turn(title="T", round=[question("q1"), question("q2")]))
+    before = snapshot(store)
+
+    with pytest.raises(GrillError) as raised:
+        store.submit([answer("q1", kind, text="x"), answer("q2", "choice", choice_id="a")])
+
+    assert raised.value.errors == [
+        f"answers.0.kind: '{kind}' is no longer accepted; pick a choice or Other"
+    ]
+    assert not raised.value.conflict
+    assert snapshot(store) == before
+
+
+def test_a_grill_json_from_0_1_9_with_own_and_ask_still_loads(tmp_path: Path) -> None:
+    old = json.loads((Path(__file__).parent / "fixtures" / "grill-0.1.9.json").read_text())
+    old["handled"] = 0  # so that pending() has the owner's logged answers to describe
+    path = tmp_path / "grill.json"
+    path.write_text(json.dumps(old))
+
+    store = GrillStore(path)
+    state = store.get()
+
+    own = state.question("q-hint-source").answer
+    assert own is not None
+    assert (own.kind, own.text) == (
+        "own",
+        "Written, and the author can mark a question as hint-free.",
+    )
+    asked = state.question("q-hint-cost")
+    assert [m.author for m in asked.thread] == ["owner", "claude"]
+    kinds = [[a["kind"] for a in action["answers"]] for action in store.pending()]
+    assert kinds == [["ask", "own"], ["choice"]]
+    assert [a.kind for a in state.log[0].answers] == ["ask", "own"]
+
+
+def ask_other(store: GrillStore, qid: str = "q1", text: str = "Something else?") -> None:
+    store.submit([answer(qid, "other", text=text)])
+
+
+def test_a_decision_for_an_awaiting_question_settles_it_with_the_other_text(
+    store: GrillStore,
+) -> None:
+    store.post(turn(title="T", round=[question("q1")]))
+    ask_other(store, text="A third way")
+
+    state = store.post(turn(decisions=[decision("d1", question_id="q1")], round=[question("q2")]))
+
+    settled = state.question("q1")
+    assert settled.answer is not None
+    assert (settled.answer.kind, settled.answer.choice_id, settled.answer.text) == (
+        "other",
+        None,
+        "A third way",
+    )
+    assert [q.id for q in state.open_questions()] == ["q2"]
+
+
+def test_an_awaiting_question_needs_one_reply_or_one_settling_decision_not_both(
+    store: GrillStore,
+) -> None:
+    store.post(turn(title="T", round=[question("q1"), question("q2")]))
+    store.submit([answer("q1", "other", text="x"), answer("q2", "other", text="y")])
+    before = snapshot(store)
+    reply = {"question_id": "q1", "text": "r"}
+
+    with pytest.raises(GrillError) as neither:
+        store.post(turn(replies=[reply]))
+    assert neither.value.errors == ["replies: question 'q2' is awaiting a reply or a decision"]
+
+    with pytest.raises(GrillError) as both:
+        store.post(turn(replies=[reply], decisions=[decision("d1", question_id="q1")]))
+    assert both.value.errors == [
+        "replies: question 'q1' is replied to and settled in one turn; do one of them",
+        "replies: question 'q2' is awaiting a reply or a decision",
+    ]
+    assert snapshot(store) == before
+
+    state = store.post(turn(replies=[reply], decisions=[decision("d1", question_id="q2")]))
+    assert [q.id for q in state.open_questions()] == ["q1"]
+
+
+def test_a_decision_for_a_question_with_no_other_pending_does_not_close_it(
+    store: GrillStore,
+) -> None:
+    store.post(turn(title="T", round=[question("q1")]))
+
+    state = store.post(turn(decisions=[decision("d1", question_id="q1")]))
+
+    assert [q.id for q in state.open_questions()] == ["q1"]
+
+
+def reply_three_times(store: GrillStore) -> None:
+    for i in range(MAX_REPLIES):
+        ask_other(store, text=f"other {i}")
+        store.post(turn(replies=[{"question_id": "q1", "text": f"reply {i}"}]))
+
+
+def test_after_three_replies_an_other_is_still_accepted_and_must_be_settled(
+    store: GrillStore,
+) -> None:
+    store.post(turn(title="T", round=[question("q1")]))
+    reply_three_times(store)
+    assert not store.get().question("q1").awaiting_reply()
+
+    ask_other(store, text="my final word")  # a 4th Other is accepted
+    question_1 = store.get().question("q1")
+    assert question_1.must_settle()
+    before = snapshot(store)
+
+    with pytest.raises(GrillError) as raised:
+        store.post(turn(replies=[{"question_id": "q1", "text": "one more"}]))
+    assert raised.value.errors == [
+        "replies.0.question_id: question 'q1' has had 3 replies; it must be settled with a decision"
+    ]
+    assert snapshot(store) == before
+
+    state = store.post(turn(decisions=[decision("d1", question_id="q1")], done=True))
+    answer_1 = state.question("q1").answer
+    assert answer_1 is not None
+    assert (answer_1.kind, answer_1.text) == ("other", "my final word")
+
+
+def test_settling_the_last_open_question_and_done_in_one_turn_is_accepted(
+    store: GrillStore,
+) -> None:
+    store.post(turn(title="T", round=[question("q1")]))
+    ask_other(store)
+
+    state = store.post(turn(decisions=[decision("d1", question_id="q1")], done=True))
+
+    assert state.done
+    assert state.open_questions() == []
+
+
+def test_pending_marks_an_other_that_must_be_settled(store: GrillStore) -> None:
+    store.post(turn(title="T", round=[question("q1")]))
+    ask_other(store, text="first")
+    [first] = store.pending()
+    assert first["answers"] == [
+        {"question_id": "q1", "question": "Question q1?", "kind": "other", "text": "first"}
+    ]
+    store.post(turn(replies=[{"question_id": "q1", "text": "r0"}]))
+    for i in range(1, MAX_REPLIES):
+        ask_other(store, text=f"other {i}")
+        store.post(turn(replies=[{"question_id": "q1", "text": f"r{i}"}]))
+    ask_other(store, text="final")
+
+    [last] = store.pending()
+    assert last["answers"][0]["must_settle"] is True
+
+
+def test_pending_does_not_mark_a_choice_on_a_question_with_all_its_replies(
+    store: GrillStore,
+) -> None:
+    store.post(turn(title="T", round=[question("q1")]))
+    for i in range(MAX_REPLIES):
+        ask_other(store, text=f"other {i}")
+        store.post(turn(replies=[{"question_id": "q1", "text": f"r{i}"}]))
+    store.submit([answer("q1", "choice", choice_id="a")])
+
+    [picked] = store.pending()
+    assert picked["answers"][0]["kind"] == "choice"
+    assert "must_settle" not in picked["answers"][0]
+
+
 def test_the_owner_cannot_submit_while_claude_has_unhandled_actions(store: GrillStore) -> None:
     state = store.post(turn(title="T", round=[question("q1")]))
     assert state.owners_turn()
@@ -178,7 +374,7 @@ def test_the_owner_cannot_submit_while_claude_has_unhandled_actions(store: Grill
     before = snapshot(store)
 
     with pytest.raises(GrillError) as raised:
-        store.submit([answer("q1", "own", text="again")])
+        store.submit([answer("q1", "other", text="again")])
 
     assert raised.value.conflict
     assert raised.value.errors == ["waiting for Claude to handle your last action"]
@@ -188,12 +384,15 @@ def test_the_owner_cannot_submit_while_claude_has_unhandled_actions(store: Grill
     assert store.get().owners_turn()
 
 
-def test_asking_back_keeps_the_question_open_and_the_next_turn_must_reply(
+def test_a_reply_to_an_other_keeps_the_question_open_for_another_pick(
     store: GrillStore,
 ) -> None:
     store.post(turn(title="T", round=[question("q1"), question("q2")]))
     store.submit(
-        [answer("q1", "ask", text="What does a hint cost?"), answer("q2", "own", text="Z")]
+        [
+            answer("q1", "other", text="What does a hint cost?"),
+            answer("q2", "choice", choice_id="a"),
+        ]
     )
 
     asked = store.get().open_questions()[0]
@@ -202,7 +401,7 @@ def test_asking_back_keeps_the_question_open_and_the_next_turn_must_reply(
 
     with pytest.raises(GrillError) as raised:
         store.post(turn(round=[question("q3")]))
-    assert raised.value.errors == ["replies: question 'q1' is awaiting a reply"]
+    assert raised.value.errors == ["replies: question 'q1' is awaiting a reply or a decision"]
 
     twice = {"question_id": "q1", "text": "One request."}
     with pytest.raises(GrillError) as doubled:
@@ -213,22 +412,9 @@ def test_asking_back_keeps_the_question_open_and_the_next_turn_must_reply(
     replied = state.open_questions()[0]
     assert [(m.author, m.text) for m in replied.thread][-1] == ("claude", "One request.")
     assert not replied.awaiting_reply()
-    assert replied.asks() == 1
+    assert replied.replies() == 1
 
-
-def test_a_fourth_ask_back_on_one_question_is_refused(store: GrillStore) -> None:
-    store.post(turn(title="T", round=[question("q1")]))
-    for i in range(MAX_ASKS):
-        store.submit([answer("q1", "ask", text=f"ask {i}")])
-        store.post(turn(replies=[{"question_id": "q1", "text": f"reply {i}"}]))
-
-    with pytest.raises(GrillError) as raised:
-        store.submit([answer("q1", "ask", text="one more")])
-
-    assert raised.value.errors == [
-        "answers.0: question 'q1' has used its 3 asks back; pick a choice or write your own answer"
-    ]
-    store.submit([answer("q1", "choice", choice_id="a")])  # other answers still work
+    store.submit([answer("q1", "choice", choice_id="b")])
     assert store.get().open_questions() == []
 
 
@@ -243,7 +429,7 @@ REVISED = {
 
 def test_a_reply_may_revise_an_open_question(store: GrillStore) -> None:
     store.post(turn(title="T", round=[question("q1"), question("q2")]))
-    store.submit([answer("q1", "ask", text="Which?"), answer("q2", "own", text="Z")])
+    store.submit([answer("q1", "other", text="Which?"), answer("q2", "choice", choice_id="a")])
 
     state = store.post(
         turn(replies=[{"question_id": "q1", "text": "See below.", "revised": REVISED}])
@@ -260,7 +446,7 @@ def test_a_reply_cannot_revise_a_question_that_is_not_awaiting_one(
     store: GrillStore, target: str
 ) -> None:
     store.post(turn(title="T", round=[question("q1"), question("q2")]))
-    store.submit([answer("q1", "ask", text="Which?"), answer("q2", "own", text="Z")])
+    store.submit([answer("q1", "other", text="Which?"), answer("q2", "choice", choice_id="a")])
     store.post(turn(replies=[{"question_id": "q1", "text": "See below."}]))
     before = snapshot(store)
 
@@ -348,7 +534,7 @@ def test_every_turn_leaves_the_owner_something_or_says_done(store: GrillStore) -
     with pytest.raises(GrillError) as nothing:
         store.post(turn(out_of_scope=["Rate limiting"]))
     assert nothing.value.errors == [
-        "round: nothing is left for the owner; post a round, reply to an ask or set done"
+        "round: nothing is left for the owner; post a round, answer an Other or set done"
     ]
     assert snapshot(store) == before
 
@@ -391,7 +577,7 @@ def test_pending_lists_owner_actions_the_agent_has_not_answered(store: GrillStor
     store.submit(
         [
             answer("q1", "choice", choice_id="b", text="note"),
-            answer("q2", "ask", text="Why?"),
+            answer("q2", "other", text="Why?"),
             answer("q3", "choice", choice_id="a"),
         ]
     )
@@ -407,7 +593,7 @@ def test_pending_lists_owner_actions_the_agent_has_not_answered(store: GrillStor
             "choice": "Choice b",
             "text": "note",
         },
-        {"question_id": "q2", "question": "Question q2?", "kind": "ask", "text": "Why?"},
+        {"question_id": "q2", "question": "Question q2?", "kind": "other", "text": "Why?"},
         {
             "question_id": "q3",
             "question": "Question q3?",
@@ -513,3 +699,35 @@ def test_load_grill_names_the_file_in_every_error_line(tmp_path: Path) -> None:
     with pytest.raises(GrillError) as no_title:
         load_grill(path)
     assert no_title.value.errors == [f"{path.as_posix()}: title: Field required"]
+
+
+EXAMPLES = Path(__file__).parents[1] / "examples"
+
+
+def used_kinds(state: GrillState) -> set[str]:
+    kinds = {a.kind for a in state.log for a in a.answers}
+    kinds |= {q.answer.kind for r in state.rounds for q in r.questions if q.answer}
+    return kinds
+
+
+def test_the_example_grills_load_as_an_open_round_and_a_done_grill() -> None:
+    demo = load_grill(EXAMPLES / "grill.json")
+    questions = {q.id: q for r in demo.rounds for q in r.questions}
+
+    assert demo.owners_turn()
+    assert not demo.done
+    settled = [q for q in questions.values() if q.answer and q.answer.kind == "other"]
+    assert [q.id for q in settled] == ["q-hint-source"]
+    replied = [q for q in demo.open_questions() if q.replies() == 1 and not q.must_settle()]
+    assert replied
+    assert [q.id for q in demo.open_questions() if q.must_settle()] == ["q-hint-final"]
+    assert any(not q.thread for q in demo.open_questions())
+    assert used_kinds(demo) <= {"choice", "other"}
+
+    done = load_grill(EXAMPLES / "grill-done.json")
+    assert done.done
+    assert done.confirmed_at is None
+    assert done.owners_turn()
+    assert done.open_questions() == []
+    assert used_kinds(done) <= {"choice", "other"}
+    assert [d.id for d in done.decisions] == [d.id for d in demo.decisions]

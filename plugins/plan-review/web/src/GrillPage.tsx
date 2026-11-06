@@ -1,12 +1,13 @@
-import { Fragment, useState } from 'react'
+import { useState } from 'react'
 
 import { BrokenFilesBanner } from './BrokenFilesBanner'
 import { ClaudeBanner } from './ClaudeBanner'
+import { StickyHead } from './StickyHead'
 import { CollapsedRound } from './grill/CollapsedRound'
 import { ConfirmBar } from './grill/ConfirmBar'
 import { DecisionsPanel } from './grill/DecisionsPanel'
 import { QuestionCard } from './grill/QuestionCard'
-import { canSubmit, roundIsOpen } from './grillModel'
+import { canSubmit } from './grillModel'
 import { useGrill } from './useGrill'
 
 export function GrillPage() {
@@ -20,7 +21,6 @@ export function GrillPage() {
     lastEvent,
     resend,
     saveDraft,
-    discardDraft,
     submit,
     confirm,
     reopen,
@@ -44,50 +44,49 @@ export function GrillPage() {
   if (grill === null) return <p className="status">Loading the grill…</p>
   return (
     <main className="grill-page">
-      <BrokenFilesBanner errors={brokenFiles} />
-      <ClaudeBanner status={status} lastEvent={lastEvent} onResend={resend} />
+      <StickyHead>
+        <BrokenFilesBanner errors={brokenFiles} />
+        <ClaudeBanner status={status} lastEvent={lastEvent} onResend={resend} />
+      </StickyHead>
       <h1>
         {grill.label} {grill.title}
       </h1>
-      <DecisionsPanel grill={grill} />
-      {grill.rounds.map((round) =>
-        roundIsOpen(round) ? (
-          <Fragment key={round.n}>
-            {round.questions.some((q) => q.answer !== null) && (
-              <CollapsedRound
-                round={{ ...round, questions: round.questions.filter((q) => q.answer !== null) }}
-              />
-            )}
-            {round.questions
-              .filter((q) => q.answer === null)
-              .map((question) => (
-                <QuestionCard
-                  key={question.id}
-                  question={question}
-                  draft={drafts[question.id]}
-                  maxAsks={grill.max_asks}
-                  onDraft={(draft) =>
-                    run(() => (draft ? saveDraft(question.id, draft) : discardDraft(question.id)))
-                  }
-                />
-              ))}
-          </Fragment>
-        ) : (
-          <CollapsedRound key={round.n} round={round} />
-        ),
-      )}
-      {planReady && <a href="/">Plan ready → open the plan</a>}
-      <ConfirmBar grill={grill} onConfirm={confirm} onReopen={reopen} />
-      {!grill.done && (
-        <button
-          className="primary"
-          disabled={!canSubmit(grill, drafts)}
-          onClick={() => run(submit)}
-        >
-          Submit answers
-        </button>
-      )}
-      {error && <p className="error">{error}</p>}
+      <div className="grill-body">
+        <DecisionsPanel grill={grill} />
+        <div className="rounds">
+          {grill.rounds.map((round) => (
+            <section key={round.n} className="round" aria-labelledby={`round-${round.n}`}>
+              <h2 id={`round-${round.n}`}>Round {round.n}</h2>
+              {round.questions.some((q) => q.answer !== null) && (
+                <CollapsedRound questions={round.questions.filter((q) => q.answer !== null)} />
+              )}
+              {round.questions
+                .filter((q) => q.answer === null)
+                .map((question) => (
+                  <QuestionCard
+                    key={question.id}
+                    question={question}
+                    draft={drafts[question.id]}
+                    maxReplies={grill.max_replies}
+                    onDraft={(draft) => run(() => saveDraft(question.id, draft))}
+                  />
+                ))}
+            </section>
+          ))}
+          {planReady && <a href="/">Plan ready → open the plan</a>}
+          <ConfirmBar grill={grill} onConfirm={confirm} onReopen={reopen} />
+          {!grill.done && (
+            <button
+              className="primary"
+              disabled={!canSubmit(grill, drafts)}
+              onClick={() => run(submit)}
+            >
+              Submit answers
+            </button>
+          )}
+          {error && <p className="error">{error}</p>}
+        </div>
+      </div>
     </main>
   )
 }

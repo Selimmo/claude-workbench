@@ -4,6 +4,10 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
+### Unreleased
+
+- The page grill has simpler answer controls. Each question is a set of radio buttons, the choices plus **Other**, with one text box under the picked option (optional for a choice, required for Other). The separate own-answer and ask-back boxes are gone: an Other goes into the question's thread, and Claude settles it with a decision or replies (after 3 replies it must settle it; `plan-review grill pending` marks that `must_settle`). The last step is **Yes** or **No**. The page gets answered rows with a tick, a heading per round, a collapsible decisions list grouped by topic (replaced ones behind 'Show replaced'), and Claude's banner stays at the top. `/ship` keeps each decision to one line. `own` and `ask` answers are no longer accepted, but a `grill.json` from 0.1.9 or later still loads. A `grill_drafts.json` left over from an earlier version with `own` or `ask` drafts shows as a broken file: delete it (it only holds unsent answers) ([#56](https://github.com/Selimmo/claude-workbench/issues/56)).
+
 ### 0.1.10 (2026-11-05)
 
 - A broken run file is named in its error. A bad `grill.json` or `plan.json` now reads `.claude/work/53/grill.json: Invalid JSON: ...` in the terminal and on the page, like `preferences.json` already did. The same goes for `comments.json`, `drafts.json`, `grill_drafts.json`, `status.json`, `last_event.json` and `approved.json`, which used to crash with a long technical error: a command prints the named lines and exits 1, and the viewer keeps the plan or the questions on screen under a red banner naming the broken file. plan-review only reports a broken file and never overwrites it, except `status.json` (only the status line): when Claude sets a new status over a broken one, it is renamed to `status.json.broken` first ([#55](https://github.com/Selimmo/claude-workbench/issues/55)).

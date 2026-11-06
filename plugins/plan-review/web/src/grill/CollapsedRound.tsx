@@ -1,14 +1,21 @@
 import { useState } from 'react'
 
-import type { GrillQuestion, GrillRound } from '../grill'
-import { answerLine } from '../grillModel'
+import type { GrillQuestion } from '../grill'
+import { answerParts } from '../grillModel'
+import { Thread } from './QuestionCard'
 
-function Line({ question }: { question: GrillQuestion }) {
+function Row({ question }: { question: GrillQuestion }) {
   const [expanded, setExpanded] = useState(false)
+  const { answer, note } = answerParts(question)
   return (
-    <li>
-      <button className="link" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
-        {answerLine(question)}
+    <li className="answered-row">
+      <button aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+        <span className="tick" aria-hidden="true">
+          ✓
+        </span>
+        <span className="answered-title">{question.title}</span>
+        <strong>{answer}</strong>
+        {note && <span className="answer-note">{note}</span>}
       </button>
       {expanded && (
         <div className="collapsed-detail">
@@ -20,21 +27,20 @@ function Line({ question }: { question: GrillQuestion }) {
               </li>
             ))}
           </ul>
+          <Thread question={question} />
         </div>
       )}
     </li>
   )
 }
 
-/** An answered round as one `title → answer` line per question; click a line to expand it. */
-export function CollapsedRound({ round }: { round: GrillRound }) {
+/** Answered questions as tidy rows: a tick, the title, the answer in bold and the note in grey. */
+export function CollapsedRound({ questions }: { questions: GrillQuestion[] }) {
   return (
-    <section className="collapsed-round" aria-label={`Round ${round.n}`}>
-      <ul>
-        {round.questions.map((q) => (
-          <Line key={q.id} question={q} />
-        ))}
-      </ul>
-    </section>
+    <ul className="answered-list">
+      {questions.map((q) => (
+        <Row key={q.id} question={q} />
+      ))}
+    </ul>
   )
 }

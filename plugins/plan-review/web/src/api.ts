@@ -136,8 +136,6 @@ export const fetchGrillDrafts = (): Promise<Part<Record<string, AnswerDraft>>> =
 
 export const saveGrillDraft = async (questionId: string, draft: AnswerDraft) =>
   void (await send(`/api/grill/drafts/${questionId}`, draft, 'PUT'))
-export const discardGrillDraft = async (questionId: string) =>
-  void (await send(`/api/grill/drafts/${questionId}`, undefined, 'DELETE'))
 /** Records every draft as an answer and tells Claude. */
 export const submitGrill = async () => void (await send('/api/grill/submit'))
 
