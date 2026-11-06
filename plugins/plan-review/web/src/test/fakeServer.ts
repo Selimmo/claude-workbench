@@ -176,7 +176,7 @@ export class FakeServer {
         for (const q of round.questions) {
           const d = this.grillDrafts[q.id]
           if (!d || q.answer) continue
-          if (d.kind === 'ask') q.thread.push(message('owner', d.text ?? ''))
+          if (d.kind === 'other') q.thread.push(message('owner', d.text ?? ''))
           else
             q.answer = {
               kind: d.kind,

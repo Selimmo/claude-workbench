@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 
 import {
   confirmGrill,
-  discardGrillDraft,
   fetchGrill,
   fetchGrillDrafts,
   fetchPlan,
@@ -78,19 +77,6 @@ export function useGrill() {
         await saveGrillDraft(questionId, draft)
       } catch (error) {
         await refreshDrafts() // show what the server has, not what it refused
-        throw error
-      }
-    },
-    discardDraft: async (questionId: string) => {
-      setDrafts((old) => {
-        const rest = { ...old }
-        delete rest[questionId]
-        return rest
-      })
-      try {
-        await discardGrillDraft(questionId)
-      } catch (error) {
-        await refreshDrafts()
         throw error
       }
     },

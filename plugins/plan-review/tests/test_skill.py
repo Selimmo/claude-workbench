@@ -216,6 +216,21 @@ def test_page_grill_goes_through_the_helpers_and_keeps_the_banner_answered() -> 
         assert required in step_1, required
 
 
+def test_page_grill_explains_other_answers_and_one_line_decisions() -> None:
+    step_1 = _step_1()
+
+    for required in [
+        "`other`",
+        "decision whose `question_id`",
+        "never both",
+        "`must_settle`",
+        "to one line each",
+    ]:
+        assert required in step_1, required
+    for gone in ["`own`", "`ask`", "asked back", "not yet"]:
+        assert gone not in step_1, gone
+
+
 def test_resume_and_the_chat_fallback_are_described() -> None:
     step_1 = _step_1()
     step_3 = _step_3()

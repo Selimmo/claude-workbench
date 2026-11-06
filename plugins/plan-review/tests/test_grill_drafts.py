@@ -16,12 +16,12 @@ def test_grill_drafts_are_kept_per_question_and_survive_a_restart(tmp_path: Path
     assert store.all() == {}
 
     store.put("q1", AnswerDraft(kind="choice", choice_id="a"))
-    store.put("q2", AnswerDraft(kind="own", text="Mine"))
-    store.put("q1", AnswerDraft(kind="ask", text="Why?"))  # replaces q1's draft
+    store.put("q2", AnswerDraft(kind="other", text="Mine"))
+    store.put("q1", AnswerDraft(kind="other", text="Why?"))  # replaces q1's draft
 
     assert {k: d.kind for k, d in GrillDraftStore(path).all().items()} == {
-        "q1": "ask",
-        "q2": "own",
+        "q1": "other",
+        "q2": "other",
     }
 
     store.discard("q2")
@@ -37,13 +37,18 @@ def test_grill_drafts_are_kept_per_question_and_survive_a_restart(tmp_path: Path
     "fields",
     [
         {"kind": "choice"},
-        {"kind": "own", "text": "  "},
-        {"kind": "ask"},
+        {"kind": "own", "text": "Mine"},
+        {"kind": "ask", "text": "Why?"},
     ],
 )
 def test_a_draft_needs_what_its_kind_needs(fields: dict[str, str]) -> None:
     with pytest.raises(ValidationError):
         AnswerDraft.model_validate(fields)
+
+
+@pytest.mark.parametrize("fields", [{"kind": "other"}, {"kind": "other", "text": ""}])
+def test_an_empty_other_draft_is_valid_while_the_owner_types(fields: dict[str, str]) -> None:
+    assert AnswerDraft.model_validate(fields).kind == "other"
 
 
 def test_a_broken_grill_drafts_json_is_reported_and_left_as_it_is(tmp_path: Path) -> None:

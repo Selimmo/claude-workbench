@@ -17,7 +17,7 @@ from plan_review.threads import Message, file_lock, write_atomically
 if TYPE_CHECKING:
     from plan_review.grill_turn import Turn
 
-MAX_ASKS: Final = 3  # asks back per question; not a pipeline.json setting
+MAX_REPLIES: Final = 3  # Claude's replies to Others on one question; then it must settle
 
 
 class GrillError(Exception):
@@ -43,9 +43,9 @@ class Choice(BaseModel):
 
 
 class Answer(BaseModel):
-    kind: Literal["choice", "own"]
+    kind: Literal["choice", "own", "other"]  # "own" only in 0.1.9 files
     choice_id: str | None = None
-    text: str | None = None  # the own answer, or a note on the picked choice
+    text: str | None = None  # a note on the choice, or the Other (or old own) text
 
 
 class Question(BaseModel):
@@ -53,15 +53,19 @@ class Question(BaseModel):
     title: str
     explanation: str
     choices: list[Choice]  # the first is the recommendation
-    updated: bool = False  # explanation or choices revised after an ask back
-    thread: list[Message] = []  # asks back (owner) and replies (claude)
+    updated: bool = False  # explanation or choices revised in a reply
+    thread: list[Message] = []  # the owner's Other answers and Claude's replies
     answer: Answer | None = None  # None while open
 
-    def asks(self) -> int:
-        return sum(1 for m in self.thread if m.author == "owner")
+    def replies(self) -> int:
+        """Claude's messages in the thread."""
+        return sum(1 for m in self.thread if m.author == "claude")
+
+    def must_settle(self) -> bool:
+        return self.replies() >= MAX_REPLIES
 
     def awaiting_reply(self) -> bool:
-        """Open, and the owner asked back and Claude has not replied yet."""
+        """Open, and the thread ends with the owner's Other."""
         return self.answer is None and bool(self.thread) and self.thread[-1].author == "owner"
 
 
@@ -84,7 +88,7 @@ class Decision(BaseModel):
 
 class SubmittedAnswer(BaseModel):
     question_id: str
-    kind: Literal["choice", "own", "ask"]
+    kind: Literal["choice", "other", "own", "ask"]
     choice_id: str | None = None
     text: str | None = None
 
@@ -151,11 +155,11 @@ class GrillStore:
                 raise GrillError(problems)
             for given in answers:
                 question = next(q for q in state.open_questions() if q.id == given.question_id)
-                if given.kind == "ask":
+                if given.kind == "other":
                     question.thread.append(Message(author="owner", text=given.text or ""))
                     continue
                 question.answer = Answer(
-                    kind="choice" if given.kind == "choice" else "own",
+                    kind="choice",
                     choice_id=given.choice_id,
                     text=given.text,
                 )
@@ -225,6 +229,8 @@ def _describe(action: OwnerAction, questions: dict[str, Question]) -> dict[str, 
             item["choice"] = next(c.label for c in question.choices if c.id == given.choice_id)
         if given.text:
             item["text"] = given.text
+        if given.kind == "other" and question.must_settle():
+            item["must_settle"] = True
         described.append(item)
     return {"kind": "answers", "answers": described}
 
@@ -244,7 +250,11 @@ def _answer_problems(state: GrillState, answers: list[SubmittedAnswer]) -> list[
             problems.append(f"{where}.question_id: '{given.question_id}' is answered twice")
             continue
         seen.add(given.question_id)
-        if given.kind == "choice":
+        if given.kind in ("own", "ask"):
+            problems.append(
+                f"{where}.kind: '{given.kind}' is no longer accepted; pick a choice or Other"
+            )
+        elif given.kind == "choice":
             if given.choice_id is None:
                 problems.append(f"{where}.choice_id: needed to pick a choice")
             elif given.choice_id not in {c.id for c in question.choices}:
@@ -252,13 +262,7 @@ def _answer_problems(state: GrillState, answers: list[SubmittedAnswer]) -> list[
                     f"{where}.choice_id: '{given.choice_id}' is not a choice of '{question.id}'"
                 )
         elif not (given.text or "").strip():
-            what = "an own answer" if given.kind == "own" else "an ask back"
-            problems.append(f"{where}.text: needed for {what}")
-        elif given.kind == "ask" and question.asks() >= MAX_ASKS:
-            problems.append(
-                f"{where}: question '{question.id}' has used its {MAX_ASKS} asks back; "
-                "pick a choice or write your own answer"
-            )
+            problems.append(f"{where}.text: needed for Other")
     problems.extend(f"{qid}: needs a response" for qid in open_by_id if qid not in seen)
     return problems
 

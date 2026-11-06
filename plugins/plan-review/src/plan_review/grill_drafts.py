@@ -20,16 +20,14 @@ from plan_review.threads import file_lock, write_atomically
 class AnswerDraft(BaseModel):
     """A SubmittedAnswer without its question id (the file is keyed by it)."""
 
-    kind: Literal["choice", "own", "ask"]
+    kind: Literal["choice", "other"]
     choice_id: str | None = None
-    text: str | None = None  # for 'choice': an optional note
+    text: str | None = None  # a choice's optional note; Other's text (may be empty while typing)
 
     @model_validator(mode="after")
     def _has_what_its_kind_needs(self) -> Self:
         if self.kind == "choice" and self.choice_id is None:
             raise ValueError("a choice needs choice_id")
-        if self.kind != "choice" and not (self.text or "").strip():
-            raise ValueError(f"an {'own answer' if self.kind == 'own' else 'ask back'} needs text")
         return self
 
 
@@ -76,6 +74,13 @@ class GrillDraftStore:
         """Remove these drafts (e.g. just submitted), keeping any made meanwhile."""
         with self._lock():
             self._save({k: d for k, d in self.all().items() if k not in question_ids})
+
+    def keep_only(self, question_ids: set[str]) -> None:
+        """Drop the drafts of every question not in this set (e.g. closed by Claude's turn)."""
+        with self._lock():
+            kept = {k: d for k, d in self.all().items() if k in question_ids}
+            if kept != self.all():
+                self._save(kept)
 
     def _save(self, drafts: dict[str, AnswerDraft]) -> None:
         write_atomically(self._path, _Drafts.dump_json(drafts, indent=2))

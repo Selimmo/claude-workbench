@@ -9,9 +9,9 @@ export interface Choice {
 }
 
 export interface Answer {
-  kind: 'choice' | 'own'
+  kind: 'choice' | 'own' | 'other'
   choice_id: string | null
-  /** The own answer, or a note on the picked choice. */
+  /** A note on the picked choice, or the Other text (or an old `own` answer). */
   text: string | null
 }
 
@@ -21,9 +21,9 @@ export interface GrillQuestion {
   explanation: string
   /** The first choice is the recommendation. */
   choices: Choice[]
-  /** The explanation or choices were revised after an ask back. */
+  /** The explanation or choices were revised in a reply. */
   updated: boolean
-  /** Asks back (owner) and replies (claude). */
+  /** The owner's Other answers and Claude's replies. */
   thread: Message[]
   /** Null while the question is open. */
   answer: Answer | null
@@ -57,19 +57,19 @@ export interface Grill {
   rounds: GrillRound[]
   decisions: GrillDecision[]
   out_of_scope: string[]
-  /** Claude says nothing is left to ask: the page offers Confirm. */
+  /** Claude says nothing is left to ask: the page asks Yes or No. */
   done: boolean
   confirmed_at: string | null
   log: OwnerAction[]
   /** How many owner actions Claude has answered; fewer than log.length means it's Claude's turn. */
   handled: number
-  /** How many asks back one question may have. */
-  max_asks: number
+  /** How many replies Claude may give to Others on one question; then it must settle. */
+  max_replies: number
 }
 
 /** The owner's unsent answer to one question. */
 export interface AnswerDraft {
-  kind: 'choice' | 'own' | 'ask'
+  kind: 'choice' | 'other'
   choice_id?: string | null
   text?: string | null
 }

@@ -48,7 +48,7 @@ def post(store: GrillStore, **fields: Any) -> None:
     store.post(Turn.model_validate(fields))
 
 
-def test_api_grill_returns_the_state_with_the_ask_limit(
+def test_api_grill_returns_the_state_with_the_reply_limit(
     work: Path, static_dir: Path, store: GrillStore
 ) -> None:
     client = TestClient(create_app(work / "plan.json", static_dir))
@@ -64,7 +64,8 @@ def test_api_grill_returns_the_state_with_the_ask_limit(
     assert body["label"] == "#42"  # the run folder's name, as the CLI labels it
     assert body["rounds"][0]["questions"][0]["id"] == "q1"
     assert body["rounds"][0]["questions"][0]["choices"][0]["description"] == "About a"
-    assert body["max_asks"] == 3
+    assert body["max_replies"] == 3
+    assert "max_asks" not in body
 
 
 def test_answer_drafts_can_be_saved_replaced_and_discarded(
@@ -75,12 +76,12 @@ def test_answer_drafts_can_be_saved_replaced_and_discarded(
         assert client.get("/api/grill/drafts").json() == {"drafts": {}}
 
         saved = client.put("/api/grill/drafts/q1", json={"kind": "choice", "choice_id": "a"})
-        client.put("/api/grill/drafts/q1", json={"kind": "own", "text": "Mine"})
+        client.put("/api/grill/drafts/q1", json={"kind": "other", "text": "Mine"})
         client.put("/api/grill/drafts/q2", json={"kind": "choice", "choice_id": "b"})
 
         assert saved.status_code == 200
         drafts = client.get("/api/grill/drafts").json()["drafts"]
-        assert drafts["q1"]["kind"] == "own"
+        assert drafts["q1"]["kind"] == "other"
         assert drafts["q2"]["choice_id"] == "b"
 
         assert client.delete("/api/grill/drafts/q2").status_code == 204
@@ -90,38 +91,36 @@ def test_answer_drafts_can_be_saved_replaced_and_discarded(
         assert not (work / "last_event.json").exists()
 
         assert (
-            client.put("/api/grill/drafts/nope", json={"kind": "own", "text": "x"}).status_code
+            client.put("/api/grill/drafts/nope", json={"kind": "other", "text": "x"}).status_code
             == 404
         )
-        assert (
-            client.put("/api/grill/drafts/q1", json={"kind": "own", "text": " "}).status_code == 422
-        )
+        assert client.put("/api/grill/drafts/q1", json={"kind": "other"}).status_code == 200
         assert client.put("/api/grill/drafts/q1", json={"kind": "choice"}).status_code == 422
 
 
-def test_an_answered_question_has_no_drafts_and_a_fourth_ask_is_refused(
+def test_an_other_draft_is_accepted_after_three_replies_and_own_or_ask_are_422(
     work: Path, static_dir: Path, store: GrillStore
 ) -> None:
     post(store, title="T", round=[question("q1"), question("q2")])
     for i in range(3):
-        answers = [SubmittedAnswer(question_id="q1", kind="ask", text=f"ask {i}")]
+        answers = [SubmittedAnswer(question_id="q1", kind="other", text=f"other {i}")]
         if i == 0:
-            answers.append(SubmittedAnswer(question_id="q2", kind="own", text="Z"))
+            answers.append(SubmittedAnswer(question_id="q2", kind="choice", choice_id="a"))
         store.submit(answers)
         post(store, replies=[{"question_id": "q1", "text": "Because."}])
     client = TestClient(create_app(work / "plan.json", static_dir))
 
-    answered = client.put("/api/grill/drafts/q2", json={"kind": "own", "text": "again"})
-    fourth = client.put("/api/grill/drafts/q1", json={"kind": "ask", "text": "once more"})
-    still_fine = client.put("/api/grill/drafts/q1", json={"kind": "choice", "choice_id": "a"})
+    answered = client.put("/api/grill/drafts/q2", json={"kind": "other", "text": "again"})
+    other = client.put("/api/grill/drafts/q1", json={"kind": "other", "text": "final"})
+    own = client.put("/api/grill/drafts/q1", json={"kind": "own", "text": "Mine"})
+    ask = client.put("/api/grill/drafts/q1", json={"kind": "ask", "text": "Why?"})
 
     assert answered.status_code == 404
-    assert fourth.status_code == 422
-    assert "3 asks back" in fourth.json()["errors"][0]
-    assert still_fine.status_code == 200
+    assert other.status_code == 200
+    assert (own.status_code, ask.status_code) == (422, 422)
 
 
-def test_submitting_turns_drafts_into_answers_and_tells_claude_once(
+def test_submitting_an_other_draft_tells_claude_its_text(
     work: Path, static_dir: Path, store: GrillStore
 ) -> None:
     post(store, title="T", round=[question("q1"), question("q2")])
@@ -130,20 +129,21 @@ def test_submitting_turns_drafts_into_answers_and_tells_claude_once(
         client.websocket_connect("/events") as events,
     ):
         client.put("/api/grill/drafts/q1", json={"kind": "choice", "choice_id": "b", "text": "ok"})
-        client.put("/api/grill/drafts/q2", json={"kind": "ask", "text": "Why?"})
+        client.put("/api/grill/drafts/q2", json={"kind": "other", "text": "Why?"})
 
         response = client.post("/api/grill/submit")
 
         sent = events.receive_json()
     expected = [
         {"question_id": "q1", "kind": "choice", "choice_id": "b", "text": "ok"},
-        {"question_id": "q2", "kind": "ask", "text": "Why?"},
+        {"question_id": "q2", "kind": "other", "text": "Why?"},
     ]
     assert response.status_code == 200
     assert sent == {"type": "grill_submitted", "answers": expected}
     assert json.loads((work / "last_event.json").read_text())["event"] == sent
     state = store.get()
     assert state.rounds[0].questions[0].answer is not None
+    assert state.rounds[0].questions[1].answer is None
     assert state.rounds[0].questions[1].thread[0].text == "Why?"
     assert json.loads((work / "grill_drafts.json").read_text()) == {}
 
@@ -166,7 +166,9 @@ def test_an_incomplete_or_untimely_submit_is_refused(
     assert client.post("/api/grill/submit").status_code == 200
 
     # now it is Claude's turn: the answered question takes no more drafts, and a submit waits
-    assert client.put("/api/grill/drafts/q1", json={"kind": "own", "text": "x"}).status_code == 404
+    assert (
+        client.put("/api/grill/drafts/q1", json={"kind": "other", "text": "x"}).status_code == 404
+    )
     assert client.post("/api/grill/submit").status_code == 409
 
 
@@ -242,7 +244,7 @@ def test_a_draft_cannot_land_on_a_question_a_submit_has_just_answered(
     status: list[int] = []
 
     def late_put() -> None:
-        reply = client.put("/api/grill/drafts/q1", json={"kind": "own", "text": "late"})
+        reply = client.put("/api/grill/drafts/q1", json={"kind": "other", "text": "late"})
         status.append(reply.status_code)
 
     drafts = GrillDraftStore(work / "grill_drafts.json")
@@ -250,7 +252,7 @@ def test_a_draft_cannot_land_on_a_question_a_submit_has_just_answered(
         thread = threading.Thread(target=late_put)
         thread.start()
         time.sleep(0.3)  # the PUT is now waiting for the lock
-        store.submit([SubmittedAnswer(question_id="q1", kind="own", text="Mine")])
+        store.submit([SubmittedAnswer(question_id="q1", kind="choice", choice_id="a")])
     thread.join()
 
     assert status == [404]
@@ -305,3 +307,39 @@ def test_a_broken_grill_drafts_json_is_422_while_the_grill_still_loads(
         assert response.json() == named
     assert drafts.read_bytes() == b"{bad"
     assert not (work / "last_event.json").exists()  # nothing was sent to Claude
+
+
+def test_a_draft_left_on_a_question_claude_closed_does_not_block_the_submit(
+    work: Path, static_dir: Path, store: GrillStore
+) -> None:
+    post(store, title="T", round=[question("q1"), question("q2")])
+    store.submit(
+        [
+            SubmittedAnswer(question_id="q1", kind="other", text="Mine"),
+            SubmittedAnswer(question_id="q2", kind="choice", choice_id="a"),
+        ]
+    )
+    with TestClient(create_app(work / "plan.json", static_dir)) as client:
+        # q1 waits for Claude; the owner changes their mind meanwhile and a draft is saved
+        client.put("/api/grill/drafts/q1", json={"kind": "choice", "choice_id": "b", "text": "x"})
+        # Claude settles q1 and asks q3 (posted by the CLI, so the server is not told)
+        post(
+            store,
+            decisions=[
+                {
+                    "id": "d1",
+                    "topic": "T",
+                    "decision": "Mine",
+                    "choice": "Mine",
+                    "question_id": "q1",
+                }
+            ],
+            round=[question("q3")],
+        )
+        client.put("/api/grill/drafts/q3", json={"kind": "choice", "choice_id": "a"})
+
+        reply = client.post("/api/grill/submit")
+
+        assert reply.status_code == 200, reply.text
+        assert [a["question_id"] for a in reply.json()["answers"]] == ["q3"]
+        assert client.get("/api/grill/drafts").json() == {"drafts": {}}

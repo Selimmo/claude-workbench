@@ -3,6 +3,7 @@ import queue
 import socket
 import subprocess
 import threading
+import time
 from datetime import date
 from pathlib import Path
 from typing import IO
@@ -13,6 +14,7 @@ from conftest import PACKAGE_VERSION, PLUGIN, WindowsStylePath, version_of
 from plan_review import cli
 from plan_review.cli import main
 from plan_review.grill import GrillStore, SubmittedAnswer
+from plan_review.grill_drafts import GrillDraftStore
 from plan_review.pipeline import PipelineConfigError, load_pipeline
 from plan_review.plan import PlanFileError, load_plan
 from plan_review.status import StatusStore
@@ -867,3 +869,105 @@ def test_blank_status_text_over_a_broken_status_json_moves_nothing(
     assert capsys.readouterr().err == "status text is empty\n"
     assert (work / "status.json").read_bytes() == b"{bad"
     assert not (work / "status.json.broken").exists()
+
+
+def test_grill_post_keeps_only_the_drafts_of_questions_still_open(project: Path) -> None:
+    work = project / ".claude" / "work" / "7"
+    q1 = FIRST_TURN["round"][0]
+    first = {**FIRST_TURN, "round": [q1, {**q1, "id": "q2", "title": "Where?"}]}
+    assert main(["grill", "post", "7", str(write_turn(project, first))]) == 0
+    GrillStore(work / "grill.json").submit(
+        [
+            SubmittedAnswer(question_id="q1", kind="other", text="Mine"),
+            SubmittedAnswer(question_id="q2", kind="other", text="Also mine"),
+        ]
+    )
+    drafts = work / "grill_drafts.json"
+    draft = {"kind": "choice", "choice_id": "a", "text": "maybe"}
+    drafts.write_text(json.dumps({"q1": draft, "q2": draft}))
+
+    turn = {
+        "replies": [{"question_id": "q2", "text": "Tell me more"}],
+        "decisions": [
+            {"id": "d1", "topic": "T", "decision": "Mine", "choice": "Mine", "question_id": "q1"}
+        ],
+    }
+    assert main(["grill", "post", "7", str(write_turn(project, turn, "t2.json"))]) == 0
+
+    assert json.loads(drafts.read_text()) == {"q2": draft}
+
+
+def test_grill_post_leaves_a_drafts_file_alone_when_all_its_drafts_are_still_open(
+    project: Path,
+) -> None:
+    work = project / ".claude" / "work" / "7"
+    q1 = FIRST_TURN["round"][0]
+    first = {**FIRST_TURN, "round": [q1, {**q1, "id": "q2", "title": "Where?"}]}
+    assert main(["grill", "post", "7", str(write_turn(project, first))]) == 0
+    GrillStore(work / "grill.json").submit(
+        [
+            SubmittedAnswer(question_id="q1", kind="other", text="Mine"),
+            SubmittedAnswer(question_id="q2", kind="other", text="Also mine"),
+        ]
+    )
+    drafts = work / "grill_drafts.json"
+    drafts.write_text(
+        json.dumps({"q2": {"kind": "choice", "choice_id": "a", "text": "maybe"}}, indent=4)
+    )
+    before = drafts.read_bytes()
+    mtime = drafts.stat().st_mtime_ns
+    time.sleep(0.05)
+
+    turn = {
+        "replies": [{"question_id": "q2", "text": "Tell me more"}],
+        "decisions": [
+            {"id": "d1", "topic": "T", "decision": "Mine", "choice": "Mine", "question_id": "q1"}
+        ],
+    }
+    assert main(["grill", "post", "7", str(write_turn(project, turn, "t2.json"))]) == 0
+
+    assert drafts.read_bytes() == before
+    assert drafts.stat().st_mtime_ns == mtime
+
+
+def test_grill_post_does_not_create_grill_drafts_json(project: Path) -> None:
+    work = project / ".claude" / "work" / "7"
+
+    assert main(["grill", "post", "7", str(write_turn(project, FIRST_TURN))]) == 0
+
+    assert (work / "grill.json").exists()
+    assert not (work / "grill_drafts.json").exists()
+
+
+def test_grill_post_waits_for_the_drafts_lock(project: Path) -> None:
+    work = project / ".claude" / "work" / "7"
+    turn = write_turn(project, FIRST_TURN)
+    codes: list[int] = []
+    thread = threading.Thread(target=lambda: codes.append(main(["grill", "post", "7", str(turn)])))
+
+    with GrillDraftStore(work / "grill_drafts.json").held():  # a submit in progress
+        thread.start()
+        time.sleep(0.3)  # the post is now waiting for the lock
+        posted_early = (work / "grill.json").exists()
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert not posted_early
+    assert codes == [0]
+
+
+def test_grill_post_still_succeeds_when_grill_drafts_json_is_broken(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    work = project / ".claude" / "work" / "7"
+    work.mkdir(parents=True, exist_ok=True)
+    (work / "grill_drafts.json").write_text("{nope")
+
+    assert main(["grill", "post", "7", str(write_turn(project, FIRST_TURN))]) == 0
+
+    err = capsys.readouterr().err
+    assert err.splitlines() == [
+        ".claude/work/7/grill_drafts.json: Invalid JSON: key must be a string at line 1 column 2"
+    ]
+    assert json.loads((work / "grill.json").read_text())["rounds"][0]["questions"][0]["id"] == "q1"
+    assert (work / "grill_drafts.json").read_bytes() == b"{nope"
