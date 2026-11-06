@@ -12,6 +12,19 @@ function open(server: FakeServer) {
   return render(<App />)
 }
 
+// A stand-in for browser storage, swapped in whole so it works whichever storage the
+// runtime provides (jsdom's own, or Node's). Each test overrides the method it breaks.
+function blockedStorage(): Storage {
+  return {
+    length: 0,
+    clear: () => {},
+    getItem: () => null,
+    key: () => null,
+    removeItem: () => {},
+    setItem: () => {},
+  }
+}
+
 afterEach(() => {
   localStorage.clear()
   vi.unstubAllGlobals()
@@ -379,10 +392,10 @@ test('the decisions list collapses and stays collapsed after a reload', async ()
 })
 
 test('when browser storage cannot be written, the list still collapses', async () => {
-  localStorage.clear()
-  const setItem = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+  const setItem = vi.fn(() => {
     throw new Error('blocked')
   })
+  vi.stubGlobal('localStorage', { ...blockedStorage(), setItem })
   const server = new FakeServer()
   withDecisions(server)
   open(server)
@@ -395,8 +408,11 @@ test('when browser storage cannot be written, the list still collapses', async (
 })
 
 test('when browser storage throws, the decisions list renders open', async () => {
-  vi.spyOn(localStorage, 'getItem').mockImplementation(() => {
-    throw new Error('blocked')
+  vi.stubGlobal('localStorage', {
+    ...blockedStorage(),
+    getItem: () => {
+      throw new Error('blocked')
+    },
   })
   const server = new FakeServer()
   withDecisions(server)
