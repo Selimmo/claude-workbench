@@ -1,8 +1,8 @@
 # claude-workbench
 
-**See your coding agent's plan as diagrams before it writes any code.** plan-review is a Claude Code plugin: an agent plans an issue from your tracker (or a plain prompt), and the plan opens in your browser as interactive diagrams of classes, flows, architecture, files, tests and risks. Click anything to comment. Claude answers or revises the plan and the page updates live. When you approve, agents implement it with TDD and review the result.
+**See your coding agent's plan as diagrams before it writes any code.** plan-review is a Claude Code plugin: an agent plans an issue from your tracker (or a plain prompt), and the plan opens in your browser as interactive diagrams of classes, flows, architecture, files, tests and risks. Click anything to comment (a class opens its details first, with a Comment button). Claude answers or revises the plan and the page updates live. When you approve, agents implement it with TDD and review the result.
 
-![Commenting on a plan element: Claude revises the plan and the diagram updates](docs/img/demo.gif)
+![Opening a class's details and commenting on it: Claude replies, revises the plan and the new member appears in the diagram](docs/img/demo.gif)
 
 > Status: v0.1, public and installable. Built and dogfooded by one developer, so expect rough edges; [issues](https://github.com/Selimmo/claude-workbench/issues) welcome.
 
