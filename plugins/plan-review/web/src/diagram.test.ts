@@ -1,7 +1,5 @@
 import example from '../../examples/plan.json'
 import old from '../../tests/fixtures/plan-0.1.11.json'
-import after56 from '../../examples/before-after/56/plan.json'
-import before56 from '../../examples/before-after/56/plan-0.1.11.json'
 import {
   architectureDiagram,
   classDetails,
@@ -86,7 +84,7 @@ test('currentShape is true only when every class has a side', () => {
   expect(currentShape(plan)).toBe(true)
   expect(currentShape(oldPlan)).toBe(false)
   expect(currentShape({ ...plan, classes: [] })).toBe(false)
-  expect(currentShape(before56 as Plan)).toBe(false)
+  expect(currentShape(oldPlan)).toBe(false)
 })
 
 test('classSides lists the sides that have classes, front first', () => {
@@ -179,8 +177,8 @@ test('sideDiagram keeps only relations with both ends drawn', () => {
   expect(sideDiagram(dangling, 'back').edges.map((e) => e.id)).not.toContain('rel:x')
 })
 
-test('the converted #56 plan splits into a front and a back diagram', () => {
-  const converted = after56 as Plan
+test('the example plan splits into a front and a back diagram', () => {
+  const converted = example as Plan
 
   expect(currentShape(converted)).toBe(true)
   expect(classSides(converted)).toEqual(['front', 'back'])

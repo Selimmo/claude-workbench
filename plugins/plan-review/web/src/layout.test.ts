@@ -20,7 +20,6 @@ import {
   type DiagramNode,
 } from './diagram'
 import example from '../../examples/plan.json'
-import after56 from '../../examples/before-after/56/plan.json'
 import type { Plan } from './plan'
 
 const node = (rows: string[], title = 'T'): DiagramNode => ({
@@ -154,18 +153,18 @@ const longest = (laid: Awaited<ReturnType<typeof layoutDiagram>>) =>
     ),
   )
 
-test.each([
-  ['the #56 plan', after56],
-  ['the example plan', example],
-])('the compact spacing lays out the architecture of %s tighter', async (_, raw) => {
-  const diagram = architectureDiagram(raw as Plan)
+test.each([['the example plan', example]])(
+  'the compact spacing lays out the architecture of %s tighter',
+  async (_, raw) => {
+    const diagram = architectureDiagram(raw as Plan)
 
-  const roomy = await layoutDiagram(diagram, 'RIGHT', undefined, ROOMY)
-  const compact = await layoutDiagram(diagram, 'RIGHT', undefined, COMPACT)
+    const roomy = await layoutDiagram(diagram, 'RIGHT', undefined, ROOMY)
+    const compact = await layoutDiagram(diagram, 'RIGHT', undefined, COMPACT)
 
-  expect(compact.width).toBeLessThan(roomy.width)
-  expect(longest(compact)).toBeLessThan(longest(roomy))
-})
+    expect(compact.width).toBeLessThan(roomy.width)
+    expect(longest(compact)).toBeLessThan(longest(roomy))
+  },
+)
 
 test('a long edge label is wrapped into lines', async () => {
   const diagram: Diagram = {

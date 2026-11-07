@@ -170,8 +170,6 @@ Rules:
 - **Unknown fields are errors**, so typos are caught rather than ignored.
 - **`validate` also requires the current class shape**, which loading does not: every class has a `side`, every member a `name` and `kind`, no class has kind `function` (put a plain function in its module's box as a method), no `inherits`/`implements` relation (use `bases`), no relation joins a front and a back class, and no unchanged class is linked to no changed class on its side (it would not be drawn). A class counts as changed when its own status or any member's status is not `unchanged`.
 
-[`examples/before-after/`](examples/before-after/README.md) keeps two real plans (#53 and #56) in both shapes, to compare the old and the new Classes tab.
-
 ## Just the viewer
 
 The viewer works on its own, with no agents or pipeline. Any valid `plan.json` will do, whether you wrote it, another tool or agent generated it, or it came from `plan-review schema`:
