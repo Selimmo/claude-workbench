@@ -90,3 +90,12 @@ def test_agents_find_their_files_by_run_id(name: str) -> None:
 
 def test_the_architect_leaves_branch_out_of_the_plan() -> None:
     assert "leave `branch` out" in body_of("architect").lower()
+
+
+def test_the_architect_writes_classes_in_the_new_shape() -> None:
+    text = (AGENTS / "architect.md").read_text()
+
+    for needle in ("`side`", "`name`", "`kind`", "`bases`", "`module`"):
+        assert needle in text
+    assert "keep every id" in text
+    assert "old shape" in text or "written before" in text

@@ -3,7 +3,14 @@
 
 import ELK, { type ElkNode } from 'elkjs/lib/elk.bundled.js'
 
-import type { Diagram, DiagramEdge, DiagramNode } from './diagram'
+import {
+  type Diagram,
+  type DiagramEdge,
+  type DiagramNode,
+  LABEL_LINE_HEIGHT,
+  ROOMY,
+  type Spacing,
+} from './diagram'
 import { CHAR_WIDTH, TITLE_CHAR_WIDTH, estimate } from './measure'
 
 export { CHAR_WIDTH, TITLE_CHAR_WIDTH }
@@ -29,6 +36,8 @@ export interface LaidNode extends DiagramNode, Point {
 export interface LaidEdge extends DiagramEdge {
   points: Point[]
   labelAt: Point | null
+  /** The label, broken into lines that fit the spacing's label width. */
+  labelLines: string[]
 }
 
 export interface LaidDiagram {
@@ -56,21 +65,39 @@ export function nodeSize(
   }
 }
 
+/** Breaks a label at spaces so each line fits `maxWidth`; a word wider than that stays whole. */
+export function wrapLabel(text: string, maxWidth: number, measure: CardMeasure): string[] {
+  const lines: string[] = []
+  for (const word of text.split(' ')) {
+    const last = lines.length - 1
+    if (last >= 0 && measure(`${lines[last]} ${word}`, 'row') <= maxWidth) lines[last] += ` ${word}`
+    else lines.push(word)
+  }
+  return lines
+}
+
 const elk = new ELK()
 
 export async function layoutDiagram(
   diagram: Diagram,
   direction: 'RIGHT' | 'DOWN' = 'RIGHT',
   measure: CardMeasure = estimate,
+  spacing: Spacing = ROOMY,
 ): Promise<LaidDiagram> {
+  const wrapped = new Map(
+    diagram.edges.map((e) => [
+      e.id,
+      e.label ? wrapLabel(e.label, spacing.labelWidth, measure) : [],
+    ]),
+  )
   const input: ElkNode = {
     id: 'root',
     layoutOptions: {
       'elk.algorithm': 'layered',
       'elk.direction': direction,
       'elk.edgeRouting': 'ORTHOGONAL',
-      'elk.spacing.nodeNode': '40',
-      'elk.layered.spacing.nodeNodeBetweenLayers': '80',
+      'elk.spacing.nodeNode': String(spacing.nodeNode),
+      'elk.layered.spacing.nodeNodeBetweenLayers': String(spacing.betweenLayers),
       'elk.padding': '[top=20,left=20,bottom=20,right=20]',
     },
     children: diagram.nodes.map((node) => ({ id: node.id, ...nodeSize(node, measure) })),
@@ -79,7 +106,13 @@ export async function layoutDiagram(
       sources: [edge.source],
       targets: [edge.target],
       labels: edge.label
-        ? [{ text: edge.label, width: measure(edge.label, 'row'), height: 16 }]
+        ? [
+            {
+              text: edge.label,
+              width: Math.max(...(wrapped.get(edge.id) ?? []).map((l) => measure(l, 'row'))),
+              height: LABEL_LINE_HEIGHT * (wrapped.get(edge.id)?.length ?? 1),
+            },
+          ]
         : [],
     })),
   }
@@ -103,6 +136,7 @@ export async function layoutDiagram(
           : [],
         labelAt:
           label?.x !== undefined && label.y !== undefined ? { x: label.x, y: label.y } : null,
+        labelLines: wrapped.get(edge.id) ?? [],
       }
     }),
     width: graph.width ?? 0,

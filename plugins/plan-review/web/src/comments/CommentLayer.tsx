@@ -7,7 +7,9 @@ import {
   useState,
 } from 'react'
 
-import type { Plan } from '../plan'
+import { ClassDetails } from '../ClassDetails'
+import { classDetails } from '../diagram'
+import type { Plan, Side } from '../plan'
 import { threadsFor } from '../threadGroups'
 import type { Draft, Thread } from '../threads'
 import type { TabId } from '../viewModels'
@@ -22,11 +24,14 @@ type Open =
   | { kind: 'thread'; id: string }
   | { kind: 'new'; anchor: string }
   | { kind: 'draft'; draft: Draft }
+  | { kind: 'details'; id: string }
   | null
 
 interface Props {
   plan: Plan
   tab: TabId
+  /** The class side being shown, if the Classes tab is split by side. */
+  side?: Side
   threads: Thread[]
   drafts: Draft[]
   refresh: () => Promise<void>
@@ -107,19 +112,24 @@ function ThreadList({
  * pending review and the threads that have no element to pin to.
  */
 export function CommentLayer(props: Props) {
-  const { plan, tab, threads, drafts, refresh, readOnly } = props
+  const { plan, tab, side, threads, drafts, refresh, readOnly } = props
   const [open, setOpenState] = useState<Open>(null)
   const [note, setNote] = useState<Note | null>(null)
   // An open composer holding unsaved text: clicking another element must not throw it away.
   const writing = useRef(false)
-  const groups = threadsFor(threads, plan, tab)
+  const groups = threadsFor(threads, plan, tab, side)
   const openThread = open?.kind === 'thread' ? threads.find((t) => t.id === open.id) : undefined
   const newDrafts = drafts.filter((d) => d.thread_id === null)
 
   function onClick(event: MouseEvent) {
-    if (readOnly) return
     if (window.getSelection()?.toString()) return // the owner is selecting text to copy
-    const anchor = anchorOfClick(event.target as Element)
+    const target = event.target as Element
+    // A class box opens its details (also when read-only); comments start from there.
+    const card = target.closest('[data-details]')
+    const cardId = card?.getAttribute('data-element-id')
+    if (cardId) return setOpen({ kind: 'details', id: cardId })
+    if (readOnly) return
+    const anchor = anchorOfClick(target)
     if (anchor) setOpen({ kind: 'new', anchor })
   }
 
@@ -135,7 +145,12 @@ export function CommentLayer(props: Props) {
   const onDirty = (dirty: boolean) => (writing.current = dirty)
   const closeNote = useCallback(() => setNote(null), [])
   const editDraft = (draft: Draft) => setOpen({ kind: 'draft', draft })
-  const side = drafts.length > 0 || groups.onTab.length > 0 || groups.orphaned.length > 0
+  const aside =
+    drafts.length > 0 ||
+    groups.onTab.length > 0 ||
+    groups.orphaned.length > 0 ||
+    groups.otherSide.length > 0
+  const details = open?.kind === 'details' ? classDetails(plan, open.id) : null
   return (
     <>
       <div className={readOnly ? 'plan' : 'plan commentable'} onClick={onClick}>
@@ -153,7 +168,7 @@ export function CommentLayer(props: Props) {
         </div>
         <div className="workspace">
           {props.children}
-          {side && (
+          {aside && (
             <aside className="side-panel">
               {!readOnly && (
                 <ReviewPanel
@@ -166,6 +181,11 @@ export function CommentLayer(props: Props) {
               <ThreadList
                 title="Orphaned comments"
                 threads={groups.orphaned}
+                onOpen={(id) => setOpen({ kind: 'thread', id })}
+              />
+              <ThreadList
+                title="Comments on the other side"
+                threads={groups.otherSide}
                 onOpen={(id) => setOpen({ kind: 'thread', id })}
               />
               <ThreadList
@@ -211,6 +231,15 @@ export function CommentLayer(props: Props) {
             onEditDraft={editDraft}
             onClose={close}
             readOnly={readOnly}
+          />
+        </Floating>
+      )}
+      {details && (
+        <Floating key={details.id} anchor={details.id}>
+          <ClassDetails
+            details={details}
+            onComment={readOnly ? null : (anchor) => setOpen({ kind: 'new', anchor })}
+            onClose={close}
           />
         </Floating>
       )}

@@ -1529,3 +1529,94 @@ html {
 .decisions-panel {
   scroll-margin-top: calc(var(--head-clear) + 1rem);
 }
+
+/* Classes: one side at a time */
+
+.classes {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.side-picker {
+  margin: 0 0 8px;
+}
+
+/* A neighbour drawn only for context: dashed and in the muted text colour (still AA). */
+.card[data-faded='true'] {
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+}
+
+.card[data-faded='true'] li {
+  background: transparent;
+}
+
+[data-details] {
+  cursor: pointer;
+}
+
+/* A class box opens one popup for the whole box: outline the box, not the row under the pointer. */
+.commentable [data-details] :not(g)[data-element-id]:hover:not(:has([data-element-id]:hover)) {
+  outline: none;
+}
+
+.commentable [data-details]:hover {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
+
+/* A small dot after a name this plan adds, changes or removes. */
+.mark {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+[data-status='added'] > .mark {
+  background: var(--added);
+}
+
+[data-status='modified'] > .mark {
+  background: var(--modified);
+}
+
+[data-status='removed'] > .mark {
+  background: var(--removed);
+}
+
+/* The popup a class box opens: full signatures and what this plan changes. */
+
+.class-details {
+  width: 380px;
+}
+
+.class-details p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.member-details {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.member-details li {
+  font-size: 0.85rem;
+}
+
+.member-details code {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}

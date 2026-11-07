@@ -49,9 +49,9 @@ Upgrade with `plan-review upgrade`, or turn on marketplace auto-update. See [pla
 
 Every tab of the [sample plan](plugins/plan-review/examples/plan.json). Elements are coloured by whether the plan adds, modifies or removes them, and each one can be commented on.
 
-**Classes**: the types and functions the change touches, with their members as signatures.
+**Classes**: the types the change touches, one side (front end or back end) at a time. A box lists member names with a mark on what changes, its title shows what it extends (`Car: AutoMobile`), and a click opens the full signatures and Comment buttons.
 
-![Classes tab: class diagram with added, modified and removed members](docs/img/plan.png)
+![Classes tab, back end: boxes list member names with a coloured dot on what the plan adds, modifies or removes](docs/img/plan.png)
 
 | | |
 |---|---|

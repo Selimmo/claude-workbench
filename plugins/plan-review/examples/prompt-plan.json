@@ -17,15 +17,20 @@
       "id": "class:ThemeStore",
       "name": "ThemeStore",
       "kind": "class",
+      "side": "front",
       "status": "added",
       "members": [
         {
           "id": "class:ThemeStore.get",
+          "name": "get",
+          "kind": "method",
           "signature": "get() -> 'light' | 'dark' | 'system'",
           "status": "added"
         },
         {
           "id": "class:ThemeStore.set",
+          "name": "set",
+          "kind": "method",
           "signature": "set(theme: 'light' | 'dark' | 'system') -> void",
           "status": "added"
         }

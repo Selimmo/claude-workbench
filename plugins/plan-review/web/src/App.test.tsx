@@ -1,7 +1,10 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 
+import example from '../../examples/plan.json'
 import promptExample from '../../examples/prompt-plan.json'
+import old from '../../tests/fixtures/plan-0.1.11.json'
 import { App } from './App'
+import { LABEL_LINE_HEIGHT } from './diagram'
 import { FakeServer } from './test/fakeServer'
 import { grill, question } from './test/grillData'
 
@@ -145,13 +148,12 @@ function element(id: string): HTMLElement {
 
 test('Classes draws a card per class with members coloured by their own status', async () => {
   await loaded()
+  fireEvent.click(screen.getByRole('button', { name: 'Back end' }))
 
   await screen.findByText('HintPolicy')
   expect(element('class:Orchestrator')).toHaveAttribute('data-status', 'modified')
   expect(element('class:Orchestrator.parse_command')).toHaveAttribute('data-status', 'removed')
-  expect(element('class:Orchestrator.give_hint')).toHaveTextContent(
-    'give_hint() -> AsyncIterator[str]',
-  )
+  expect(element('class:Orchestrator.give_hint')).toHaveTextContent('give_hint()')
   expect(element('rel:orch-policy')).toHaveAttribute('data-status', 'added')
   expect(screen.getByRole('list', { name: 'Legend' })).toHaveTextContent(
     'addedmodifiedremovedunchanged',
@@ -306,4 +308,125 @@ test('without a grill the plan page has no page switch', async () => {
   await loaded()
 
   expect(screen.queryByRole('navigation', { name: 'Pages' })).not.toBeInTheDocument()
+})
+
+test('the Classes tab shows a Front end / Back end switch and draws one side', async () => {
+  await loaded()
+  const sides = screen.getByRole('group', { name: 'Choose a side' })
+
+  expect(within(sides).getByRole('button', { name: 'Front end' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await screen.findByText('HintButton')
+  expect(screen.queryByText('HintPolicy')).not.toBeInTheDocument()
+
+  fireEvent.click(within(sides).getByRole('button', { name: 'Back end' }))
+
+  await screen.findByText('HintPolicy')
+  expect(screen.queryByText('HintButton')).not.toBeInTheDocument()
+})
+
+test('a revision that leaves the chosen side empty shows the side that is left', async () => {
+  const server = new FakeServer()
+  server.install()
+  render(<App />)
+  await screen.findByRole('tablist')
+  fireEvent.click(screen.getByRole('button', { name: 'Back end' }))
+  await screen.findByText('HintPolicy')
+  const front = example.classes.filter((c) => c.side === 'front')
+  const ids = new Set(front.map((c) => c.id))
+
+  server.plan = {
+    ...example,
+    classes: front,
+    relations: example.relations.filter((r) => ids.has(r.from) && ids.has(r.to)),
+  }
+  await act(async () => server.push({ type: 'plan_changed' }))
+
+  expect(await screen.findByText('HintButton')).toBeInTheDocument()
+})
+
+test('a plan with only one side has no switch', async () => {
+  const server = new FakeServer()
+  const back = example.classes.filter((c) => c.side === 'back')
+  const ids = new Set(back.map((c) => c.id))
+  server.plan = {
+    ...example,
+    classes: back,
+    relations: example.relations.filter((r) => ids.has(r.from) && ids.has(r.to)),
+  }
+  server.install()
+  render(<App />)
+
+  await screen.findByText('HintPolicy')
+
+  expect(screen.queryByRole('group', { name: 'Choose a side' })).not.toBeInTheDocument()
+})
+
+test('an old plan is drawn as today: one diagram with signatures, no switch', async () => {
+  const server = new FakeServer()
+  server.plan = old
+  server.install()
+  render(<App />)
+
+  await screen.findByText('HintPolicy')
+
+  expect(screen.queryByRole('group', { name: 'Choose a side' })).not.toBeInTheDocument()
+  expect(element('class:Orchestrator.give_hint')).toHaveTextContent(
+    'give_hint() -> AsyncIterator[str]',
+  )
+  expect(screen.getByText('LLMClient')).toBeInTheDocument()
+})
+
+test('cards show faded neighbours and marks on changed names', async () => {
+  await loaded()
+  fireEvent.click(screen.getByRole('button', { name: 'Back end' }))
+  await screen.findByText('HintPolicy')
+
+  expect(element('class:LLMClient')).toHaveAttribute('data-faded', 'true')
+  expect(element('class:Orchestrator')).not.toHaveAttribute('data-faded')
+  expect(element('class:Orchestrator.give_hint').querySelector('.mark')).not.toBeNull()
+  expect(element('class:LLMClient.stream').querySelector('.mark')).toBeNull()
+})
+
+test('a long architecture label is drawn on several lines', async () => {
+  const server = new FakeServer()
+  const long = 'a very long label that has to be wrapped over several lines'
+  server.plan = {
+    ...example,
+    architecture: {
+      ...example.architecture,
+      edges: example.architecture.edges.map((e, i) => (i === 0 ? { ...e, label: long } : e)),
+    },
+  }
+  server.install()
+  render(<App />)
+  await screen.findByRole('tablist')
+
+  fireEvent.click(screen.getByRole('tab', { name: 'Architecture' }))
+
+  await vi.waitFor(() =>
+    expect(
+      element(example.architecture.edges[0].id).querySelectorAll('tspan').length,
+    ).toBeGreaterThan(1),
+  )
+  const lines = element(example.architecture.edges[0].id).querySelectorAll('tspan')
+  expect(lines[0]).toHaveAttribute('dy', '0')
+  expect(lines[1]).toHaveAttribute('dy', String(LABEL_LINE_HEIGHT))
+  const x = lines[0].parentElement?.getAttribute('x')
+  expect(x).not.toBeNull()
+  expect(lines[1]).toHaveAttribute('x', x as string)
+})
+
+test('a test target on the other side flips the switch and outlines it', async () => {
+  await loaded()
+  fireEvent.click(screen.getByRole('tab', { name: 'Tests' }))
+
+  fireEvent.click(screen.getAllByRole('button', { name: 'class:HintPolicy.max_hints' })[0])
+
+  expect(screen.getByRole('button', { name: 'Back end' })).toHaveAttribute('aria-pressed', 'true')
+  await vi.waitFor(() =>
+    expect(element('class:HintPolicy.max_hints')).toHaveAttribute('data-focused', 'true'),
+  )
 })

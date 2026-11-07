@@ -2,9 +2,15 @@
 
 export type Status = 'added' | 'modified' | 'removed' | 'unchanged'
 
+export type Side = 'front' | 'back'
+
 export interface Member {
   id: string
+  /** Absent in plans written before 0.1.12. */
+  name?: string | null
+  kind?: 'property' | 'method' | null
   signature: string
+  note?: string | null
   status: Status
 }
 
@@ -12,6 +18,10 @@ export interface PlanClass {
   id: string
   name: string
   kind: string
+  /** Absent in plans written before 0.1.12, which are drawn in one diagram. */
+  side?: Side | null
+  bases?: string[]
+  note?: string | null
   status: Status
   members: Member[]
 }

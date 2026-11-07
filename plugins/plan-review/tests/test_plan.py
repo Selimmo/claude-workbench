@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from plan_review.plan import Plan, PlanFileError, load_plan, record_branch
+from plan_review.plan import Plan, PlanFileError, load_plan, record_branch, shape_problems
 
 ISSUE = {"id": "7", "kind": "issue", "title": "Add hints"}
 
@@ -394,3 +394,191 @@ def test_a_missing_plan_names_the_file_once(tmp_path: Path) -> None:
         load_plan(tmp_path / "plan.json")
 
     assert error.value.errors == [f"{(tmp_path / 'plan.json').as_posix()}: file not found"]
+
+
+def test_a_member_has_a_name_a_kind_and_a_signature() -> None:
+    member = {
+        "id": "class:Car.drive",
+        "name": "drive",
+        "kind": "method",
+        "signature": "drive(km: int) -> None",
+        "note": "now counts km",
+        "status": "modified",
+    }
+    plan = Plan.model_validate(
+        minimal(
+            classes=[{**SESSION, "members": [member, {**member, "id": "x", "kind": "property"}]}]
+        )
+    )
+
+    got = plan.classes[0].members[0]
+    assert (got.name, got.kind, got.signature, got.note) == (
+        "drive",
+        "method",
+        "drive(km: int) -> None",
+        "now counts km",
+    )
+    assert plan.classes[0].members[1].kind == "property"
+    with pytest.raises(ValidationError, match="kind"):
+        Plan.model_validate(
+            minimal(classes=[{**SESSION, "members": [{**member, "kind": "field"}]}])
+        )
+
+
+def test_a_class_has_a_side_bases_a_note_and_may_be_a_component() -> None:
+    car = {
+        **SESSION,
+        "name": "Car",
+        "kind": "component",
+        "side": "front",
+        "bases": ["AutoMobile", "Insurable"],
+        "note": "new",
+    }
+    plan = Plan.model_validate(minimal(classes=[car]))
+
+    got = plan.classes[0]
+    assert (got.side, got.bases, got.note, got.kind) == (
+        "front",
+        ["AutoMobile", "Insurable"],
+        "new",
+        "component",
+    )
+    assert Plan.model_validate(minimal(classes=[SESSION])).classes[0].bases == []
+    with pytest.raises(ValidationError, match="side"):
+        Plan.model_validate(minimal(classes=[{**car, "side": "middle"}]))
+
+
+def test_an_old_plan_without_sides_or_member_names_still_loads() -> None:
+    plan = load_plan(Path(__file__).parent / "fixtures" / "plan-0.1.11.json")
+
+    assert plan.classes
+    assert all(c.side is None for c in plan.classes)
+    assert all(m.name is None for c in plan.classes for m in c.members)
+
+
+def new_class(
+    name: str, side: str | None = "back", status: str = "added", **extra: Any
+) -> dict[str, Any]:
+    cls: dict[str, Any] = {
+        "id": f"class:{name}",
+        "name": name,
+        "kind": "class",
+        "status": status,
+        "members": [
+            {
+                "id": f"class:{name}.go",
+                "name": "go",
+                "kind": "method",
+                "signature": "go() -> None",
+                "status": status,
+            }
+        ],
+        **extra,
+    }
+    if side is not None:
+        cls["side"] = side
+    return cls
+
+
+def uses(a: str, b: str, kind: str = "uses") -> dict[str, Any]:
+    return {
+        "id": f"rel:{a}-{b}",
+        "from": f"class:{a}",
+        "to": f"class:{b}",
+        "kind": kind,
+        "status": "added",
+    }
+
+
+def problems(
+    classes: list[dict[str, Any]], relations: list[dict[str, Any]] | None = None
+) -> list[str]:
+    return shape_problems(Plan.model_validate(minimal(classes=classes, relations=relations or [])))
+
+
+def test_shape_problems_is_empty_for_a_plan_in_the_new_shape() -> None:
+    classes = [
+        new_class("Button", "front", kind="component"),
+        new_class("Policy"),
+        new_class("Client", status="unchanged"),
+    ]
+
+    assert problems(classes, [uses("Policy", "Client")]) == []
+
+
+def test_shape_problems_names_a_class_without_a_side() -> None:
+    assert problems([new_class("X", None)]) == ["class:X: side is required (front or back)"]
+
+
+def test_shape_problems_names_a_member_without_a_name_or_kind() -> None:
+    cls = new_class("X")
+    del cls["members"][0]["name"], cls["members"][0]["kind"]
+
+    assert problems([cls]) == [
+        "class:X.go: name is required",
+        "class:X.go: kind is required (property or method)",
+    ]
+
+
+def test_shape_problems_refuses_a_plain_function_box() -> None:
+    [line] = problems([new_class("helper", kind="function")])
+
+    assert line.startswith("class:helper: ")
+    assert "module" in line and "method" in line
+
+
+def test_shape_problems_refuses_inherits_and_implements_relations() -> None:
+    classes = [new_class("A"), new_class("B")]
+
+    for kind in ("inherits", "implements"):
+        [line] = problems(classes, [uses("A", "B", kind)])
+        assert line.startswith("rel:A-B: ")
+        assert "'bases'" in line
+
+
+def test_shape_problems_refuses_a_relation_across_sides() -> None:
+    [line] = problems([new_class("A", "front"), new_class("B", "back")], [uses("A", "B")])
+
+    assert line.startswith("rel:A-B: ")
+    assert "front" in line and "back" in line
+
+
+def test_shape_problems_refuses_an_unchanged_class_linked_to_no_changed_class() -> None:
+    lone = new_class("Lone", status="unchanged")
+    css = new_class("Banner", status="unchanged")
+    css["members"].append({**css["members"][0], "id": "class:Banner.css", "status": "modified"})
+    other_side = new_class("Far", "front")
+
+    assert problems([lone]) == [
+        "class:Lone: unchanged and linked to no changed class on its side, so it is not drawn; "
+        "leave it out of the plan"
+    ]
+    across = problems([lone, other_side], [uses("Far", "Lone")])
+    assert any(line.startswith("class:Lone: unchanged and linked to no changed") for line in across)
+    assert problems([css, new_class("A")], []) == []  # a changed member makes it changed
+    assert problems([new_class("A"), lone], [uses("A", "Lone")]) == []
+    twin = new_class("Twin", status="unchanged")
+    pair = problems([lone, twin], [uses("Lone", "Twin")])
+    assert [line.split(":")[1] for line in pair] == ["Lone", "Twin"]
+    assert all("unchanged and linked to no changed" in line for line in pair)
+
+
+def test_an_old_class_without_a_side_gets_only_the_side_line() -> None:
+    old = new_class("Old", None, status="unchanged")
+
+    assert problems([old]) == ["class:Old: side is required (front or back)"]
+
+
+def test_a_relation_from_a_class_without_a_side_is_not_across_sides() -> None:
+    lines = problems([new_class("Old", None), new_class("B")], [uses("Old", "B")])
+
+    assert lines == ["class:Old: side is required (front or back)"]
+
+
+def test_both_example_plans_have_the_new_shape() -> None:
+    issue_plan = load_plan(EXAMPLE)
+    prompt_plan = load_plan(PROMPT_EXAMPLE)
+
+    assert shape_problems(issue_plan) == []
+    assert shape_problems(prompt_plan) == []
+    assert {c.side for c in issue_plan.classes} == {"front", "back"}

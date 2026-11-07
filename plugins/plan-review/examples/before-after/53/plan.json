@@ -1,0 +1,2733 @@
+{
+  "issue": {
+    "id": "53",
+    "kind": "issue",
+    "title": "plan-review: answer /ship --grill questions in the viewer, on a page of their own",
+    "url": "https://github.com/Selimmo/claude-workbench/issues/53"
+  },
+  "summary": "With `/ship --grill` in page mode, grilling rounds move from the chat to a /grill page of the same `plan-review serve`. /ship still runs the `grilling` skill but writes each turn (next round, replies to asks back, settled or replaced decisions, out-of-scope items, done) through `plan-review grill post` into W/grill.json. The owner picks a choice, writes their own answer or asks back on each question (drafts in W/grill_drafts.json), and submits the round at once; the server records the answers in grill.json and sends grill_submitted on /events. Decisions show beside the rounds; once the agent marks the grill done the owner confirms (or sends 'not yet'), and `plan-review grill decisions` writes W/decisions.md in today's format. The mode (page or chat) comes from --grill=<mode>, pipeline.json's `grill`, then a recorded preference (`plan-review prefs`), else /ship asks once. The chat grill and the plan page are unchanged. plan-review goes to 0.1.9 in this issue (`scripts/set-version.sh 0.1.9`), so CI's version guard passes; the GitHub release stays the owner's separate step.",
+  "classes": [
+    {
+      "id": "class:grill",
+      "name": "plan_review.grill",
+      "kind": "module",
+      "side": "back",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:grill.MAX_ASKS",
+          "name": "MAX_ASKS",
+          "kind": "property",
+          "signature": "MAX_ASKS: Final = 3  # asks back per question; not a pipeline.json setting",
+          "status": "added"
+        },
+        {
+          "id": "class:grill.load_grill",
+          "name": "load_grill",
+          "kind": "method",
+          "signature": "load_grill(path: Path) -> GrillState  # GrillError (missing=True) if absent",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:GrillState",
+      "name": "GrillState",
+      "kind": "class",
+      "side": "back",
+      "bases": [
+        "BaseModel"
+      ],
+      "status": "added",
+      "members": [
+        {
+          "id": "class:GrillState.title",
+          "name": "title",
+          "kind": "property",
+          "signature": "title: str  # from the first turn; heads the page and decisions.md",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillState.rounds",
+          "name": "rounds",
+          "kind": "method",
+          "signature": "rounds: list[Round]  # Round(n: int, questions: list[Question])",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillState.decisions",
+          "name": "decisions",
+          "kind": "property",
+          "signature": "decisions: list[Decision]",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillState.out_of_scope",
+          "name": "out_of_scope",
+          "kind": "property",
+          "signature": "out_of_scope: list[str]",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillState.done",
+          "name": "done",
+          "kind": "property",
+          "signature": "done: bool  # the agent marked the frontier empty",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillState.confirmed_at",
+          "name": "confirmed_at",
+          "kind": "property",
+          "signature": "confirmed_at: datetime | None",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillState.log",
+          "name": "log",
+          "kind": "property",
+          "signature": "log: list[OwnerAction]  # append-only: every submit, reopen and confirm",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillState.handled",
+          "name": "handled",
+          "kind": "method",
+          "signature": "handled: int  # owner actions the agent has answered (set by each post)",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillState.open_questions",
+          "name": "open_questions",
+          "kind": "method",
+          "signature": "open_questions() -> list[Question]",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillState.owners_turn",
+          "name": "owners_turn",
+          "kind": "method",
+          "signature": "owners_turn() -> bool  # handled == len(log) and not confirmed",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillState.question",
+          "name": "question",
+          "kind": "method",
+          "signature": "question(question_id: str) -> Question  # GrillError if unknown",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:Question",
+      "name": "Question",
+      "kind": "class",
+      "side": "back",
+      "bases": [
+        "BaseModel"
+      ],
+      "status": "added",
+      "members": [
+        {
+          "id": "class:Question.id",
+          "name": "id",
+          "kind": "property",
+          "signature": "id: str",
+          "status": "added"
+        },
+        {
+          "id": "class:Question.title",
+          "name": "title",
+          "kind": "property",
+          "signature": "title: str",
+          "status": "added"
+        },
+        {
+          "id": "class:Question.explanation",
+          "name": "explanation",
+          "kind": "property",
+          "signature": "explanation: str",
+          "status": "added"
+        },
+        {
+          "id": "class:Question.choices",
+          "name": "choices",
+          "kind": "property",
+          "signature": "choices: list[Choice]  # >= 2; the first is the recommendation",
+          "status": "added"
+        },
+        {
+          "id": "class:Question.updated",
+          "name": "updated",
+          "kind": "property",
+          "signature": "updated: bool  # explanation/choices revised after an ask back",
+          "status": "added"
+        },
+        {
+          "id": "class:Question.thread",
+          "name": "thread",
+          "kind": "method",
+          "signature": "thread: list[Message]  # asks back (owner) and replies (claude), threads.Message",
+          "status": "added"
+        },
+        {
+          "id": "class:Question.answer",
+          "name": "answer",
+          "kind": "property",
+          "signature": "answer: Answer | None  # None while open; never changes once set",
+          "status": "added"
+        },
+        {
+          "id": "class:Question.asks",
+          "name": "asks",
+          "kind": "method",
+          "signature": "asks() -> int",
+          "status": "added"
+        },
+        {
+          "id": "class:Question.awaiting_reply",
+          "name": "awaiting_reply",
+          "kind": "method",
+          "signature": "awaiting_reply() -> bool  # open and the thread ends with the owner",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:Choice",
+      "name": "Choice",
+      "kind": "class",
+      "side": "back",
+      "bases": [
+        "BaseModel"
+      ],
+      "status": "added",
+      "members": [
+        {
+          "id": "class:Choice.id",
+          "name": "id",
+          "kind": "property",
+          "signature": "id: str",
+          "status": "added"
+        },
+        {
+          "id": "class:Choice.label",
+          "name": "label",
+          "kind": "property",
+          "signature": "label: str",
+          "status": "added"
+        },
+        {
+          "id": "class:Choice.description",
+          "name": "description",
+          "kind": "property",
+          "signature": "description: str  # one line",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:Answer",
+      "name": "Answer",
+      "kind": "class",
+      "side": "back",
+      "bases": [
+        "BaseModel"
+      ],
+      "status": "added",
+      "members": [
+        {
+          "id": "class:Answer.kind",
+          "name": "kind",
+          "kind": "property",
+          "signature": "kind: Literal['choice', 'own']",
+          "status": "added"
+        },
+        {
+          "id": "class:Answer.choice_id",
+          "name": "choice_id",
+          "kind": "property",
+          "signature": "choice_id: str | None",
+          "status": "added"
+        },
+        {
+          "id": "class:Answer.text",
+          "name": "text",
+          "kind": "property",
+          "signature": "text: str | None  # the own answer, or a note on the picked choice",
+          "status": "added"
+        },
+        {
+          "id": "class:Answer.at",
+          "name": "at",
+          "kind": "property",
+          "signature": "at: datetime",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:SubmittedAnswer",
+      "name": "SubmittedAnswer",
+      "kind": "class",
+      "side": "back",
+      "bases": [
+        "BaseModel"
+      ],
+      "status": "added",
+      "members": [
+        {
+          "id": "class:SubmittedAnswer.question_id",
+          "name": "question_id",
+          "kind": "property",
+          "signature": "question_id: str",
+          "status": "added"
+        },
+        {
+          "id": "class:SubmittedAnswer.kind",
+          "name": "kind",
+          "kind": "property",
+          "signature": "kind: Literal['choice', 'own', 'ask']",
+          "status": "added"
+        },
+        {
+          "id": "class:SubmittedAnswer.choice_id",
+          "name": "choice_id",
+          "kind": "property",
+          "signature": "choice_id: str | None  # required for 'choice'",
+          "status": "added"
+        },
+        {
+          "id": "class:SubmittedAnswer.text",
+          "name": "text",
+          "kind": "property",
+          "signature": "text: str | None  # required, non-blank, for 'own' and 'ask'; optional note for 'choice'",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:Decision",
+      "name": "Decision",
+      "kind": "class",
+      "side": "back",
+      "bases": [
+        "BaseModel"
+      ],
+      "status": "added",
+      "members": [
+        {
+          "id": "class:Decision.id",
+          "name": "id",
+          "kind": "property",
+          "signature": "id: str",
+          "status": "added"
+        },
+        {
+          "id": "class:Decision.topic",
+          "name": "topic",
+          "kind": "property",
+          "signature": "topic: str",
+          "status": "added"
+        },
+        {
+          "id": "class:Decision.decision",
+          "name": "decision",
+          "kind": "property",
+          "signature": "decision: str",
+          "status": "added"
+        },
+        {
+          "id": "class:Decision.choice",
+          "name": "choice",
+          "kind": "property",
+          "signature": "choice: str",
+          "status": "added"
+        },
+        {
+          "id": "class:Decision.why",
+          "name": "why",
+          "kind": "property",
+          "signature": "why: str | None",
+          "status": "added"
+        },
+        {
+          "id": "class:Decision.question_id",
+          "name": "question_id",
+          "kind": "property",
+          "signature": "question_id: str | None  # the question it came from, shown on the page",
+          "status": "added"
+        },
+        {
+          "id": "class:Decision.replaces",
+          "name": "replaces",
+          "kind": "property",
+          "signature": "replaces: str | None  # id of an earlier decision, then shown struck through",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:OwnerAction",
+      "name": "OwnerAction",
+      "kind": "class",
+      "side": "back",
+      "bases": [
+        "BaseModel"
+      ],
+      "status": "added",
+      "members": [
+        {
+          "id": "class:OwnerAction.kind",
+          "name": "kind",
+          "kind": "property",
+          "signature": "kind: Literal['answers', 'reopen', 'confirm']",
+          "status": "added"
+        },
+        {
+          "id": "class:OwnerAction.answers",
+          "name": "answers",
+          "kind": "property",
+          "signature": "answers: list[SubmittedAnswer]",
+          "status": "added"
+        },
+        {
+          "id": "class:OwnerAction.text",
+          "name": "text",
+          "kind": "property",
+          "signature": "text: str | None  # the owner's 'not yet' comment, for 'reopen'",
+          "status": "added"
+        },
+        {
+          "id": "class:OwnerAction.at",
+          "name": "at",
+          "kind": "property",
+          "signature": "at: datetime",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:GrillError",
+      "name": "GrillError",
+      "kind": "class",
+      "side": "back",
+      "bases": [
+        "Exception"
+      ],
+      "status": "added",
+      "members": [
+        {
+          "id": "class:GrillError.errors",
+          "name": "errors",
+          "kind": "property",
+          "signature": "errors: list[str]  # one readable line per problem",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillError.missing",
+          "name": "missing",
+          "kind": "property",
+          "signature": "missing: bool",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillError.conflict",
+          "name": "conflict",
+          "kind": "property",
+          "signature": "conflict: bool  # wrong turn or state: the server answers 409, else 422",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:GrillStore",
+      "name": "GrillStore",
+      "kind": "class",
+      "side": "back",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:GrillStore.get",
+          "name": "get",
+          "kind": "method",
+          "signature": "get() -> GrillState",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillStore.post",
+          "name": "post",
+          "kind": "method",
+          "signature": "post(turn: Turn) -> GrillState  # creates grill.json on the first turn",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillStore.submit",
+          "name": "submit",
+          "kind": "method",
+          "signature": "submit(answers: list[SubmittedAnswer]) -> OwnerAction",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillStore.confirm",
+          "name": "confirm",
+          "kind": "method",
+          "signature": "confirm() -> OwnerAction",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillStore.reopen",
+          "name": "reopen",
+          "kind": "method",
+          "signature": "reopen(text: str) -> OwnerAction",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillStore.pending",
+          "name": "pending",
+          "kind": "method",
+          "signature": "pending() -> list[dict[str, Any]]  # log[handled:], answers with question titles and choice labels",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:Turn",
+      "name": "Turn",
+      "kind": "class",
+      "side": "back",
+      "bases": [
+        "_Strict"
+      ],
+      "status": "added",
+      "members": [
+        {
+          "id": "class:Turn.title",
+          "name": "title",
+          "kind": "property",
+          "signature": "title: str | None  # required on the first turn only",
+          "status": "added"
+        },
+        {
+          "id": "class:Turn.replies",
+          "name": "replies",
+          "kind": "property",
+          "signature": "replies: list[Reply]",
+          "status": "added"
+        },
+        {
+          "id": "class:Turn.decisions",
+          "name": "decisions",
+          "kind": "property",
+          "signature": "decisions: list[Decision]",
+          "status": "added"
+        },
+        {
+          "id": "class:Turn.out_of_scope",
+          "name": "out_of_scope",
+          "kind": "property",
+          "signature": "out_of_scope: list[str]",
+          "status": "added"
+        },
+        {
+          "id": "class:Turn.round",
+          "name": "round",
+          "kind": "property",
+          "signature": "round: list[NewQuestion] | None  # the next round",
+          "status": "added"
+        },
+        {
+          "id": "class:Turn.done",
+          "name": "done",
+          "kind": "property",
+          "signature": "done: bool  # frontier empty: the page offers Confirm",
+          "status": "added"
+        },
+        {
+          "id": "class:Turn.apply",
+          "name": "apply",
+          "kind": "method",
+          "signature": "apply(state: GrillState | None) -> GrillState  # GrillError with every problem",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:Reply",
+      "name": "Reply",
+      "kind": "class",
+      "side": "back",
+      "bases": [
+        "_Strict"
+      ],
+      "status": "added",
+      "members": [
+        {
+          "id": "class:Reply.question_id",
+          "name": "question_id",
+          "kind": "property",
+          "signature": "question_id: str  # must be awaiting a reply",
+          "status": "added"
+        },
+        {
+          "id": "class:Reply.text",
+          "name": "text",
+          "kind": "property",
+          "signature": "text: str",
+          "status": "added"
+        },
+        {
+          "id": "class:Reply.revised",
+          "name": "revised",
+          "kind": "method",
+          "signature": "revised: Revision | None  # Revision(explanation: str, choices: list[Choice]); open questions only",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:NewQuestion",
+      "name": "NewQuestion",
+      "kind": "class",
+      "side": "back",
+      "bases": [
+        "Revision"
+      ],
+      "status": "added",
+      "members": [
+        {
+          "id": "class:NewQuestion.id",
+          "name": "id",
+          "kind": "property",
+          "signature": "id: str  # unique across the whole grill",
+          "status": "added"
+        },
+        {
+          "id": "class:NewQuestion.title",
+          "name": "title",
+          "kind": "property",
+          "signature": "title: str",
+          "status": "added"
+        },
+        {
+          "id": "class:NewQuestion.explanation",
+          "name": "explanation",
+          "kind": "property",
+          "signature": "explanation: str",
+          "status": "added"
+        },
+        {
+          "id": "class:NewQuestion.choices",
+          "name": "choices",
+          "kind": "property",
+          "signature": "choices: list[Choice]  # min 2, unique ids; first is recommended",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:GrillDraftStore",
+      "name": "GrillDraftStore",
+      "kind": "class",
+      "side": "back",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:GrillDraftStore.all",
+          "name": "all",
+          "kind": "method",
+          "signature": "all() -> dict[str, AnswerDraft]  # keyed by question id; AnswerDraft = SubmittedAnswer minus question_id",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillDraftStore.put",
+          "name": "put",
+          "kind": "method",
+          "signature": "put(question_id: str, draft: AnswerDraft) -> AnswerDraft",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillDraftStore.discard",
+          "name": "discard",
+          "kind": "method",
+          "signature": "discard(question_id: str) -> None",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillDraftStore.held",
+          "name": "held",
+          "kind": "method",
+          "signature": "held() -> ContextManager[None]  # locked across a whole submit",
+          "status": "added"
+        },
+        {
+          "id": "class:GrillDraftStore.clear",
+          "name": "clear",
+          "kind": "method",
+          "signature": "clear(question_ids: set[str]) -> None",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:decisions_md",
+      "name": "plan_review.decisions_md",
+      "kind": "module",
+      "side": "back",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:decisions_md.decisions_markdown",
+          "name": "decisions_markdown",
+          "kind": "method",
+          "signature": "decisions_markdown(state: GrillState, label: str) -> str  # today's decisions.md format, replaced decisions left out",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:prefs",
+      "name": "plan_review.prefs",
+      "kind": "module",
+      "side": "back",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:prefs.GrillMode",
+          "name": "GrillMode",
+          "kind": "property",
+          "signature": "GrillMode = Literal['page', 'chat']",
+          "status": "added"
+        },
+        {
+          "id": "class:prefs.load_preferences",
+          "name": "load_preferences",
+          "kind": "method",
+          "signature": "load_preferences(path: Path) -> Preferences  # Preferences(grill: GrillMode | None)",
+          "status": "added"
+        },
+        {
+          "id": "class:prefs.record",
+          "name": "record",
+          "kind": "method",
+          "signature": "record(path: Path, grill: GrillMode) -> None  # creates .claude/work/ and its .gitignore",
+          "status": "added"
+        },
+        {
+          "id": "class:prefs.grill_mode",
+          "name": "grill_mode",
+          "kind": "method",
+          "signature": "grill_mode(config: PipelineConfig, prefs: Preferences) -> GrillMode | None  # pipeline.json wins",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:PipelineConfig",
+      "name": "PipelineConfig",
+      "kind": "class",
+      "side": "back",
+      "bases": [
+        "_Strict"
+      ],
+      "status": "modified",
+      "members": [
+        {
+          "id": "class:PipelineConfig.grill",
+          "name": "grill",
+          "kind": "property",
+          "signature": "grill: Literal['page', 'chat'] | None = None",
+          "status": "added"
+        },
+        {
+          "id": "class:PipelineConfig.viewer",
+          "name": "viewer",
+          "kind": "property",
+          "signature": "viewer: Viewer",
+          "status": "unchanged"
+        }
+      ]
+    },
+    {
+      "id": "class:workdir",
+      "name": "plan_review.workdir",
+      "kind": "module",
+      "side": "back",
+      "status": "modified",
+      "members": [
+        {
+          "id": "class:workdir.preferences_file",
+          "name": "preferences_file",
+          "kind": "method",
+          "signature": "preferences_file(root: Path) -> Path  # .claude/work/preferences.json, folder and .gitignore ensured",
+          "status": "added"
+        },
+        {
+          "id": "class:workdir.ensure_work_dir",
+          "name": "ensure_work_dir",
+          "kind": "method",
+          "signature": "ensure_work_dir(root: Path, run_id: str) -> Path",
+          "status": "unchanged"
+        }
+      ]
+    },
+    {
+      "id": "class:grill_routes",
+      "name": "plan_review.grill_routes",
+      "kind": "module",
+      "side": "back",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:grill_routes.signature",
+          "name": "signature",
+          "kind": "method",
+          "signature": "grill_routes(store: GrillStore, drafts: GrillDraftStore, events: ClaudeEvents) -> APIRouter",
+          "status": "added"
+        },
+        {
+          "id": "class:grill_routes.get_grill",
+          "name": "get_grill",
+          "kind": "method",
+          "signature": "GET /api/grill -> GrillState + max_asks  # 404 if no grill.json",
+          "status": "added"
+        },
+        {
+          "id": "class:grill_routes.drafts",
+          "name": "drafts",
+          "kind": "method",
+          "signature": "GET /api/grill/drafts; PUT, DELETE /api/grill/drafts/{question_id}",
+          "status": "added"
+        },
+        {
+          "id": "class:grill_routes.submit",
+          "name": "submit",
+          "kind": "method",
+          "signature": "POST /api/grill/submit  # every draft at once -> grill_submitted",
+          "status": "added"
+        },
+        {
+          "id": "class:grill_routes.confirm",
+          "name": "confirm",
+          "kind": "method",
+          "signature": "POST /api/grill/confirm  # -> grill_confirmed",
+          "status": "added"
+        },
+        {
+          "id": "class:grill_routes.reopen",
+          "name": "reopen",
+          "kind": "method",
+          "signature": "POST /api/grill/reopen {text}  # -> grill_reopened",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:create_app",
+      "name": "plan_review.server",
+      "kind": "module",
+      "side": "back",
+      "status": "modified",
+      "members": [
+        {
+          "id": "class:create_app.watch",
+          "name": "watch",
+          "kind": "property",
+          "signature": "watches grill.json -> grill_changed, grill_drafts.json -> grill_drafts_changed",
+          "status": "added"
+        },
+        {
+          "id": "class:create_app.grill_page",
+          "name": "grill_page",
+          "kind": "method",
+          "signature": "GET /grill -> index.html",
+          "status": "added"
+        },
+        {
+          "id": "class:create_app.root",
+          "name": "root",
+          "kind": "method",
+          "signature": "GET / -> redirect to /grill while plan.json is missing, else index.html",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:ClaudeEvents",
+      "name": "ClaudeEvents",
+      "kind": "class",
+      "side": "back",
+      "status": "unchanged",
+      "members": [
+        {
+          "id": "class:ClaudeEvents.send",
+          "name": "send",
+          "kind": "method",
+          "signature": "send(message: dict[str, Any]) -> None  # kept in last_event.json first",
+          "status": "unchanged"
+        }
+      ]
+    },
+    {
+      "id": "class:cli",
+      "name": "plan_review.cli",
+      "kind": "module",
+      "side": "back",
+      "status": "modified",
+      "members": [
+        {
+          "id": "class:cli._serve",
+          "name": "_serve",
+          "kind": "method",
+          "signature": "_serve(run_id, open_flag) -> int  # starts with plan.json or grill.json; /grill URL without a plan",
+          "status": "modified"
+        },
+        {
+          "id": "class:cli._grill_post",
+          "name": "_grill_post",
+          "kind": "method",
+          "signature": "plan-review grill post ID FILE -> int  # 0 posted, 1 invalid turn, 2 file missing",
+          "status": "added"
+        },
+        {
+          "id": "class:cli._grill_pending",
+          "name": "_grill_pending",
+          "kind": "method",
+          "signature": "plan-review grill pending ID -> int  # JSON {confirmed, pending}",
+          "status": "added"
+        },
+        {
+          "id": "class:cli._grill_decisions",
+          "name": "_grill_decisions",
+          "kind": "method",
+          "signature": "plan-review grill decisions ID -> int  # writes W/decisions.md; 1 unless confirmed",
+          "status": "added"
+        },
+        {
+          "id": "class:cli._grill_schema",
+          "name": "_grill_schema",
+          "kind": "method",
+          "signature": "plan-review grill schema -> int  # the Turn JSON Schema",
+          "status": "added"
+        },
+        {
+          "id": "class:cli._prefs",
+          "name": "_prefs",
+          "kind": "method",
+          "signature": "plan-review prefs grill [page|chat] -> int  # set; or print the mode, exit 3 when none is chosen",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:grillTypes",
+      "name": "grill.ts",
+      "kind": "type",
+      "side": "front",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:grillTypes.Grill",
+          "name": "Grill",
+          "kind": "property",
+          "signature": "Grill { title, rounds, decisions, out_of_scope, done, confirmed_at, log, handled, max_asks }",
+          "status": "added"
+        },
+        {
+          "id": "class:grillTypes.Question",
+          "name": "Question",
+          "kind": "property",
+          "signature": "Question { id, title, explanation, choices, updated, thread, answer }",
+          "status": "added"
+        },
+        {
+          "id": "class:grillTypes.AnswerDraft",
+          "name": "AnswerDraft",
+          "kind": "property",
+          "signature": "AnswerDraft { kind: 'choice' | 'own' | 'ask'; choice_id?; text? }",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:grillModel",
+      "name": "grillModel.ts",
+      "kind": "module",
+      "side": "front",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:grillModel.openQuestions",
+          "name": "openQuestions",
+          "kind": "method",
+          "signature": "openQuestions(grill: Grill): Question[]",
+          "status": "added"
+        },
+        {
+          "id": "class:grillModel.responded",
+          "name": "responded",
+          "kind": "method",
+          "signature": "responded(question: Question, draft?: AnswerDraft): boolean  # a vanished choice counts as none",
+          "status": "added"
+        },
+        {
+          "id": "class:grillModel.canSubmit",
+          "name": "canSubmit",
+          "kind": "method",
+          "signature": "canSubmit(grill: Grill, drafts: Record<string, AnswerDraft>): boolean",
+          "status": "added"
+        },
+        {
+          "id": "class:grillModel.asksLeft",
+          "name": "asksLeft",
+          "kind": "method",
+          "signature": "asksLeft(question: Question, max: number): number",
+          "status": "added"
+        },
+        {
+          "id": "class:grillModel.answerLine",
+          "name": "answerLine",
+          "kind": "method",
+          "signature": "answerLine(question: Question): string  # 'title → answer' for a collapsed round",
+          "status": "added"
+        },
+        {
+          "id": "class:grillModel.roundIsOpen",
+          "name": "roundIsOpen",
+          "kind": "method",
+          "signature": "roundIsOpen(round: Round): boolean",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:api",
+      "name": "api.ts",
+      "kind": "module",
+      "side": "front",
+      "status": "modified",
+      "members": [
+        {
+          "id": "class:api.fetchGrill",
+          "name": "fetchGrill",
+          "kind": "method",
+          "signature": "fetchGrill(): Promise<Grill | null>  # null for any non-ok response or no server, like the other secondary fetches",
+          "status": "added"
+        },
+        {
+          "id": "class:api.grillDrafts",
+          "name": "grillDrafts",
+          "kind": "method",
+          "signature": "fetchGrillDrafts / saveGrillDraft(questionId, draft) / discardGrillDraft(questionId)",
+          "status": "added"
+        },
+        {
+          "id": "class:api.submitGrill",
+          "name": "submitGrill",
+          "kind": "method",
+          "signature": "submitGrill(): Promise<void>",
+          "status": "added"
+        },
+        {
+          "id": "class:api.confirmGrill",
+          "name": "confirmGrill",
+          "kind": "method",
+          "signature": "confirmGrill(): Promise<void>; reopenGrill(text: string): Promise<void>",
+          "status": "added"
+        },
+        {
+          "id": "class:api.fetchPlan",
+          "name": "fetchPlan",
+          "kind": "method",
+          "signature": "fetchPlan(): Promise<PlanResult>",
+          "status": "unchanged"
+        }
+      ]
+    },
+    {
+      "id": "class:useClaude",
+      "name": "useClaude.ts",
+      "kind": "module",
+      "side": "front",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:useClaude.signature",
+          "name": "signature",
+          "kind": "method",
+          "signature": "useClaude(): { status, lastEvent, resend, refreshStatus, refreshLastEvent }  # the banner's data, shared by both pages",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:useLive",
+      "name": "useLive.ts",
+      "kind": "module",
+      "side": "front",
+      "status": "modified",
+      "members": [
+        {
+          "id": "class:useLive.status",
+          "name": "status",
+          "kind": "method",
+          "signature": "status / lastEvent / resend: now from useClaude(); same Live interface",
+          "status": "modified"
+        }
+      ]
+    },
+    {
+      "id": "class:useGrill",
+      "name": "useGrill.ts",
+      "kind": "module",
+      "side": "front",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:useGrill.signature",
+          "name": "signature",
+          "kind": "method",
+          "signature": "useGrill(): { grill, drafts, planReady, saveDraft, discardDraft, submit, confirm, reopen, ...useClaude() }  # live on grill_changed, grill_drafts_changed, plan_changed, status_changed",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:GrillPage",
+      "name": "GrillPage",
+      "kind": "component",
+      "side": "front",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:GrillPage.render",
+          "name": "render",
+          "kind": "method",
+          "signature": "GrillPage(): JSX  # banner, rounds (newest last), decisions panel, Submit / Confirm, Plan ready link",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:QuestionCard",
+      "name": "QuestionCard",
+      "kind": "component",
+      "side": "front",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:QuestionCard.render",
+          "name": "render",
+          "kind": "method",
+          "signature": "QuestionCard({ question, draft, maxAsks, readOnly, onDraft }): JSX  # choices, own answer, note, ask back, thread, 'updated' tag",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:CollapsedRound",
+      "name": "CollapsedRound",
+      "kind": "component",
+      "side": "front",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:CollapsedRound.render",
+          "name": "render",
+          "kind": "method",
+          "signature": "CollapsedRound({ round }): JSX  # one 'title → answer' line per question, click to expand",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:DecisionsPanel",
+      "name": "DecisionsPanel",
+      "kind": "component",
+      "side": "front",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:DecisionsPanel.render",
+          "name": "render",
+          "kind": "method",
+          "signature": "DecisionsPanel({ grill }): JSX  # decisions with their question, replaced struck through, Out of scope",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:ConfirmBar",
+      "name": "ConfirmBar",
+      "kind": "component",
+      "side": "front",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:ConfirmBar.render",
+          "name": "render",
+          "kind": "method",
+          "signature": "ConfirmBar({ grill, onConfirm, onReopen }): JSX  # Confirm, or 'Not yet' with a comment; 'Confirmed' once read-only",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:PageSwitch",
+      "name": "PageSwitch",
+      "kind": "component",
+      "side": "front",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:PageSwitch.render",
+          "name": "render",
+          "kind": "method",
+          "signature": "PageSwitch({ current }): JSX | null  # 'Grill · Plan' links once grill.json and plan.json both exist",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:App",
+      "name": "App",
+      "kind": "component",
+      "side": "front",
+      "status": "modified",
+      "members": [
+        {
+          "id": "class:App.route",
+          "name": "route",
+          "kind": "property",
+          "signature": "picks GrillPage for /grill, the plan page otherwise; top bar gets PageSwitch",
+          "status": "modified"
+        }
+      ]
+    },
+    {
+      "id": "class:ClaudeBanner",
+      "name": "ClaudeBanner",
+      "kind": "component",
+      "side": "front",
+      "status": "unchanged",
+      "members": [
+        {
+          "id": "class:ClaudeBanner.render",
+          "name": "render",
+          "kind": "method",
+          "signature": "ClaudeBanner({ status, lastEvent, onResend }): JSX",
+          "status": "unchanged"
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "rel:GrillState-Question",
+      "from": "class:GrillState",
+      "to": "class:Question",
+      "kind": "contains",
+      "status": "added"
+    },
+    {
+      "id": "rel:GrillState-Decision",
+      "from": "class:GrillState",
+      "to": "class:Decision",
+      "kind": "contains",
+      "status": "added"
+    },
+    {
+      "id": "rel:GrillState-OwnerAction",
+      "from": "class:GrillState",
+      "to": "class:OwnerAction",
+      "kind": "contains",
+      "status": "added"
+    },
+    {
+      "id": "rel:Question-Choice",
+      "from": "class:Question",
+      "to": "class:Choice",
+      "kind": "contains",
+      "status": "added"
+    },
+    {
+      "id": "rel:Question-Answer",
+      "from": "class:Question",
+      "to": "class:Answer",
+      "kind": "contains",
+      "status": "added"
+    },
+    {
+      "id": "rel:OwnerAction-SubmittedAnswer",
+      "from": "class:OwnerAction",
+      "to": "class:SubmittedAnswer",
+      "kind": "contains",
+      "status": "added"
+    },
+    {
+      "id": "rel:Turn-Reply",
+      "from": "class:Turn",
+      "to": "class:Reply",
+      "kind": "contains",
+      "status": "added"
+    },
+    {
+      "id": "rel:Turn-NewQuestion",
+      "from": "class:Turn",
+      "to": "class:NewQuestion",
+      "kind": "contains",
+      "status": "added"
+    },
+    {
+      "id": "rel:Turn-GrillState",
+      "from": "class:Turn",
+      "to": "class:GrillState",
+      "kind": "creates",
+      "status": "added"
+    },
+    {
+      "id": "rel:GrillStore-GrillState",
+      "from": "class:GrillStore",
+      "to": "class:GrillState",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:GrillStore-Turn",
+      "from": "class:GrillStore",
+      "to": "class:Turn",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:GrillStore-GrillError",
+      "from": "class:GrillStore",
+      "to": "class:GrillError",
+      "kind": "creates",
+      "status": "added"
+    },
+    {
+      "id": "rel:grill_routes-GrillStore",
+      "from": "class:grill_routes",
+      "to": "class:GrillStore",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:grill_routes-GrillDraftStore",
+      "from": "class:grill_routes",
+      "to": "class:GrillDraftStore",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:grill_routes-ClaudeEvents",
+      "from": "class:grill_routes",
+      "to": "class:ClaudeEvents",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:create_app-grill_routes",
+      "from": "class:create_app",
+      "to": "class:grill_routes",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:decisions_md-GrillState",
+      "from": "class:decisions_md",
+      "to": "class:GrillState",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:cli-GrillStore",
+      "from": "class:cli",
+      "to": "class:GrillStore",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:cli-decisions_md",
+      "from": "class:cli",
+      "to": "class:decisions_md",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:cli-prefs",
+      "from": "class:cli",
+      "to": "class:prefs",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:cli-create_app",
+      "from": "class:cli",
+      "to": "class:create_app",
+      "kind": "uses",
+      "status": "unchanged"
+    },
+    {
+      "id": "rel:prefs-PipelineConfig",
+      "from": "class:prefs",
+      "to": "class:PipelineConfig",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:prefs-workdir",
+      "from": "class:prefs",
+      "to": "class:workdir",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:App-GrillPage",
+      "from": "class:App",
+      "to": "class:GrillPage",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:App-PageSwitch",
+      "from": "class:App",
+      "to": "class:PageSwitch",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:GrillPage-useGrill",
+      "from": "class:GrillPage",
+      "to": "class:useGrill",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:GrillPage-QuestionCard",
+      "from": "class:GrillPage",
+      "to": "class:QuestionCard",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:GrillPage-CollapsedRound",
+      "from": "class:GrillPage",
+      "to": "class:CollapsedRound",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:GrillPage-DecisionsPanel",
+      "from": "class:GrillPage",
+      "to": "class:DecisionsPanel",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:GrillPage-ConfirmBar",
+      "from": "class:GrillPage",
+      "to": "class:ConfirmBar",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:GrillPage-ClaudeBanner",
+      "from": "class:GrillPage",
+      "to": "class:ClaudeBanner",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:useGrill-api",
+      "from": "class:useGrill",
+      "to": "class:api",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:useGrill-useClaude",
+      "from": "class:useGrill",
+      "to": "class:useClaude",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:useLive-useClaude",
+      "from": "class:useLive",
+      "to": "class:useClaude",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:QuestionCard-grillModel",
+      "from": "class:QuestionCard",
+      "to": "class:grillModel",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:GrillPage-grillModel",
+      "from": "class:GrillPage",
+      "to": "class:grillModel",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:grillModel-grillTypes",
+      "from": "class:grillModel",
+      "to": "class:grillTypes",
+      "kind": "depends_on",
+      "status": "added"
+    }
+  ],
+  "flows": [
+    {
+      "id": "flow:round",
+      "title": "One grill round on the page",
+      "kind": "sequence",
+      "participants": [
+        {
+          "id": "flow:round/ship",
+          "name": "/ship (grilling skill)",
+          "status": "modified"
+        },
+        {
+          "id": "flow:round/cli",
+          "name": "plan-review grill",
+          "status": "added"
+        },
+        {
+          "id": "flow:round/file",
+          "name": "W/grill.json",
+          "status": "added"
+        },
+        {
+          "id": "flow:round/serve",
+          "name": "plan-review serve",
+          "status": "modified"
+        },
+        {
+          "id": "flow:round/page",
+          "name": "Grill page",
+          "status": "added"
+        },
+        {
+          "id": "flow:round/owner",
+          "name": "Owner",
+          "status": "unchanged"
+        }
+      ],
+      "steps": [
+        {
+          "id": "flow:round/1",
+          "from": "flow:round/ship",
+          "to": "flow:round/cli",
+          "label": "grill post ID W/grill-turn.json (round, decisions, replies)",
+          "status": "added"
+        },
+        {
+          "id": "flow:round/2",
+          "from": "flow:round/cli",
+          "to": "flow:round/file",
+          "label": "Turn.apply, then write_atomically under file_lock",
+          "status": "added"
+        },
+        {
+          "id": "flow:round/3",
+          "from": "flow:round/serve",
+          "to": "flow:round/page",
+          "label": "grill_changed (file watched)",
+          "status": "added"
+        },
+        {
+          "id": "flow:round/4",
+          "from": "flow:round/page",
+          "to": "flow:round/serve",
+          "label": "GET /api/grill",
+          "status": "added"
+        },
+        {
+          "id": "flow:round/5",
+          "from": "flow:round/owner",
+          "to": "flow:round/page",
+          "label": "pick a choice / own answer / ask back",
+          "status": "added"
+        },
+        {
+          "id": "flow:round/6",
+          "from": "flow:round/page",
+          "to": "flow:round/serve",
+          "label": "PUT /api/grill/drafts/{question_id}",
+          "status": "added"
+        },
+        {
+          "id": "flow:round/7",
+          "from": "flow:round/owner",
+          "to": "flow:round/page",
+          "label": "Submit answers (enabled once every open question has a response)",
+          "status": "added"
+        },
+        {
+          "id": "flow:round/8",
+          "from": "flow:round/page",
+          "to": "flow:round/serve",
+          "label": "POST /api/grill/submit",
+          "status": "added"
+        },
+        {
+          "id": "flow:round/9",
+          "from": "flow:round/serve",
+          "to": "flow:round/file",
+          "label": "answers next to their questions, asks into the thread, log += answers",
+          "status": "added"
+        },
+        {
+          "id": "flow:round/10",
+          "from": "flow:round/serve",
+          "to": "flow:round/ship",
+          "label": "grill_submitted {answers} on /events (Monitor)",
+          "status": "added"
+        },
+        {
+          "id": "flow:round/11",
+          "from": "flow:round/ship",
+          "to": "flow:round/cli",
+          "label": "plan-review status ID \"Answers received\"",
+          "status": "added"
+        },
+        {
+          "id": "flow:round/12",
+          "from": "flow:round/ship",
+          "to": "flow:round/cli",
+          "label": "grill post: replies beside asked-back questions, settled decisions, next round",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "flow:submit",
+      "title": "Server checks on POST /api/grill/submit",
+      "kind": "flowchart",
+      "nodes": [
+        {
+          "id": "flow:submit/start",
+          "name": "Submit pressed",
+          "status": "added"
+        },
+        {
+          "id": "flow:submit/turn",
+          "name": "Owner's turn? (handled == len(log), not done, not confirmed)",
+          "status": "added"
+        },
+        {
+          "id": "flow:submit/busy",
+          "name": "409: waiting for Claude",
+          "status": "added"
+        },
+        {
+          "id": "flow:submit/cover",
+          "name": "Exactly one response per open question?",
+          "status": "added"
+        },
+        {
+          "id": "flow:submit/incomplete",
+          "name": "422: name the questions without a response",
+          "status": "added"
+        },
+        {
+          "id": "flow:submit/valid",
+          "name": "Choice exists / text not blank / asks < MAX_ASKS?",
+          "status": "added"
+        },
+        {
+          "id": "flow:submit/invalid",
+          "name": "422: one line per bad answer",
+          "status": "added"
+        },
+        {
+          "id": "flow:submit/record",
+          "name": "Record answers, append owner action, clear drafts",
+          "status": "added"
+        },
+        {
+          "id": "flow:submit/event",
+          "name": "Send grill_submitted (kept in last_event.json)",
+          "status": "added"
+        }
+      ],
+      "edges": [
+        {
+          "id": "flow:submit/e1",
+          "from": "flow:submit/start",
+          "to": "flow:submit/turn",
+          "status": "added"
+        },
+        {
+          "id": "flow:submit/e2",
+          "from": "flow:submit/turn",
+          "to": "flow:submit/busy",
+          "status": "added",
+          "label": "no"
+        },
+        {
+          "id": "flow:submit/e3",
+          "from": "flow:submit/turn",
+          "to": "flow:submit/cover",
+          "status": "added",
+          "label": "yes"
+        },
+        {
+          "id": "flow:submit/e4",
+          "from": "flow:submit/cover",
+          "to": "flow:submit/incomplete",
+          "status": "added",
+          "label": "no"
+        },
+        {
+          "id": "flow:submit/e5",
+          "from": "flow:submit/cover",
+          "to": "flow:submit/valid",
+          "status": "added",
+          "label": "yes"
+        },
+        {
+          "id": "flow:submit/e6",
+          "from": "flow:submit/valid",
+          "to": "flow:submit/invalid",
+          "status": "added",
+          "label": "no"
+        },
+        {
+          "id": "flow:submit/e7",
+          "from": "flow:submit/valid",
+          "to": "flow:submit/record",
+          "status": "added",
+          "label": "yes"
+        },
+        {
+          "id": "flow:submit/e8",
+          "from": "flow:submit/record",
+          "to": "flow:submit/event",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "flow:mode",
+      "title": "/ship --grill: page or chat",
+      "kind": "flowchart",
+      "nodes": [
+        {
+          "id": "flow:mode/start",
+          "name": "/ship with --grill",
+          "status": "added"
+        },
+        {
+          "id": "flow:mode/flag",
+          "name": "--grill=page or --grill=chat?",
+          "status": "added"
+        },
+        {
+          "id": "flow:mode/prefs",
+          "name": "plan-review prefs grill (pipeline.json grill, else preferences.json)",
+          "status": "added"
+        },
+        {
+          "id": "flow:mode/ask",
+          "name": "Exit 3: ask once, record with plan-review prefs grill <mode>, say how to change it",
+          "status": "added"
+        },
+        {
+          "id": "flow:mode/confirmed",
+          "name": "grill pending ID says confirmed?",
+          "status": "added"
+        },
+        {
+          "id": "flow:mode/skip",
+          "name": "grill decisions ID, go to planning",
+          "status": "added"
+        },
+        {
+          "id": "flow:mode/serve",
+          "name": "First turn posted; plan-review serve ID starts?",
+          "status": "added"
+        },
+        {
+          "id": "flow:mode/page",
+          "name": "Page grill: give the owner the /grill URL, arm Monitor",
+          "status": "added"
+        },
+        {
+          "id": "flow:mode/chat",
+          "name": "Chat grill exactly as today (remove a grill.json just posted)",
+          "status": "added"
+        }
+      ],
+      "edges": [
+        {
+          "id": "flow:mode/e1",
+          "from": "flow:mode/start",
+          "to": "flow:mode/flag",
+          "status": "added"
+        },
+        {
+          "id": "flow:mode/e2",
+          "from": "flow:mode/flag",
+          "to": "flow:mode/prefs",
+          "status": "added",
+          "label": "plain --grill"
+        },
+        {
+          "id": "flow:mode/e3",
+          "from": "flow:mode/flag",
+          "to": "flow:mode/chat",
+          "status": "added",
+          "label": "chat"
+        },
+        {
+          "id": "flow:mode/e4",
+          "from": "flow:mode/flag",
+          "to": "flow:mode/confirmed",
+          "status": "added",
+          "label": "page"
+        },
+        {
+          "id": "flow:mode/e5",
+          "from": "flow:mode/prefs",
+          "to": "flow:mode/ask",
+          "status": "added",
+          "label": "nothing chosen"
+        },
+        {
+          "id": "flow:mode/e6",
+          "from": "flow:mode/prefs",
+          "to": "flow:mode/chat",
+          "status": "added",
+          "label": "chat"
+        },
+        {
+          "id": "flow:mode/e7",
+          "from": "flow:mode/prefs",
+          "to": "flow:mode/confirmed",
+          "status": "added",
+          "label": "page"
+        },
+        {
+          "id": "flow:mode/e8",
+          "from": "flow:mode/ask",
+          "to": "flow:mode/confirmed",
+          "status": "added",
+          "label": "page"
+        },
+        {
+          "id": "flow:mode/e9",
+          "from": "flow:mode/ask",
+          "to": "flow:mode/chat",
+          "status": "added",
+          "label": "chat"
+        },
+        {
+          "id": "flow:mode/e10",
+          "from": "flow:mode/confirmed",
+          "to": "flow:mode/skip",
+          "status": "added",
+          "label": "yes"
+        },
+        {
+          "id": "flow:mode/e11",
+          "from": "flow:mode/confirmed",
+          "to": "flow:mode/serve",
+          "status": "added",
+          "label": "no (new or resumed: catch up with grill pending)"
+        },
+        {
+          "id": "flow:mode/e12",
+          "from": "flow:mode/serve",
+          "to": "flow:mode/page",
+          "status": "added",
+          "label": "yes"
+        },
+        {
+          "id": "flow:mode/e13",
+          "from": "flow:mode/serve",
+          "to": "flow:mode/chat",
+          "status": "added",
+          "label": "no"
+        }
+      ]
+    },
+    {
+      "id": "flow:confirm",
+      "title": "Confirming the shared understanding",
+      "kind": "sequence",
+      "participants": [
+        {
+          "id": "flow:confirm/ship",
+          "name": "/ship",
+          "status": "modified"
+        },
+        {
+          "id": "flow:confirm/cli",
+          "name": "plan-review grill",
+          "status": "added"
+        },
+        {
+          "id": "flow:confirm/serve",
+          "name": "plan-review serve",
+          "status": "modified"
+        },
+        {
+          "id": "flow:confirm/page",
+          "name": "Grill page",
+          "status": "added"
+        },
+        {
+          "id": "flow:confirm/owner",
+          "name": "Owner",
+          "status": "unchanged"
+        },
+        {
+          "id": "flow:confirm/architect",
+          "name": "architect agent",
+          "status": "unchanged"
+        }
+      ],
+      "steps": [
+        {
+          "id": "flow:confirm/1",
+          "from": "flow:confirm/ship",
+          "to": "flow:confirm/cli",
+          "label": "grill post {done: true} (refused while questions are open)",
+          "status": "added"
+        },
+        {
+          "id": "flow:confirm/2",
+          "from": "flow:confirm/serve",
+          "to": "flow:confirm/page",
+          "label": "grill_changed: Confirm and 'Not yet' appear",
+          "status": "added"
+        },
+        {
+          "id": "flow:confirm/3",
+          "from": "flow:confirm/owner",
+          "to": "flow:confirm/page",
+          "label": "Not yet: \"also ask about X\"",
+          "status": "added"
+        },
+        {
+          "id": "flow:confirm/4",
+          "from": "flow:confirm/page",
+          "to": "flow:confirm/serve",
+          "label": "POST /api/grill/reopen {text}",
+          "status": "added"
+        },
+        {
+          "id": "flow:confirm/5",
+          "from": "flow:confirm/serve",
+          "to": "flow:confirm/ship",
+          "label": "grill_reopened {text}: done cleared, more rounds follow",
+          "status": "added"
+        },
+        {
+          "id": "flow:confirm/6",
+          "from": "flow:confirm/owner",
+          "to": "flow:confirm/page",
+          "label": "Confirm",
+          "status": "added"
+        },
+        {
+          "id": "flow:confirm/7",
+          "from": "flow:confirm/page",
+          "to": "flow:confirm/serve",
+          "label": "POST /api/grill/confirm",
+          "status": "added"
+        },
+        {
+          "id": "flow:confirm/8",
+          "from": "flow:confirm/serve",
+          "to": "flow:confirm/ship",
+          "label": "grill_confirmed; page read-only, 'Confirmed'",
+          "status": "added"
+        },
+        {
+          "id": "flow:confirm/9",
+          "from": "flow:confirm/ship",
+          "to": "flow:confirm/cli",
+          "label": "grill decisions ID -> W/decisions.md (today's format)",
+          "status": "added"
+        },
+        {
+          "id": "flow:confirm/10",
+          "from": "flow:confirm/ship",
+          "to": "flow:confirm/architect",
+          "label": "Plan mode. Run ID. (server and Monitor keep running)",
+          "status": "unchanged"
+        },
+        {
+          "id": "flow:confirm/11",
+          "from": "flow:confirm/serve",
+          "to": "flow:confirm/page",
+          "label": "plan_changed: 'Plan ready -> open the plan' link (no auto switch)",
+          "status": "added"
+        }
+      ]
+    }
+  ],
+  "architecture": {
+    "nodes": [
+      {
+        "id": "arch:browser",
+        "name": "Viewer page (/grill and /)",
+        "kind": "client",
+        "status": "modified"
+      },
+      {
+        "id": "arch:serve",
+        "name": "plan-review serve",
+        "kind": "service",
+        "status": "modified"
+      },
+      {
+        "id": "arch:cli",
+        "name": "plan-review CLI (grill, prefs)",
+        "kind": "worker",
+        "status": "modified"
+      },
+      {
+        "id": "arch:ship",
+        "name": "/ship orchestrator + Monitor",
+        "kind": "external",
+        "status": "modified"
+      },
+      {
+        "id": "arch:work",
+        "name": "W/: grill.json, grill_drafts.json, decisions.md",
+        "kind": "database",
+        "status": "modified"
+      },
+      {
+        "id": "arch:prefs",
+        "name": ".claude/work/preferences.json",
+        "kind": "database",
+        "status": "added"
+      }
+    ],
+    "edges": [
+      {
+        "id": "arch:e1",
+        "from": "arch:browser",
+        "to": "arch:serve",
+        "label": "HTTP /api/grill/*, WS /api/updates",
+        "status": "modified"
+      },
+      {
+        "id": "arch:e2",
+        "from": "arch:serve",
+        "to": "arch:work",
+        "label": "answers, drafts (file lock)",
+        "status": "added"
+      },
+      {
+        "id": "arch:e3",
+        "from": "arch:serve",
+        "to": "arch:ship",
+        "label": "WS /events: grill_submitted, grill_confirmed, grill_reopened",
+        "status": "modified"
+      },
+      {
+        "id": "arch:e4",
+        "from": "arch:ship",
+        "to": "arch:cli",
+        "label": "grill post / pending / decisions, prefs, status",
+        "status": "modified"
+      },
+      {
+        "id": "arch:e5",
+        "from": "arch:cli",
+        "to": "arch:work",
+        "label": "turns (file lock), decisions.md",
+        "status": "added"
+      },
+      {
+        "id": "arch:e6",
+        "from": "arch:cli",
+        "to": "arch:prefs",
+        "label": "prefs grill page|chat",
+        "status": "added"
+      }
+    ]
+  },
+  "files": [
+    {
+      "id": "file:grill-py",
+      "path": "plugins/plan-review/src/plan_review/grill.py",
+      "kind": "code",
+      "change": "added",
+      "reason": "Grill state models, MAX_ASKS, GrillStore (file lock + atomic writes), GrillError, load_grill."
+    },
+    {
+      "id": "file:grill-turn-py",
+      "path": "plugins/plan-review/src/plan_review/grill_turn.py",
+      "kind": "code",
+      "change": "added",
+      "reason": "The agent's Turn (replies, revisions, decisions, out of scope, round, done) and its validation."
+    },
+    {
+      "id": "file:grill-drafts-py",
+      "path": "plugins/plan-review/src/plan_review/grill_drafts.py",
+      "kind": "code",
+      "change": "added",
+      "reason": "The owner's unsent answers in W/grill_drafts.json, owned by the server."
+    },
+    {
+      "id": "file:grill-routes-py",
+      "path": "plugins/plan-review/src/plan_review/grill_routes.py",
+      "kind": "code",
+      "change": "added",
+      "reason": "HTTP routes for the grill page: state, drafts, submit, confirm, reopen, and their events."
+    },
+    {
+      "id": "file:decisions-md-py",
+      "path": "plugins/plan-review/src/plan_review/decisions_md.py",
+      "kind": "code",
+      "change": "added",
+      "reason": "Renders W/decisions.md from a confirmed grill, in today's format."
+    },
+    {
+      "id": "file:prefs-py",
+      "path": "plugins/plan-review/src/plan_review/prefs.py",
+      "kind": "code",
+      "change": "added",
+      "reason": "preferences.json read/write and the pipeline.json-then-preference resolution."
+    },
+    {
+      "id": "file:pipeline-py",
+      "path": "plugins/plan-review/src/plan_review/pipeline.py",
+      "kind": "code",
+      "change": "modified",
+      "reason": "PipelineConfig gains the optional team setting `grill`."
+    },
+    {
+      "id": "file:workdir-py",
+      "path": "plugins/plan-review/src/plan_review/workdir.py",
+      "kind": "code",
+      "change": "modified",
+      "reason": "preferences_file(): .claude/work/preferences.json with the folder's .gitignore ensured."
+    },
+    {
+      "id": "file:server-py",
+      "path": "plugins/plan-review/src/plan_review/server.py",
+      "kind": "code",
+      "change": "modified",
+      "reason": "Watches grill.json and grill_drafts.json, mounts grill_routes, serves /grill and redirects / to /grill without a plan."
+    },
+    {
+      "id": "file:cli-py",
+      "path": "plugins/plan-review/src/plan_review/cli.py",
+      "kind": "code",
+      "change": "modified",
+      "reason": "`grill post|pending|decisions|schema`, `prefs`, and serve starting from grill.json alone."
+    },
+    {
+      "id": "file:grill-example",
+      "path": "plugins/plan-review/examples/grill.json",
+      "kind": "config",
+      "change": "added",
+      "reason": "A grill state with two rounds, an ask-back thread, a replaced decision and out-of-scope items; used by the Python and page tests."
+    },
+    {
+      "id": "file:test-grill",
+      "path": "plugins/plan-review/tests/test_grill.py",
+      "kind": "test",
+      "change": "added",
+      "reason": "Grill state, turns and owner actions."
+    },
+    {
+      "id": "file:test-decisions-md",
+      "path": "plugins/plan-review/tests/test_decisions_md.py",
+      "kind": "test",
+      "change": "added",
+      "reason": "Golden test for the decisions.md format."
+    },
+    {
+      "id": "file:test-grill-drafts",
+      "path": "plugins/plan-review/tests/test_grill_drafts.py",
+      "kind": "test",
+      "change": "added",
+      "reason": "GrillDraftStore."
+    },
+    {
+      "id": "file:test-grill-routes",
+      "path": "plugins/plan-review/tests/test_grill_routes.py",
+      "kind": "test",
+      "change": "added",
+      "reason": "The grill page's HTTP routes, events and page routes."
+    },
+    {
+      "id": "file:test-prefs",
+      "path": "plugins/plan-review/tests/test_prefs.py",
+      "kind": "test",
+      "change": "added",
+      "reason": "Recording and resolving the grill mode."
+    },
+    {
+      "id": "file:test-pipeline",
+      "path": "plugins/plan-review/tests/test_pipeline.py",
+      "kind": "test",
+      "change": "modified",
+      "reason": "The `grill` setting."
+    },
+    {
+      "id": "file:test-cli",
+      "path": "plugins/plan-review/tests/test_cli.py",
+      "kind": "test",
+      "change": "modified",
+      "reason": "grill and prefs commands; serve with grill.json only."
+    },
+    {
+      "id": "file:test-skill",
+      "path": "plugins/plan-review/tests/test_skill.py",
+      "kind": "test",
+      "change": "modified",
+      "reason": "Argument hint `[--grill[=page|chat]]` and the page-mode contract of step 1."
+    },
+    {
+      "id": "file:grill-ts",
+      "path": "plugins/plan-review/web/src/grill.ts",
+      "kind": "code",
+      "change": "added",
+      "reason": "Types for the grill state and answer drafts, as the server returns them."
+    },
+    {
+      "id": "file:grill-model-ts",
+      "path": "plugins/plan-review/web/src/grillModel.ts",
+      "kind": "code",
+      "change": "added",
+      "reason": "Pure helpers: open questions, submit readiness, asks left, collapsed lines."
+    },
+    {
+      "id": "file:grill-model-test",
+      "path": "plugins/plan-review/web/src/grillModel.test.ts",
+      "kind": "test",
+      "change": "added",
+      "reason": "Unit tests for grillModel."
+    },
+    {
+      "id": "file:use-claude-ts",
+      "path": "plugins/plan-review/web/src/useClaude.ts",
+      "kind": "code",
+      "change": "added",
+      "reason": "Status, last event and Resend, extracted from useLive so both pages share the banner logic."
+    },
+    {
+      "id": "file:use-live-ts",
+      "path": "plugins/plan-review/web/src/useLive.ts",
+      "kind": "code",
+      "change": "modified",
+      "reason": "Uses useClaude; Live interface unchanged."
+    },
+    {
+      "id": "file:use-grill-ts",
+      "path": "plugins/plan-review/web/src/useGrill.ts",
+      "kind": "code",
+      "change": "added",
+      "reason": "The grill page's live state and actions."
+    },
+    {
+      "id": "file:grill-page-tsx",
+      "path": "plugins/plan-review/web/src/GrillPage.tsx",
+      "kind": "code",
+      "change": "added",
+      "reason": "The grill page."
+    },
+    {
+      "id": "file:question-card-tsx",
+      "path": "plugins/plan-review/web/src/grill/QuestionCard.tsx",
+      "kind": "code",
+      "change": "added",
+      "reason": "One question: choices, own answer, note, ask back, thread."
+    },
+    {
+      "id": "file:collapsed-round-tsx",
+      "path": "plugins/plan-review/web/src/grill/CollapsedRound.tsx",
+      "kind": "code",
+      "change": "added",
+      "reason": "An answered round as one line per question."
+    },
+    {
+      "id": "file:decisions-panel-tsx",
+      "path": "plugins/plan-review/web/src/grill/DecisionsPanel.tsx",
+      "kind": "code",
+      "change": "added",
+      "reason": "Settled decisions and Out of scope."
+    },
+    {
+      "id": "file:confirm-bar-tsx",
+      "path": "plugins/plan-review/web/src/grill/ConfirmBar.tsx",
+      "kind": "code",
+      "change": "added",
+      "reason": "Confirm or 'Not yet', then 'Confirmed'."
+    },
+    {
+      "id": "file:page-switch-tsx",
+      "path": "plugins/plan-review/web/src/PageSwitch.tsx",
+      "kind": "code",
+      "change": "added",
+      "reason": "'Grill · Plan' links in the top bar."
+    },
+    {
+      "id": "file:app-tsx",
+      "path": "plugins/plan-review/web/src/App.tsx",
+      "kind": "code",
+      "change": "modified",
+      "reason": "Route by location.pathname; PageSwitch in the top bar."
+    },
+    {
+      "id": "file:api-ts",
+      "path": "plugins/plan-review/web/src/api.ts",
+      "kind": "code",
+      "change": "modified",
+      "reason": "Grill API calls."
+    },
+    {
+      "id": "file:styles-css",
+      "path": "plugins/plan-review/web/src/styles.css",
+      "kind": "code",
+      "change": "modified",
+      "reason": "Grill page layout: decisions beside rounds on wide screens, above on narrow ones."
+    },
+    {
+      "id": "file:fake-server-ts",
+      "path": "plugins/plan-review/web/src/test/fakeServer.ts",
+      "kind": "test",
+      "change": "modified",
+      "reason": "Grill routes in the fake server."
+    },
+    {
+      "id": "file:grill-page-test",
+      "path": "plugins/plan-review/web/src/GrillPage.test.tsx",
+      "kind": "test",
+      "change": "added",
+      "reason": "The grill page end to end against the fake server."
+    },
+    {
+      "id": "file:app-test",
+      "path": "plugins/plan-review/web/src/App.test.tsx",
+      "kind": "test",
+      "change": "modified",
+      "reason": "Page switch; the plan page without a grill is unchanged."
+    },
+    {
+      "id": "file:ship-skill",
+      "path": "plugins/plan-review/skills/ship/SKILL.md",
+      "kind": "doc",
+      "change": "modified",
+      "reason": "Step 1: mode choice, page grill through the helpers, Monitor events and statuses, resume, chat fallback; step 3 reuses the running server and Monitor, and first sets `plan-review status ID \"Plan ready for review\" --done` so the plan page does not show a stale grill status."
+    },
+    {
+      "id": "file:plugin-readme",
+      "path": "plugins/plan-review/README.md",
+      "kind": "doc",
+      "change": "modified",
+      "reason": "grill and prefs commands, serve's new start rule, grill endpoints and events, the `grill` setting, the grill page."
+    },
+    {
+      "id": "file:root-readme",
+      "path": "README.md",
+      "kind": "doc",
+      "change": "modified",
+      "reason": "Security note: the viewer also writes grill.json and grill_drafts.json."
+    },
+    {
+      "id": "file:changelog",
+      "path": "CHANGELOG.md",
+      "kind": "doc",
+      "change": "modified",
+      "reason": "A `### 0.1.9` section (undated; the release dates it, as with 0.1.8) at the top of `## plan-review`, with one bullet for #53."
+    },
+    {
+      "id": "file:plugin-json",
+      "path": "plugins/plan-review/.claude-plugin/plugin.json",
+      "kind": "config",
+      "change": "modified",
+      "reason": "Version 0.1.9, set by `scripts/set-version.sh 0.1.9`; CI's version guard fails while it still says the released 0.1.8."
+    },
+    {
+      "id": "file:pyproject",
+      "path": "plugins/plan-review/pyproject.toml",
+      "kind": "config",
+      "change": "modified",
+      "reason": "Version 0.1.9 (same set-version.sh run), so `plan-review --version` matches plugin.json."
+    },
+    {
+      "id": "file:uv-lock",
+      "path": "plugins/plan-review/uv.lock",
+      "kind": "config",
+      "change": "modified",
+      "reason": "plan-review's own entry at 0.1.9 (same set-version.sh run)."
+    }
+  ],
+  "tests": [
+    {
+      "id": "test:1",
+      "name": "test_grill_setting_is_page_chat_or_unset",
+      "target": "class:PipelineConfig.grill",
+      "behaviour": "pipeline.json `grill` accepts \"page\" and \"chat\", defaults to None, and any other value is a readable error; `plan-review config` prints it."
+    },
+    {
+      "id": "test:2",
+      "name": "test_recording_a_preference_writes_preferences_json_and_ignores_the_folder",
+      "target": "class:prefs.record",
+      "behaviour": "record() writes {\"grill\": \"page\"} to .claude/work/preferences.json, creating .claude/work/ and its `*` .gitignore when missing, and never overwrites an existing .gitignore."
+    },
+    {
+      "id": "test:3",
+      "name": "test_pipeline_grill_wins_over_the_recorded_preference",
+      "target": "class:prefs.grill_mode",
+      "behaviour": "grill_mode returns pipeline.json's grill when set, else the recorded preference, else None."
+    },
+    {
+      "id": "test:4",
+      "name": "test_prefs_command_sets_and_prints_the_grill_mode",
+      "target": "class:cli._prefs",
+      "behaviour": "`prefs grill chat` records it; `prefs grill` prints the resolved mode and exits 0, or exits 3 with a message on stderr when nothing is chosen; a bad pipeline.json exits 1."
+    },
+    {
+      "id": "test:5",
+      "name": "test_the_first_turn_creates_grill_json_with_its_title_and_round_1",
+      "target": "class:GrillStore.post",
+      "behaviour": "Posting a first turn with a title and a round writes grill.json holding round 1; a first turn without a title is refused with a readable error and writes nothing."
+    },
+    {
+      "id": "test:6",
+      "name": "test_a_question_needs_two_choices_and_unique_ids",
+      "target": "class:NewQuestion.choices",
+      "behaviour": "A question with fewer than two choices, duplicate choice ids, or an id already used in any round is refused, one readable line per problem."
+    },
+    {
+      "id": "test:7",
+      "name": "test_submitting_records_choices_and_own_answers_next_to_their_questions",
+      "target": "class:GrillStore.submit",
+      "behaviour": "A choice (with an optional note) and an own answer are stored as each question's answer, the questions are no longer open, and one `answers` owner action is appended to the log."
+    },
+    {
+      "id": "test:8",
+      "name": "test_a_submit_needs_exactly_one_valid_response_per_open_question",
+      "target": "class:SubmittedAnswer.kind",
+      "behaviour": "Submitting with an open question left out, a question answered twice, an unknown question, a choice id the question does not have, or a blank own/ask text is refused (not a conflict) and changes nothing."
+    },
+    {
+      "id": "test:9",
+      "name": "test_the_owner_cannot_submit_while_claude_has_unhandled_actions",
+      "target": "class:GrillState.owners_turn",
+      "behaviour": "After a submit and before the next post, owners_turn() is False and a second submit is refused as a conflict; the same after confirmation."
+    },
+    {
+      "id": "test:10",
+      "name": "test_asking_back_keeps_the_question_open_and_the_next_turn_must_reply",
+      "target": "class:Question.thread",
+      "behaviour": "An `ask` appends the owner's text to the question's thread and leaves it open; a later post that does not reply to every question awaiting a reply is refused, naming them; a reply is appended as Claude's."
+    },
+    {
+      "id": "test:11",
+      "name": "test_a_fourth_ask_back_on_one_question_is_refused",
+      "target": "class:grill.MAX_ASKS",
+      "behaviour": "With three asks (and three replies) on a question, an `ask` on it is refused naming the limit; other answers on it still work."
+    },
+    {
+      "id": "test:12",
+      "name": "test_a_reply_may_revise_an_open_question_only",
+      "target": "class:Reply.revised",
+      "behaviour": "A reply with `revised` replaces the question's explanation and choices and sets updated; revising an answered question, or a question with no pending ask, is refused."
+    },
+    {
+      "id": "test:13",
+      "name": "test_decisions_have_ids_and_can_replace_earlier_ones",
+      "target": "class:Decision.replaces",
+      "behaviour": "Posted decisions are appended; one with `replaces` marks the earlier decision replaced; a duplicate id, an unknown `replaces`, an already replaced target or an unknown question_id is refused."
+    },
+    {
+      "id": "test:14",
+      "name": "test_done_needs_an_empty_frontier_and_every_turn_leaves_the_owner_something",
+      "target": "class:Turn.done",
+      "behaviour": "`done` with open questions, or together with a round, is refused; a turn that leaves no open question, no reply and is not done is refused."
+    },
+    {
+      "id": "test:15",
+      "name": "test_pending_lists_owner_actions_the_agent_has_not_answered",
+      "target": "class:GrillStore.pending",
+      "behaviour": "pending() returns the log after `handled`, each answer with its question title and choice label; a post sets handled to the log's length, so pending is then empty."
+    },
+    {
+      "id": "test:16",
+      "name": "test_confirm_needs_done_and_reopen_brings_grilling_back",
+      "target": "class:GrillStore.confirm",
+      "behaviour": "confirm() is a conflict unless done and the owner's turn, then sets confirmed_at; reopen(text) clears done and logs the text; blank text is refused; nothing is accepted after confirmation."
+    },
+    {
+      "id": "test:17",
+      "name": "test_decisions_md_comes_out_in_todays_format",
+      "target": "class:decisions_md.decisions_markdown",
+      "behaviour": "From examples/grill.json the output equals, byte for byte, a fixture in the format /ship writes today: `# Decisions for #53: <title>`, `## <topic>` in first-seen order, `- **<decision>**: <choice>` plus ` <why>` when given, and `## Out of scope` bullets."
+    },
+    {
+      "id": "test:18",
+      "name": "test_replaced_decisions_and_an_empty_out_of_scope_are_left_out",
+      "target": "class:decisions_md.decisions_markdown",
+      "behaviour": "A replaced decision is not written (its replacement takes its place), and with no out-of-scope items there is no `## Out of scope` heading."
+    },
+    {
+      "id": "test:19",
+      "name": "test_grill_drafts_are_kept_per_question_and_survive_a_restart",
+      "target": "class:GrillDraftStore.put",
+      "behaviour": "put() replaces a question's draft, discard() removes only it, clear() removes the submitted ones, and a new store on the same file sees them."
+    },
+    {
+      "id": "test:20",
+      "name": "test_grill_post_appends_a_turn_and_reports_a_bad_one_readably",
+      "target": "class:cli._grill_post",
+      "behaviour": "`grill post 53 turn.json` exits 0 and the round is in grill.json; an invalid turn exits 1 with `location: message` lines; a missing file exits 2."
+    },
+    {
+      "id": "test:21",
+      "name": "test_grill_pending_prints_whether_confirmed_and_what_is_pending",
+      "target": "class:cli._grill_pending",
+      "behaviour": "`grill pending 53` prints JSON {confirmed, pending}; exits 1 when there is no grill.json."
+    },
+    {
+      "id": "test:22",
+      "name": "test_grill_decisions_writes_decisions_md_only_once_confirmed",
+      "target": "class:cli._grill_decisions",
+      "behaviour": "`grill decisions 53` writes W/decisions.md from a confirmed grill and exits 0; before confirmation it exits 1 and writes nothing."
+    },
+    {
+      "id": "test:23",
+      "name": "test_grill_schema_prints_the_turn_schema",
+      "target": "class:cli._grill_schema",
+      "behaviour": "`grill schema` prints the Turn JSON Schema (replies, decisions, out_of_scope, round, done)."
+    },
+    {
+      "id": "test:24",
+      "name": "test_api_grill_returns_the_state_with_the_ask_limit",
+      "target": "class:grill_routes.get_grill",
+      "behaviour": "GET /api/grill is 404 without grill.json, else the state plus max_asks: 3."
+    },
+    {
+      "id": "test:25",
+      "name": "test_answer_drafts_can_be_saved_replaced_and_discarded",
+      "target": "class:grill_routes.drafts",
+      "behaviour": "PUT /api/grill/drafts/{id} stores a draft (not announced to /events), GET lists them, DELETE removes one; an unknown or answered question is 404, an invalid draft or a fourth ask is 422."
+    },
+    {
+      "id": "test:26",
+      "name": "test_submitting_turns_drafts_into_answers_and_tells_claude_once",
+      "target": "class:grill_routes.submit",
+      "behaviour": "POST /api/grill/submit records the drafts in grill.json, clears grill_drafts.json and sends one {type: grill_submitted, answers: [{question_id, kind, choice_id?, text?}]} that is kept as the last event."
+    },
+    {
+      "id": "test:27",
+      "name": "test_an_incomplete_or_untimely_submit_is_refused",
+      "target": "class:grill_routes.submit",
+      "behaviour": "Submit is 422 while an open question has no draft (drafts kept) and 409 while it is Claude's turn or after confirmation."
+    },
+    {
+      "id": "test:28",
+      "name": "test_confirm_and_reopen_send_their_events",
+      "target": "class:grill_routes.confirm",
+      "behaviour": "POST /api/grill/confirm sends grill_confirmed and POST /api/grill/reopen {text} sends grill_reopened with the text; both 409 unless done; blank text 422; Resend repeats them."
+    },
+    {
+      "id": "test:29",
+      "name": "test_pages_are_told_when_the_grill_or_its_drafts_change",
+      "target": "class:create_app.watch",
+      "behaviour": "Writing grill.json pushes grill_changed and writing grill_drafts.json pushes grill_drafts_changed on /api/updates."
+    },
+    {
+      "id": "test:30",
+      "name": "test_grill_is_served_and_root_redirects_there_without_a_plan",
+      "target": "class:create_app.root",
+      "behaviour": "GET /grill returns index.html; GET / redirects to /grill while plan.json is missing and returns index.html (as today) when it exists, valid or not."
+    },
+    {
+      "id": "test:31",
+      "name": "test_serve_starts_from_grill_json_and_points_at_the_grill_page",
+      "target": "class:cli._serve",
+      "behaviour": "With grill.json and no plan.json, serve starts, prints `plan-review: #7 at http://127.0.0.1:<port>/grill` and opens that URL; with neither it still exits 2; an invalid plan still exits 1."
+    },
+    {
+      "id": "test:32",
+      "name": "openQuestions, responded, canSubmit, asksLeft, answerLine",
+      "target": "class:grillModel.canSubmit",
+      "behaviour": "Unit: open questions across rounds; a draft whose choice was revised away counts as no response; canSubmit only when every open question has one; asksLeft counts owner messages; answerLine reads 'title → choice label (note)'."
+    },
+    {
+      "id": "test:33",
+      "name": "the grill page shows the round: explanations, choices with descriptions, recommendation first",
+      "target": "class:QuestionCard.render",
+      "behaviour": "At /grill each open question shows its title, explanation and choices with their descriptions; the first choice is marked Recommended; the page title shows the run label and title."
+    },
+    {
+      "id": "test:34",
+      "name": "picking a choice saves a draft and Submit waits for every open question",
+      "target": "class:GrillPage.render",
+      "behaviour": "Picking a choice PUTs a draft; Submit answers stays disabled until every open question has a pick, own answer or ask back, then POSTs /api/grill/submit once."
+    },
+    {
+      "id": "test:35",
+      "name": "an own answer, a note on a choice, and an ask back are each one response",
+      "target": "class:QuestionCard.render",
+      "behaviour": "Writing an own answer, adding a note to a picked choice, or asking back saves the matching draft kind; choosing one replaces the others for that question."
+    },
+    {
+      "id": "test:36",
+      "name": "an asked-back question shows Claude's reply beside it and is updated in place",
+      "target": "class:QuestionCard.render",
+      "behaviour": "The thread beside the question shows the owner's ask and Claude's reply; a revised question is tagged 'updated'; after three asks Ask back is disabled with '3 questions asked; pick a choice or write your own answer'."
+    },
+    {
+      "id": "test:37",
+      "name": "drafts come back after a reload",
+      "target": "class:useGrill.signature",
+      "behaviour": "With drafts on the server, a freshly rendered page shows the picks and texts and the right Submit state."
+    },
+    {
+      "id": "test:38",
+      "name": "the next round appears without a reload and answered rounds collapse",
+      "target": "class:CollapsedRound.render",
+      "behaviour": "On grill_changed the new round appears below; the answered round shows one 'title → answer' line per question, and clicking a line expands it."
+    },
+    {
+      "id": "test:39",
+      "name": "settled decisions are listed with their question and replaced ones struck through",
+      "target": "class:DecisionsPanel.render",
+      "behaviour": "The decisions list shows topic, decision and choice with the question it came from, a replaced decision struck through, and an Out of scope section below."
+    },
+    {
+      "id": "test:40",
+      "name": "confirming makes the page read-only; Not yet sends a comment",
+      "target": "class:ConfirmBar.render",
+      "behaviour": "Once done, Confirm and Not yet appear (Submit gone); Confirm POSTs /api/grill/confirm and the page shows 'Confirmed' with no inputs; Not yet with text POSTs /api/grill/reopen."
+    },
+    {
+      "id": "test:41",
+      "name": "a plan appearing shows a Plan ready link and never switches pages",
+      "target": "class:useGrill.signature",
+      "behaviour": "On plan_changed with a valid plan the confirmed page shows 'Plan ready → open the plan' linking to /; location stays /grill."
+    },
+    {
+      "id": "test:42",
+      "name": "the grill page shows the Claude banner and Resend",
+      "target": "class:useClaude.signature",
+      "behaviour": "After a submit the banner says it is waiting for Claude, turns red after 120 s with Resend, and shows Claude's status once set; the plan page's banner tests pass unchanged."
+    },
+    {
+      "id": "test:43",
+      "name": "the top bar switches between Grill and Plan once both exist",
+      "target": "class:PageSwitch.render",
+      "behaviour": "With grill.json and a plan, both pages show 'Grill · Plan' links with the current one marked; with no grill the plan page's top bar is as today (existing App tests unchanged)."
+    },
+    {
+      "id": "test:44",
+      "name": "test_grill_mode_comes_from_the_flag_then_pipeline_then_preference_then_asking",
+      "target": "file:ship-skill",
+      "behaviour": "The argument hint is `<issue number, issue link or prompt> [--grill[=page|chat]]`; step 1 names `--grill=page`, `--grill=chat`, `plan-review prefs grill`, the one-time question and the one-line hint on changing it; step 0 reads the input without `--grill`, `--grill=page` or `--grill=chat`."
+    },
+    {
+      "id": "test:45",
+      "name": "test_page_grill_goes_through_the_helpers_and_keeps_the_banner_answered",
+      "target": "file:ship-skill",
+      "behaviour": "Step 1 uses `plan-review grill post`, `grill pending`, `grill decisions`, `serve` with the /grill URL, Monitor re-arming with catch-up, the three grill events, and sets `plan-review status` on each of them; with `viewer.open: none` page mode still uses the page, through its URL."
+    },
+    {
+      "id": "test:46",
+      "name": "test_resume_and_the_chat_fallback_are_described",
+      "target": "file:ship-skill",
+      "behaviour": "A confirmed grill skips to planning; an unconfirmed one reopens the page and catches up; if serve can't start the chat grill runs as today with decisions.md written by hand; step 3 reuses a running server and Monitor and sets a done 'Plan ready for review' status before giving the plan URL."
+    }
+  ],
+  "risks": [
+    {
+      "id": "risk:1",
+      "kind": "risk",
+      "text": "Assumed: `serve` starts when plan.json or grill.json exists (no new flag) and announces the /grill URL when there is no plan. /ship therefore posts the first round before starting the server, and if serve then fails it deletes that grill.json and grills in the chat, so the chat path still has no grill.json. That one delete is the only time /ship touches grill.json other than through the helpers: OK, or should a helper (e.g. `grill discard`) do it?",
+      "severity": "medium",
+      "mitigation": "Existing serve tests stay (no plan and no grill: exit 2; invalid plan: exit 1); a new test covers grill-only start; the skill text spells out the fallback order."
+    },
+    {
+      "id": "risk:2",
+      "kind": "risk",
+      "text": "grill.json has two writers in two processes (the server on submit/confirm/reopen, `grill post` from /ship); a lost update would drop answers or a round.",
+      "severity": "high",
+      "mitigation": "Every read-modify-write holds file_lock and writes with write_atomically (Windows replace retry included); the submit holds grill_drafts.json then grill.json, never the other order, like review.py."
+    },
+    {
+      "id": "risk:3",
+      "kind": "risk",
+      "text": "A revised question can drop the choice an owner's draft points at.",
+      "severity": "medium",
+      "mitigation": "The page treats such a draft as no response (Submit disabled, choice shown as needing a pick); the server's submit refuses unknown choice ids with 422 anyway."
+    },
+    {
+      "id": "risk:4",
+      "kind": "risk",
+      "text": "The banner's 'answered' check and Resend depend on /ship setting a status after each grill event; without it the grill page turns red after 120 s even though Claude is working.",
+      "severity": "medium",
+      "mitigation": "The skill sets a status on grill_submitted, grill_reopened and grill_confirmed (and --done after posting), asserted by test_skill. The status and last event carry over to the plan review, so after the architect finishes in page mode /ship sets a done 'Plan ready for review' status (not --clear, which would make grill_confirmed look unanswered and turn the plan page red)."
+    },
+    {
+      "id": "risk:5",
+      "kind": "risk",
+      "text": "The external `grilling` skill tells the agent to ask in the chat; it may pull /ship back into chat rounds.",
+      "severity": "low",
+      "mitigation": "Step 1 states that only delivery changes: each round the skill would ask goes into a turn file and `grill post`, and answers come from the page."
+    },
+    {
+      "id": "risk:6",
+      "kind": "risk",
+      "text": "Extracting useClaude out of useLive could change the plan page.",
+      "severity": "low",
+      "mitigation": "The Live interface stays the same and the existing ClaudeBanner/App/approve tests must pass untouched."
+    },
+    {
+      "id": "risk:7",
+      "kind": "question",
+      "text": "Where does decisions.md's title come from? Assumed: the first turn's required `title` (the issue's title, or the name /ship gave a prompt), since a prompt's issue.md has no heading.",
+      "severity": "low"
+    },
+    {
+      "id": "risk:8",
+      "kind": "question",
+      "text": "Assumed for decisions.md: a replacing decision is written where the replaced one was, the replaced one is left out, and `## Out of scope` is left out when nothing was deferred. OK?",
+      "severity": "low"
+    },
+    {
+      "id": "risk:9",
+      "kind": "question",
+      "text": "The decision says Submit needs a response for 'every open question in the round'. Assumed: every open question on the page, since an asked-back question from an earlier round stays open while the next round is posted. Such rounds stay fully open rather than collapsed.",
+      "severity": "low"
+    },
+    {
+      "id": "risk:10",
+      "kind": "question",
+      "text": "Assumed `plan-review prefs grill` with no value prints the resolved mode (pipeline.json, then preferences.json) and exits 3 when none is chosen, so /ship never reads either file itself. OK?",
+      "severity": "low"
+    },
+    {
+      "id": "risk:11",
+      "kind": "question",
+      "text": "Outside this issue: the grill adds more POST routes to a server that does not yet block cross-site requests (#36). Worth raising the priority of #36?",
+      "severity": "low"
+    },
+    {
+      "id": "risk:12",
+      "kind": "risk",
+      "text": "CI's version guard (scripts/version-guard.sh, run by .github/workflows/plan-review.yml) fails any PR that changes shipped files while plugin.json still says the released 0.1.8. The owner decided to bump in this issue, overriding the decisions' 'no version bump'.",
+      "severity": "low",
+      "mitigation": "Run `scripts/set-version.sh 0.1.9` (plugin.json, pyproject.toml, uv.lock) and head the changelog entry `### 0.1.9`, as the 0.1.8 PR did; the existing test_the_plugin_and_its_python_package_have_one_version keeps the two in step. Tagging and the GitHub release stay with the owner (`release.sh patch` then releases 0.1.9 without another commit)."
+    }
+  ],
+  "branch": "53-plan-review-answer-ship---grill-questions"
+}

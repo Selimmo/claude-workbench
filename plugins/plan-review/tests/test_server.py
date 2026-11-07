@@ -690,3 +690,13 @@ def test_an_approved_json_with_extra_fields_still_reads_and_answers_only_the_kno
         "approved_at": "2026-01-01T00:00:00+00:00",
         "plan_sha256": "abc",
     }
+
+
+def test_serve_still_opens_an_old_plan(plan_file: Path, static_dir: Path) -> None:
+    shutil.copy(Path(__file__).parent / "fixtures" / "plan-0.1.11.json", plan_file)
+    client = TestClient(create_app(plan_file, static_dir))
+
+    response = client.get("/api/plan")
+
+    assert response.status_code == 200
+    assert response.json()["classes"][0]["id"] == "class:HintPolicy"

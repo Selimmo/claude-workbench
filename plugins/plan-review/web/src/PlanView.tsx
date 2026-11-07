@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 
-import { architectureDiagram, classDiagram } from './diagram'
+import { COMPACT, architectureDiagram, classSides, currentShape, sideOf } from './diagram'
 import { CommentLayer } from './comments/CommentLayer'
 import { DiagramView } from './DiagramView'
-import type { Plan } from './plan'
+import type { Plan, Side } from './plan'
+import { ClassesTab } from './tabs/ClassesTab'
 import { CriteriaTab } from './tabs/CriteriaTab'
 import { FilesTab } from './tabs/FilesTab'
 import { FlowsTab } from './tabs/FlowsTab'
@@ -29,6 +30,13 @@ export function PlanView({ plan, live }: { plan: Plan; live: Live }) {
   const [active, setActive] = useState<TabId>(() => tabsFor(plan)[0].id)
   const [fullSummary, setFullSummary] = useState(false)
   const tabs = tabsFor(plan)
+  const [chosenSide, setChosenSide] = useState<Side | null>(null)
+  const sides = classSides(plan)
+  const side = currentShape(plan)
+    ? chosenSide && sides.includes(chosenSide)
+      ? chosenSide
+      : sides[0]
+    : undefined
   const {
     threads,
     drafts,
@@ -52,9 +60,10 @@ export function PlanView({ plan, live }: { plan: Plan; live: Live }) {
     if (tab === null) return
     setActive(tab)
     setFocus(target)
+    const there = sideOf(plan, target)
+    if (there) setChosenSide(there)
   }
   // Memoised so a diagram is laid out once per plan, not on every render.
-  const classes = useMemo(() => classDiagram(plan), [plan])
   const architecture = useMemo(() => architectureDiagram(plan), [plan])
 
   const header = (
@@ -116,6 +125,7 @@ export function PlanView({ plan, live }: { plan: Plan; live: Live }) {
     <CommentLayer
       plan={plan}
       tab={active}
+      side={side}
       threads={threads}
       drafts={drafts}
       refresh={refreshReview}
@@ -130,10 +140,14 @@ export function PlanView({ plan, live }: { plan: Plan; live: Live }) {
         data-fill={DIAGRAM_TABS.includes(active)}
       >
         {active === 'criteria' && <CriteriaTab plan={plan} />}
-        {active === 'classes' && <DiagramView diagram={classes} empty="No classes in this plan." />}
+        {active === 'classes' && <ClassesTab plan={plan} side={side} onSide={setChosenSide} />}
         {active === 'flows' && <FlowsTab plan={plan} focus={focus} />}
         {active === 'architecture' && (
-          <DiagramView diagram={architecture} empty="No architecture in this plan." />
+          <DiagramView
+            diagram={architecture}
+            spacing={COMPACT}
+            empty="No architecture in this plan."
+          />
         )}
         {active === 'files' && <FilesTab plan={plan} />}
         {active === 'tests' && <TestsTab plan={plan} onShow={show} />}
