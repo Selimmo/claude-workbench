@@ -1,8 +1,8 @@
 # claude-workbench
 
-**See your coding agent's plan as diagrams before it writes any code.** plan-review is a Claude Code plugin: an agent plans an issue from your tracker (or a plain prompt), and the plan opens in your browser as interactive diagrams of classes, flows, architecture, files, tests and risks. Click anything to comment. Claude answers or revises the plan and the page updates live. When you approve, agents implement it with TDD and review the result.
+**See your coding agent's plan as diagrams before it writes any code.** plan-review is a Claude Code plugin: an agent plans an issue from your tracker (or a plain prompt), and the plan opens in your browser as interactive diagrams of classes, flows, architecture, files, tests and risks. Click anything to comment (a class opens its details first, with a Comment button). Claude answers or revises the plan and the page updates live. When you approve, agents implement it with TDD and review the result.
 
-![Commenting on a plan element: Claude revises the plan and the diagram updates](docs/img/demo.gif)
+![Opening a class's details and commenting on it: Claude replies, revises the plan and the new member appears in the diagram](docs/img/demo.gif)
 
 > Status: v0.1, public and installable. Built and dogfooded by one developer, so expect rough edges; [issues](https://github.com/Selimmo/claude-workbench/issues) welcome.
 
@@ -49,9 +49,9 @@ Upgrade with `plan-review upgrade`, or turn on marketplace auto-update. See [pla
 
 Every tab of the [sample plan](plugins/plan-review/examples/plan.json). Elements are coloured by whether the plan adds, modifies or removes them, and each one can be commented on.
 
-**Classes**: the types and functions the change touches, with their members as signatures.
+**Classes**: the types the change touches, one side (front end or back end) at a time. A box lists member names with a mark on what changes, its title shows what it extends (`Car: AutoMobile`), and a click opens the full signatures and Comment buttons.
 
-![Classes tab: class diagram with added, modified and removed members](docs/img/plan.png)
+![Classes tab, back end: boxes list member names with a coloured dot on what the plan adds, modifies or removes](docs/img/plan.png)
 
 | | |
 |---|---|

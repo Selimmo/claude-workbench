@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import type { Diagram } from './diagram'
+import { type Diagram, LABEL_LINE_HEIGHT, ROOMY, type Spacing } from './diagram'
 import type { LaidDiagram, LaidEdge, Point } from './layout'
 import { canvasMeasure } from './measure'
 import { type Overview, PanZoom } from './PanZoom'
@@ -20,7 +20,11 @@ function EdgeView({ edge }: { edge: LaidEdge }) {
       <path className="line" d={d} markerEnd="url(#arrow)" />
       {edge.label && edge.labelAt && (
         <text x={edge.labelAt.x} y={edge.labelAt.y + 12}>
-          {edge.label}
+          {edge.labelLines.map((line, i) => (
+            <tspan key={i} x={edge.labelAt?.x} dy={i === 0 ? 0 : LABEL_LINE_HEIGHT}>
+              {line}
+            </tspan>
+          ))}
         </text>
       )}
     </g>
@@ -43,25 +47,26 @@ interface Props {
   diagram: Diagram
   empty: string
   direction?: 'RIGHT' | 'DOWN'
+  spacing?: Spacing
 }
 
 function overviewOf(laid: LaidDiagram): Overview {
   return { boxes: laid.nodes, lines: laid.edges.map((e) => e.points) }
 }
 
-export function DiagramView({ diagram, empty, direction = 'RIGHT' }: Props) {
+export function DiagramView({ diagram, empty, direction = 'RIGHT', spacing = ROOMY }: Props) {
   const [laid, setLaid] = useState<LaidDiagram | null>(null)
 
   useEffect(() => {
     let current = true
     // ELK is large; load it only when a diagram is first shown.
     void import('./layout')
-      .then(({ layoutDiagram }) => layoutDiagram(diagram, direction, canvasMeasure()))
+      .then(({ layoutDiagram }) => layoutDiagram(diagram, direction, canvasMeasure(), spacing))
       .then((result) => current && setLaid(result))
     return () => {
       current = false
     }
-  }, [diagram, direction])
+  }, [diagram, direction, spacing])
 
   if (diagram.nodes.length === 0) return <p className="empty">{empty}</p>
   if (laid === null) return <p className="status">Laying out…</p>
@@ -93,6 +98,8 @@ export function DiagramView({ diagram, empty, direction = 'RIGHT' }: Props) {
             className="card"
             data-element-id={node.id}
             data-status={node.status}
+            data-faded={node.faded || undefined}
+            data-details={node.details || undefined}
             style={{ left: node.x, top: node.y, width: node.width, height: node.height }}
           >
             <div className="card-head">
@@ -103,6 +110,7 @@ export function DiagramView({ diagram, empty, direction = 'RIGHT' }: Props) {
               {node.rows.map((row) => (
                 <li key={row.id} data-element-id={row.id} data-status={row.status}>
                   <code>{row.text}</code>
+                  {row.marked && <span className="mark" aria-hidden="true" />}
                 </li>
               ))}
             </ul>

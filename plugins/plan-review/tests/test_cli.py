@@ -971,3 +971,37 @@ def test_grill_post_still_succeeds_when_grill_drafts_json_is_broken(
     ]
     assert json.loads((work / "grill.json").read_text())["rounds"][0]["questions"][0]["id"] == "q1"
     assert (work / "grill_drafts.json").read_bytes() == b"{nope"
+
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def test_validate_reports_each_shape_problem_with_the_path(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    old = FIXTURES / "plan-0.1.11.json"
+
+    assert main(["validate", str(old)]) == 1
+
+    lines = capsys.readouterr().err.splitlines()
+    assert lines
+    assert all(line.startswith(f"{old.as_posix()}: class:") for line in lines)
+    assert f"{old.as_posix()}: class:HintPolicy: side is required (front or back)" in lines
+
+    new = Path(__file__).parents[1] / "examples" / "plan.json"
+    assert main(["validate", str(new)]) == 0
+    assert capsys.readouterr().out.startswith("OK")
+
+
+def test_schema_says_validate_requires_side_name_and_kind(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["schema"]) == 0
+
+    defs = json.loads(capsys.readouterr().out)["$defs"]
+    for field in (
+        defs["PlanClass"]["properties"]["side"],
+        defs["Member"]["properties"]["name"],
+        defs["Member"]["properties"]["kind"],
+    ):
+        assert "validate` requires it" in field["description"]

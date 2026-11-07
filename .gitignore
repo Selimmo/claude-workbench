@@ -19,3 +19,6 @@ plugins/*/src/*/static/
 .vscode/
 .claude/work/
 .claude/settings.local.json
+
+# Local before/after demo plans, kept out of the repo
+plugins/plan-review/examples/before-after/

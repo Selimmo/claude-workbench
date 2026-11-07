@@ -1,6 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 
 import { App } from './App'
+import example from '../../examples/plan.json'
+import old from '../../tests/fixtures/plan-0.1.11.json'
 import { FakeServer, draft, thread } from './test/fakeServer'
 
 let server: FakeServer
@@ -15,9 +17,15 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-async function open() {
+async function openFront() {
   render(<App />)
   await screen.findByRole('tablist')
+}
+
+/** Most tests comment on the back end classes, so the Classes tab starts on that side. */
+async function open() {
+  await openFront()
+  fireEvent.click(screen.getByRole('button', { name: 'Back end' }))
 }
 
 function element(id: string): HTMLElement {
@@ -84,23 +92,142 @@ test('clicking any element opens a composer whose comment is saved as a draft, n
   await open()
   await screen.findByText('HintPolicy')
 
+  fireEvent.click(element('rel:orch-policy'))
+  const composer = screen.getByRole('dialog', { name: 'New comment on rel:orch-policy' })
+  write(composer, 'Keep it?')
+  fireEvent.click(within(composer).getByRole('button', { name: 'Add to review' }))
+
+  const review = await screen.findByRole('region', { name: 'Your review' })
+  expect(await within(review).findByText('Keep it?')).toBeInTheDocument()
+  expect(posted('/api/drafts')).toEqual([{ anchor: 'rel:orch-policy', text: 'Keep it?' }])
+  expect(posted('/api/threads')).toEqual([])
+})
+
+test('on an old plan a click on a class box still opens a comment box', async () => {
+  server.plan = old
+  await openFront()
+  await screen.findByText('HintPolicy')
+
+  fireEvent.click(element('class:HintPolicy'))
+
+  expect(screen.getByRole('dialog', { name: 'New comment on class:HintPolicy' })).toBeVisible()
+})
+
+test('a plan where only some classes have a side is drawn like an old plan', async () => {
+  server.plan = {
+    ...example,
+    classes: example.classes.map((c) => {
+      if (c.id !== 'class:HintPolicy') return c
+      const { side: _side, ...rest } = c
+      return rest
+    }),
+  }
+  server.threads = [thread('t-2', 'class:Orchestrator.on_event', 'Why?', 'Because.')]
+  await openFront()
+  await screen.findByText('HintPolicy')
+
+  expect(screen.queryByRole('group', { name: 'Choose a side' })).not.toBeInTheDocument()
+  expect(element('class:HintPolicy.next_level')).toHaveTextContent('next_level(given: int)')
+  expect(
+    await screen.findByRole('button', { name: /on class:Orchestrator.on_event/ }),
+  ).toBeInTheDocument()
+  expect(screen.queryByText(/Comments on the other side/)).not.toBeInTheDocument()
+})
+
+async function openDetails() {
+  await open()
+  await screen.findByText('HintPolicy')
+  fireEvent.click(element('class:Orchestrator'))
+  return screen.getByRole('dialog', { name: 'Details of Orchestrator' })
+}
+
+test('clicking a class opens its details beside it, closed by Esc', async () => {
+  const details = await openDetails()
+
+  const rows = within(details)
+    .getAllByRole('listitem')
+    .map((row) => row.textContent)
+  expect(rows).toContainEqual(expect.stringContaining('give_hint() -> AsyncIterator[str]'))
+  expect(rows.find((r) => r?.includes('give_hint()'))).toContain('new')
+  expect(rows.find((r) => r?.includes('parse_command'))).toContain('removed')
+  expect(rows.find((r) => r?.includes('on_event'))).toContain('changed')
+  expect(details).toHaveTextContent('Asks the HintPolicy')
+  expect(rows.find((r) => r?.includes('on_event'))).toContain('Handles RequestHint')
+
+  fireEvent.keyDown(details, { key: 'Escape' })
+
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+test('the details popup takes focus, so Esc closes it from the page', async () => {
+  const details = await openDetails()
+
+  expect(details).toContainElement(document.activeElement as HTMLElement)
+})
+
+test("a second box's details popup also takes focus", async () => {
+  await openDetails()
+  ;(document.activeElement as HTMLElement).blur() // a real click on a plain box moves focus to the page
+  fireEvent.click(element('class:HintPolicy'))
+
+  const details = screen.getByRole('dialog', { name: 'Details of HintPolicy' })
+  expect(details).toContainElement(document.activeElement as HTMLElement)
+})
+
+test('the details popup names the kind and the bases', async () => {
+  await open()
+  await screen.findByText('HintPolicy')
+
+  fireEvent.click(element('class:HintLevel'))
+
+  const details = screen.getByRole('dialog', { name: 'Details of HintLevel: Enum' })
+  expect(within(details).getByText('enum')).toBeInTheDocument()
+})
+
+test("the details popup's Comment buttons comment on the class or on a member", async () => {
+  const details = await openDetails()
+
+  fireEvent.click(within(details).getByRole('button', { name: 'Comment on class:Orchestrator' }))
+  expect(screen.getByRole('dialog', { name: 'New comment on class:Orchestrator' })).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
   fireEvent.click(element('class:Orchestrator.parse_command'))
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Comment on class:Orchestrator.parse_command' }),
+  )
   const composer = screen.getByRole('dialog', {
     name: 'New comment on class:Orchestrator.parse_command',
   })
   write(composer, 'Keep it?')
   fireEvent.click(within(composer).getByRole('button', { name: 'Add to review' }))
 
-  const review = await screen.findByRole('region', { name: 'Your review' })
-  expect(await within(review).findByText('Keep it?')).toBeInTheDocument()
-  expect(posted('/api/drafts')).toEqual([
-    { anchor: 'class:Orchestrator.parse_command', text: 'Keep it?' },
-  ])
-  expect(posted('/api/threads')).toEqual([])
+  await vi.waitFor(() =>
+    expect(posted('/api/drafts')).toEqual([
+      { anchor: 'class:Orchestrator.parse_command', text: 'Keep it?' },
+    ]),
+  )
+})
+
+test('an approved plan still opens the details popup, without Comment buttons', async () => {
+  server.approved = true
+  const details = await openDetails()
+
+  expect(within(details).queryByRole('button', { name: /^Comment/ })).not.toBeInTheDocument()
+  expect(details).toHaveTextContent('give_hint()')
+})
+
+test("a comment on the other side's class is listed beside the diagram", async () => {
+  server.threads = [thread('t-1', 'class:HintPolicy', 'Why a policy?')]
+  await openFront()
+
+  const list = await screen.findByRole('region', { name: 'Comments on the other side' })
+  expect(screen.queryByRole('button', { name: /messages? on class:HintPolicy/ })).toBeNull()
+  fireEvent.click(within(list).getByRole('button', { name: /Why a policy/ }))
+
+  expect(screen.getByRole('dialog', { name: 'Thread on class:HintPolicy' })).toBeVisible()
 })
 
 test.each([
-  ['a whole class card', 'classes', 'class:HintPolicy'],
   ['a relation arrow', 'classes', 'rel:orch-policy'],
   ['an architecture component', 'architecture', 'arch:agent'],
   ['an architecture connection', 'architecture', 'arch:agent-ollama'],
@@ -466,13 +593,13 @@ test('the toast counts what the server sent, including drafts added in another t
 test('clicking another element while writing keeps the comment being written', async () => {
   await open()
   await screen.findByText('HintPolicy')
-  fireEvent.click(element('class:HintPolicy'))
+  fireEvent.click(element('rel:orch-policy'))
   write(screen.getByRole('dialog'), 'Half a thought')
 
-  fireEvent.click(element('class:Orchestrator'))
+  fireEvent.click(element('rel:orch-llm'))
 
   const composer = screen.getByRole('dialog')
-  expect(composer).toHaveAccessibleName('New comment on class:HintPolicy')
+  expect(composer).toHaveAccessibleName('New comment on rel:orch-policy')
   expect(within(composer).getByRole('textbox')).toHaveValue('Half a thought')
 })
 
@@ -508,13 +635,13 @@ test('no status line while Claude has not set one', async () => {
 test('once a composer with text is cancelled, clicking an element comments again', async () => {
   await open()
   await screen.findByText('HintPolicy')
-  fireEvent.click(element('class:HintPolicy'))
+  fireEvent.click(element('rel:orch-policy'))
   write(screen.getByRole('dialog'), 'Never mind')
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }))
 
-  fireEvent.click(element('class:Orchestrator'))
+  fireEvent.click(element('rel:orch-llm'))
 
-  expect(screen.getByRole('dialog')).toHaveAccessibleName('New comment on class:Orchestrator')
+  expect(screen.getByRole('dialog')).toHaveAccessibleName('New comment on rel:orch-llm')
 })
 
 test('arrows have a wide invisible click target', async () => {
@@ -562,14 +689,14 @@ test('a step to itself can be clicked on its label', async () => {
 test('a press that barely moves is still a click that comments', async () => {
   await open()
   await screen.findByText('HintPolicy')
-  const card = element('class:HintPolicy')
+  const card = element('rel:orch-policy')
 
   fireEvent.pointerDown(card, { clientX: 100, clientY: 100, pointerId: 1, button: 0 })
   fireEvent.pointerMove(card, { clientX: 102, clientY: 101, pointerId: 1 })
   fireEvent.pointerUp(card, { clientX: 102, clientY: 101, pointerId: 1 })
   fireEvent.click(card)
 
-  expect(screen.getByRole('dialog')).toHaveAccessibleName('New comment on class:HintPolicy')
+  expect(screen.getByRole('dialog')).toHaveAccessibleName('New comment on rel:orch-policy')
 })
 
 test('a click that ends a text selection does not open a composer', async () => {
@@ -587,7 +714,7 @@ test('clicking another element while editing a draft keeps the edit', async () =
   fireEvent.click(await screen.findByRole('button', { name: 'Draft on class:HintPolicy' }))
   write(screen.getByRole('dialog'), 'Split it into two?')
 
-  fireEvent.click(element('class:Orchestrator'))
+  fireEvent.click(element('rel:orch-llm'))
 
   const editor = screen.getByRole('dialog')
   expect(editor).toHaveAccessibleName('Draft on class:HintPolicy')
@@ -597,31 +724,31 @@ test('clicking another element while editing a draft keeps the edit', async () =
 test('text typed back to what the composer opened with does not hold the next click', async () => {
   await open()
   await screen.findByText('HintPolicy')
-  fireEvent.click(element('class:HintPolicy'))
+  fireEvent.click(element('rel:orch-policy'))
   write(screen.getByRole('dialog'), 'Hmm')
   write(screen.getByRole('dialog'), '')
 
-  fireEvent.click(element('class:Orchestrator'))
+  fireEvent.click(element('rel:orch-llm'))
 
-  expect(screen.getByRole('dialog')).toHaveAccessibleName('New comment on class:Orchestrator')
+  expect(screen.getByRole('dialog')).toHaveAccessibleName('New comment on rel:orch-llm')
 })
 
-async function writingOnHintPolicy() {
+async function writingOnAnArrow() {
   await screen.findByText('HintPolicy')
-  fireEvent.click(element('class:HintPolicy'))
+  fireEvent.click(element('rel:orch-policy'))
   write(screen.getByRole('dialog'), 'Half a thought')
 }
 
 function stillWriting() {
   const composer = screen.getByRole('dialog')
-  expect(composer).toHaveAccessibleName('New comment on class:HintPolicy')
+  expect(composer).toHaveAccessibleName('New comment on rel:orch-policy')
   expect(within(composer).getByRole('textbox')).toHaveValue('Half a thought')
 }
 
 test('opening a thread from its pin while writing keeps the comment being written', async () => {
   server.threads = [thread('t-1', 'class:Orchestrator', 'Rename?')]
   await open()
-  await writingOnHintPolicy()
+  await writingOnAnArrow()
 
   fireEvent.click(await screen.findByRole('button', { name: '1 message on class:Orchestrator' }))
 
@@ -630,7 +757,7 @@ test('opening a thread from its pin while writing keeps the comment being writte
 
 test('"Comment on this tab" while writing keeps the comment being written', async () => {
   await open()
-  await writingOnHintPolicy()
+  await writingOnAnArrow()
 
   fireEvent.click(screen.getByRole('button', { name: 'Comment on this tab' }))
 
@@ -640,7 +767,7 @@ test('"Comment on this tab" while writing keeps the comment being written', asyn
 test("a draft's Edit in the review panel while writing keeps the comment being written", async () => {
   server.drafts = [draft('d-1', 'risk:1', 'Too vague')]
   await open()
-  await writingOnHintPolicy()
+  await writingOnAnArrow()
   const review = screen.getByRole('region', { name: 'Your review' })
 
   fireEvent.click(within(review).getByRole('button', { name: 'Edit' }))
@@ -674,9 +801,9 @@ test('adding a comment while drafts.json is broken shows the same named message'
     brokenLine('drafts.json'),
   )
 
-  fireEvent.click(element('class:Orchestrator.parse_command'))
+  fireEvent.click(element('rel:orch-policy'))
   const composer = screen.getByRole('dialog', {
-    name: 'New comment on class:Orchestrator.parse_command',
+    name: 'New comment on rel:orch-policy',
   })
   write(composer, 'Keep it?')
   fireEvent.click(within(composer).getByRole('button', { name: 'Add to review' }))

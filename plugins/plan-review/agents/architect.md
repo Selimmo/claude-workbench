@@ -28,7 +28,13 @@ Run `plan-review schema` for the exact format. In short:
 - **issue**: `{"id": "<id>", "kind": "issue" | "prompt", "title": ..., "url": ...}`. Use kind `prompt` when `issue.md` is a plain prompt (no tracker issue), and leave `url` out then.
 - **summary**: one paragraph: what changes and why.
 - **acceptance_criteria**: for a `prompt` run it is required: the observable outcomes that make the prompt done, which the owner approves with the plan and the code reviewer checks the result against. For an issue run leave it out; the issue has its own criteria. Criteria are numbered by position (`criterion:1`, ...) and the owner's comments attach to those numbers: in revise mode append new criteria and keep existing ones in place.
-- **classes** and **relations**: the classes, protocols, functions and modules the change adds, modifies or removes, with public members as signatures. Include unchanged neighbours only when they make the picture readable.
+- **classes** and **relations**: the classes, protocols, components and modules the change adds, modifies or removes. The viewer draws one side at a time and each box lists only member names, so:
+  - Give every class a `side`: `front` (what runs in the browser) or `back`. A relation never joins a front class to a back class.
+  - Give every member a `name` (the bare name), a `kind` (`property` or `method`) and its full `signature`. Add a `note` on a class or member when "what this plan changes" needs words.
+  - List what a class extends or implements in `bases` (`["AutoMobile", "Insurable"]`), not as `inherits` or `implements` relations. React components get kind `component`.
+  - A plain function gets no box of its own: put it as a `method` in the box of its module (kind `module`).
+  - Include only changed classes and the unchanged ones directly linked to them (they are drawn faded). An unchanged class linked to no changed class is left out.
+  - When you revise a plan written before this shape (classes without `side`, members without `name`), bring its classes to the new shape and keep every id.
 - **flows**: one per runtime path the change adds or alters. Use `sequence` for messages between components, `flowchart` for decisions.
 - **architecture**: only when the change touches more than one process or service. Omit it otherwise.
 - **files**: every file added, modified or removed, including tests, config and docs (the README, if the project's rules require it).

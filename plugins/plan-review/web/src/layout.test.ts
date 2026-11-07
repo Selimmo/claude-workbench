@@ -9,8 +9,18 @@ import {
   TITLE_CHAR_WIDTH,
   layoutDiagram,
   nodeSize,
+  wrapLabel,
 } from './layout'
-import type { Diagram, DiagramNode } from './diagram'
+import {
+  COMPACT,
+  LABEL_LINE_HEIGHT,
+  ROOMY,
+  architectureDiagram,
+  type Diagram,
+  type DiagramNode,
+} from './diagram'
+import example from '../../examples/plan.json'
+import type { Plan } from './plan'
 
 const node = (rows: string[], title = 'T'): DiagramNode => ({
   id: 'n',
@@ -117,4 +127,81 @@ test("an arrow's label is measured, so the boxes either side make room for it", 
   const [a, b] = (await layoutDiagram(diagram, 'RIGHT', measure)).nodes
 
   expect(b.x - (a.x + a.width)).toBeGreaterThanOrEqual(600)
+})
+
+test('wrapLabel breaks a long label at spaces within the width', () => {
+  const measure = (text: string) => text.length * 10
+
+  const lines = wrapLabel('writes side, names and bases', 120, measure)
+
+  expect(lines.length).toBeGreaterThan(1)
+  for (const line of lines) expect(measure(line)).toBeLessThanOrEqual(120)
+  expect(lines.join(' ')).toBe('writes side, names and bases')
+  expect(wrapLabel('Supercalifragilistic word', 50, measure)).toEqual([
+    'Supercalifragilistic',
+    'word',
+  ])
+  expect(wrapLabel('runs', 120, measure)).toEqual(['runs'])
+})
+
+const longest = (laid: Awaited<ReturnType<typeof layoutDiagram>>) =>
+  Math.max(
+    ...laid.edges.map((e) =>
+      e.points
+        .slice(1)
+        .reduce((sum, p, i) => sum + Math.hypot(p.x - e.points[i].x, p.y - e.points[i].y), 0),
+    ),
+  )
+
+test.each([['the example plan', example]])(
+  'the compact spacing lays out the architecture of %s tighter',
+  async (_, raw) => {
+    const diagram = architectureDiagram(raw as Plan)
+
+    const roomy = await layoutDiagram(diagram, 'RIGHT', undefined, ROOMY)
+    const compact = await layoutDiagram(diagram, 'RIGHT', undefined, COMPACT)
+
+    expect(compact.width).toBeLessThan(roomy.width)
+    expect(longest(compact)).toBeLessThan(longest(roomy))
+  },
+)
+
+test('a long edge label is wrapped into lines', async () => {
+  const diagram: Diagram = {
+    nodes: [
+      { ...node([]), id: 'a' },
+      { ...node([]), id: 'b' },
+    ],
+    edges: [
+      { id: 'e', source: 'a', target: 'b', label: 'one two three four five six', status: 'added' },
+    ],
+  }
+
+  const [edge] = (await layoutDiagram(diagram, 'RIGHT', undefined, COMPACT)).edges
+
+  expect(edge.labelLines.length).toBeGreaterThan(1)
+  expect(edge.labelLines.join(' ')).toBe('one two three four five six')
+})
+
+test('the room an edge label takes between two boxes is that of its wrapped lines', async () => {
+  const diagram: Diagram = {
+    nodes: [
+      { ...node([]), id: 'a' },
+      { ...node([]), id: 'b' },
+    ],
+    edges: [
+      { id: 'e', source: 'a', target: 'b', label: 'one two three four five six', status: 'added' },
+    ],
+  }
+
+  const across = await layoutDiagram(diagram, 'RIGHT', undefined, COMPACT)
+  const down = await layoutDiagram(diagram, 'DOWN', undefined, COMPACT)
+
+  const [a, b] = across.nodes
+  const widest = Math.max(...across.edges[0].labelLines.map((l) => l.length * CHAR_WIDTH))
+  expect(b.x - (a.x + a.width) - 2 * COMPACT.betweenLayers).toBeCloseTo(widest)
+  const [top, bottom] = down.nodes
+  expect(bottom.y - (top.y + top.height) - 2 * COMPACT.betweenLayers).toBeCloseTo(
+    down.edges[0].labelLines.length * LABEL_LINE_HEIGHT,
+  )
 })

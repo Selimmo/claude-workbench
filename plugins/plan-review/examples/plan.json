@@ -11,11 +11,20 @@
       "id": "class:HintPolicy",
       "name": "HintPolicy",
       "kind": "class",
+      "side": "back",
       "status": "added",
       "members": [
-        { "id": "class:HintPolicy.max_hints", "signature": "max_hints: int = 3", "status": "added" },
+        {
+          "id": "class:HintPolicy.max_hints",
+          "name": "max_hints",
+          "kind": "property",
+          "signature": "max_hints: int = 3",
+          "status": "added"
+        },
         {
           "id": "class:HintPolicy.next_level",
+          "name": "next_level",
+          "kind": "method",
           "signature": "next_level(given: int) -> HintLevel | None",
           "status": "added"
         }
@@ -25,34 +34,71 @@
       "id": "class:HintLevel",
       "name": "HintLevel",
       "kind": "enum",
+      "side": "back",
+      "bases": [
+        "Enum"
+      ],
       "status": "added",
       "members": [
-        { "id": "class:HintLevel.NUDGE", "signature": "NUDGE", "status": "added" },
-        { "id": "class:HintLevel.APPROACH", "signature": "APPROACH", "status": "added" },
-        { "id": "class:HintLevel.WALKTHROUGH", "signature": "WALKTHROUGH", "status": "added" }
+        {
+          "id": "class:HintLevel.NUDGE",
+          "name": "NUDGE",
+          "kind": "property",
+          "signature": "NUDGE",
+          "status": "added"
+        },
+        {
+          "id": "class:HintLevel.APPROACH",
+          "name": "APPROACH",
+          "kind": "property",
+          "signature": "APPROACH",
+          "status": "added"
+        },
+        {
+          "id": "class:HintLevel.WALKTHROUGH",
+          "name": "WALKTHROUGH",
+          "kind": "property",
+          "signature": "WALKTHROUGH",
+          "status": "added"
+        }
       ]
     },
     {
       "id": "class:Orchestrator",
       "name": "Orchestrator",
       "kind": "class",
+      "side": "back",
+      "note": "Asks the HintPolicy for the next level; parse_command moves into the policy.",
       "status": "modified",
       "members": [
         {
           "id": "class:Orchestrator.give_hint",
+          "name": "give_hint",
+          "kind": "method",
           "signature": "give_hint() -> AsyncIterator[str]",
           "status": "added"
         },
-        { "id": "class:Orchestrator.hints_given", "signature": "hints_given: int", "status": "added" },
+        {
+          "id": "class:Orchestrator.hints_given",
+          "name": "hints_given",
+          "kind": "property",
+          "signature": "hints_given: int",
+          "status": "added"
+        },
         {
           "id": "class:Orchestrator.parse_command",
+          "name": "parse_command",
+          "kind": "method",
           "signature": "parse_command(text: str) -> Command | None",
           "status": "removed"
         },
         {
           "id": "class:Orchestrator.on_event",
+          "name": "on_event",
+          "kind": "method",
           "signature": "on_event(event: ClientEvent) -> None",
-          "status": "modified"
+          "status": "modified",
+          "note": "Handles RequestHint by asking the policy for the next level."
         }
       ]
     },
@@ -60,20 +106,73 @@
       "id": "class:ClientEvent",
       "name": "ClientEvent",
       "kind": "type",
+      "side": "back",
       "status": "modified",
       "members": [
-        { "id": "class:ClientEvent.RequestHint", "signature": "RequestHint", "status": "added" }
+        {
+          "id": "class:ClientEvent.RequestHint",
+          "name": "RequestHint",
+          "kind": "property",
+          "signature": "RequestHint",
+          "status": "added"
+        }
       ]
     },
     {
       "id": "class:LLMClient",
       "name": "LLMClient",
       "kind": "protocol",
+      "side": "back",
+      "bases": [
+        "Protocol"
+      ],
       "status": "unchanged",
       "members": [
         {
           "id": "class:LLMClient.stream",
+          "name": "stream",
+          "kind": "method",
           "signature": "stream(messages: list[Message]) -> AsyncIterator[str]",
+          "status": "unchanged"
+        }
+      ]
+    },
+    {
+      "id": "class:HintButton",
+      "name": "HintButton",
+      "kind": "component",
+      "side": "front",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:HintButton.disabled",
+          "name": "disabled",
+          "kind": "property",
+          "signature": "disabled: boolean",
+          "status": "added"
+        },
+        {
+          "id": "class:HintButton.onClick",
+          "name": "onClick",
+          "kind": "method",
+          "signature": "onClick() -> void",
+          "note": "Sends a RequestHint event.",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:InterviewScreen",
+      "name": "InterviewScreen",
+      "kind": "component",
+      "side": "front",
+      "status": "unchanged",
+      "members": [
+        {
+          "id": "class:InterviewScreen.render",
+          "name": "render",
+          "kind": "method",
+          "signature": "render() -> JSX.Element",
           "status": "unchanged"
         }
       ]
@@ -107,6 +206,13 @@
       "to": "class:LLMClient",
       "kind": "uses",
       "status": "unchanged"
+    },
+    {
+      "id": "rel:screen-button",
+      "from": "class:InterviewScreen",
+      "to": "class:HintButton",
+      "kind": "contains",
+      "status": "added"
     }
   ],
   "flows": [
@@ -115,10 +221,26 @@
       "title": "Candidate requests a hint",
       "kind": "sequence",
       "participants": [
-        { "id": "flow:hint/client", "name": "Web client", "status": "unchanged" },
-        { "id": "flow:hint/agent", "name": "Agent worker", "status": "unchanged" },
-        { "id": "flow:hint/orch", "name": "Orchestrator", "status": "modified" },
-        { "id": "flow:hint/llm", "name": "LLM", "status": "unchanged" }
+        {
+          "id": "flow:hint/client",
+          "name": "Web client",
+          "status": "unchanged"
+        },
+        {
+          "id": "flow:hint/agent",
+          "name": "Agent worker",
+          "status": "unchanged"
+        },
+        {
+          "id": "flow:hint/orch",
+          "name": "Orchestrator",
+          "status": "modified"
+        },
+        {
+          "id": "flow:hint/llm",
+          "name": "LLM",
+          "status": "unchanged"
+        }
       ],
       "steps": [
         {
@@ -163,10 +285,26 @@
       "title": "Choosing the hint level",
       "kind": "flowchart",
       "nodes": [
-        { "id": "flow:level/start", "name": "Hint requested", "status": "added" },
-        { "id": "flow:level/check", "name": "hints_given < max_hints?", "status": "added" },
-        { "id": "flow:level/give", "name": "Give next level", "status": "added" },
-        { "id": "flow:level/refuse", "name": "Say no hints left", "status": "added" }
+        {
+          "id": "flow:level/start",
+          "name": "Hint requested",
+          "status": "added"
+        },
+        {
+          "id": "flow:level/check",
+          "name": "hints_given < max_hints?",
+          "status": "added"
+        },
+        {
+          "id": "flow:level/give",
+          "name": "Give next level",
+          "status": "added"
+        },
+        {
+          "id": "flow:level/refuse",
+          "name": "Say no hints left",
+          "status": "added"
+        }
       ],
       "edges": [
         {
@@ -194,11 +332,36 @@
   ],
   "architecture": {
     "nodes": [
-      { "id": "arch:web", "name": "Web client", "kind": "client", "status": "modified" },
-      { "id": "arch:livekit", "name": "LiveKit server", "kind": "external", "status": "unchanged" },
-      { "id": "arch:agent", "name": "Agent worker", "kind": "worker", "status": "modified" },
-      { "id": "arch:ollama", "name": "Ollama", "kind": "service", "status": "unchanged" },
-      { "id": "arch:db", "name": "SQLite sessions", "kind": "database", "status": "unchanged" }
+      {
+        "id": "arch:web",
+        "name": "Web client",
+        "kind": "client",
+        "status": "modified"
+      },
+      {
+        "id": "arch:livekit",
+        "name": "LiveKit server",
+        "kind": "external",
+        "status": "unchanged"
+      },
+      {
+        "id": "arch:agent",
+        "name": "Agent worker",
+        "kind": "worker",
+        "status": "modified"
+      },
+      {
+        "id": "arch:ollama",
+        "name": "Ollama",
+        "kind": "service",
+        "status": "unchanged"
+      },
+      {
+        "id": "arch:db",
+        "name": "SQLite sessions",
+        "kind": "database",
+        "status": "unchanged"
+      }
     ],
     "edges": [
       {
@@ -215,8 +378,19 @@
         "label": "events",
         "status": "unchanged"
       },
-      { "id": "arch:agent-ollama", "from": "arch:agent", "to": "arch:ollama", "label": "HTTP", "status": "unchanged" },
-      { "id": "arch:agent-db", "from": "arch:agent", "to": "arch:db", "status": "unchanged" }
+      {
+        "id": "arch:agent-ollama",
+        "from": "arch:agent",
+        "to": "arch:ollama",
+        "label": "HTTP",
+        "status": "unchanged"
+      },
+      {
+        "id": "arch:agent-db",
+        "from": "arch:agent",
+        "to": "arch:db",
+        "status": "unchanged"
+      }
     ]
   },
   "files": [
@@ -269,7 +443,13 @@
       "change": "modified",
       "reason": "max_hints setting"
     },
-    { "id": "file:readme", "path": "README.md", "kind": "doc", "change": "modified", "reason": "Document hints" }
+    {
+      "id": "file:readme",
+      "path": "README.md",
+      "kind": "doc",
+      "change": "modified",
+      "reason": "Document hints"
+    }
   ],
   "tests": [
     {

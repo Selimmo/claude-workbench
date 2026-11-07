@@ -21,7 +21,7 @@ from plan_review.grill_drafts import GrillDraftStore
 from plan_review.grill_turn import Turn
 from plan_review.orchestration import MalformedReview, branch_name, tree_hash, verdict
 from plan_review.pipeline import PipelineConfigError, load_pipeline
-from plan_review.plan import Plan, PlanFileError, load_plan, record_branch
+from plan_review.plan import Plan, PlanFileError, load_plan, record_branch, shape_problems
 from plan_review.prefs import GrillMode, grill_mode, load_preferences, record
 from plan_review.run_id import InvalidRunId, check_run_id, label
 from plan_review.server import create_app
@@ -317,6 +317,10 @@ def _validate(file: Path) -> int:
     except PlanFileError as error:
         print("\n".join(error.errors), file=sys.stderr)
         return 2 if error.missing else 1
+    problems = shape_problems(plan)
+    if problems:
+        print("\n".join(f"{file.as_posix()}: {line}" for line in problems), file=sys.stderr)
+        return 1
     print(f"OK: plan for {label(plan.issue.id)} ({len(plan.element_ids())} elements)")
     return 0
 
