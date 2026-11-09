@@ -4,7 +4,7 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
-### Unreleased
+### 0.3.0
 
 - plan-review runs in OpenAI Codex. `plan-review install codex` writes the `$ship` skill and four agents into your home folders; `plan-review upgrade` installs the newest release wheel and writes them again. Each release now also carries a wheel.
 - Your actions are kept in a per-run log (`events.json`). `plan-review wait <id>` hands them to the agent one at a time, again until the agent sets a status, so nothing is lost or repeated. `serve --detach` and `stop` run the viewer as its own process, which stops itself 2 hours after its page closes.
