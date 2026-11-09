@@ -4,7 +4,7 @@ import type { Grill } from '../grill'
 
 const HINT = "What's missing or wrong?"
 
-/** Once Claude is done: 'Is this the shared understanding?' Yes confirms; No asks what is missing. */
+/** Once the agent is done: 'Is this the shared understanding?' Yes confirms; No asks what is missing. */
 export function ConfirmBar({
   grill,
   onConfirm,

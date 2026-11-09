@@ -244,3 +244,17 @@ def test_resume_and_the_chat_fallback_are_described() -> None:
     assert "delete" in step_1  # the grill.json just posted
     assert "already running" in step_3
     assert 'plan-review status ID "Plan ready for review" --done' in step_3
+
+
+def test_the_skill_uses_the_new_folder_and_config_file() -> None:
+    _, body = parts()
+
+    assert "`.plan-review/work/ID/`" in body
+    assert "`.plan-review/config.json`" in body
+    assert ".claude/work" not in body
+    assert "pipeline.json" not in body
+
+
+def test_an_old_file_hint_is_passed_on_to_the_owner() -> None:
+    assert "show the owner" in _step_0()
+    assert "line about moving an old file" in _step_0()

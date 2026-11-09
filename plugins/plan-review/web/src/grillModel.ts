@@ -12,7 +12,7 @@ export function responded(question: GrillQuestion, draft?: AnswerDraft): boolean
   return (draft.text ?? '').trim() !== ''
 }
 
-/** Every open question has a response, and it's the owner's turn (Claude has handled the log). */
+/** Every open question has a response, and it's the owner's turn (the agent has handled the log). */
 export function canSubmit(grill: Grill, drafts: Record<string, AnswerDraft>): boolean {
   const open = openQuestions(grill)
   const ownersTurn = grill.handled === grill.log.length && !grill.done
@@ -28,9 +28,9 @@ export function pick(draft: AnswerDraft | undefined, option: Pick): AnswerDraft 
 }
 
 const repliesTo = (question: GrillQuestion): number =>
-  question.thread.filter((m) => m.author === 'claude').length
+  question.thread.filter((m) => m.author !== 'owner').length
 
-/** Claude has replied the limit: it must settle the question, so Other now counts as the answer. */
+/** The agent has replied the limit: it must settle the question, so Other now counts as the answer. */
 export const otherIsFinal = (question: GrillQuestion, max: number): boolean =>
   repliesTo(question) >= max
 

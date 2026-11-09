@@ -12,10 +12,12 @@ from plan_review.grill import (
     GrillError,
     GrillState,
     GrillStore,
+    Question,
     SubmittedAnswer,
     load_grill,
 )
 from plan_review.grill_turn import Turn
+from plan_review.threads import Message
 
 
 def question(qid: str = "q1", *, choices: list[str] | None = None) -> dict[str, Any]:
@@ -377,7 +379,7 @@ def test_the_owner_cannot_submit_while_claude_has_unhandled_actions(store: Grill
         store.submit([answer("q1", "other", text="again")])
 
     assert raised.value.conflict
-    assert raised.value.errors == ["waiting for Claude to handle your last action"]
+    assert raised.value.errors == ["waiting for the agent to handle your last action"]
     assert snapshot(store) == before
 
     store.post(turn(round=[question("q2")]))
@@ -410,7 +412,7 @@ def test_a_reply_to_an_other_keeps_the_question_open_for_another_pick(
 
     state = store.post(turn(replies=[twice]))
     replied = state.open_questions()[0]
-    assert [(m.author, m.text) for m in replied.thread][-1] == ("claude", "One request.")
+    assert [(m.author, m.text) for m in replied.thread][-1] == ("agent", "One request.")
     assert not replied.awaiting_reply()
     assert replied.replies() == 1
 
@@ -731,3 +733,29 @@ def test_the_example_grills_load_as_an_open_round_and_a_done_grill() -> None:
     assert done.open_questions() == []
     assert used_kinds(done) <= {"choice", "other"}
     assert [d.id for d in done.decisions] == [d.id for d in demo.decisions]
+
+
+def test_replies_from_both_authors_count_toward_the_limit() -> None:
+    thread = [
+        Message(author="owner", text="why?"),
+        Message(author="claude", text="old 1"),
+        Message(author="claude", text="old 2"),
+        Message(author="owner", text="and?"),
+        Message(author="agent", text="new"),
+    ]
+    q = Question.model_validate({**question("q1"), "thread": thread})
+
+    assert q.replies() == 3
+    assert q.must_settle() is True
+
+
+def test_grill_refusals_say_the_agent(store: GrillStore) -> None:
+    store.post(turn(title="T", round=[question("q1")]))
+    with pytest.raises(GrillError) as too_early:
+        store.confirm()
+    store.submit([answer("q1", "choice", choice_id="a")])
+    with pytest.raises(GrillError) as out_of_turn:
+        store.submit([answer("q1", "other", text="again")])
+
+    assert out_of_turn.value.errors == ["waiting for the agent to handle your last action"]
+    assert too_early.value.errors == ["The agent has not said the grill is done yet"]

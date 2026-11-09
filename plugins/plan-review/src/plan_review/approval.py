@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, TypeAdapter
 
 from plan_review.drafts import DraftStore
-from plan_review.events import ClaudeEvents
+from plan_review.events import AgentEvents
 from plan_review.file_errors import read_file
 from plan_review.plan import PlanFileError, load_plan
 from plan_review.threads import ThreadStore
@@ -25,7 +25,7 @@ _Record = TypeAdapter(ApprovalRecord)
 
 
 def approval_routes(
-    store: ThreadStore, drafts: DraftStore, plan_file: Path, events: ClaudeEvents
+    store: ThreadStore, drafts: DraftStore, plan_file: Path, events: AgentEvents
 ) -> APIRouter:
     router = APIRouter()
 

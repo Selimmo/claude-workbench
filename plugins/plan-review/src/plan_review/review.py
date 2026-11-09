@@ -2,7 +2,7 @@
 
 Like a pull-request review, comments and replies are written as drafts that only the
 owner sees. Submitting turns every draft into a thread or a reply at once and tells
-Claude with a single `review_submitted` event, so Claude wakes once for the whole batch.
+the agent with a single `review_submitted` event, so the agent wakes once for the whole batch.
 """
 
 from typing import Any
@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from plan_review.drafts import Draft, DraftStore
-from plan_review.events import ClaudeEvents
+from plan_review.events import AgentEvents
 from plan_review.threads import ThreadStore
 
 
@@ -45,7 +45,7 @@ def submit(pending: list[Draft], threads: ThreadStore) -> list[dict[str, str]]:
     return comments
 
 
-def review_routes(threads: ThreadStore, drafts: DraftStore, events: ClaudeEvents) -> APIRouter:
+def review_routes(threads: ThreadStore, drafts: DraftStore, events: AgentEvents) -> APIRouter:
     router = APIRouter()
 
     @router.get("/api/drafts")

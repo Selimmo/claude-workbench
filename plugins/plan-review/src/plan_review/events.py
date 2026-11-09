@@ -1,4 +1,4 @@
-"""Push-only WebSocket audiences: viewer pages and Claude."""
+"""Push-only WebSocket audiences: viewer pages and the agent."""
 
 from contextlib import suppress
 from typing import Any
@@ -29,8 +29,8 @@ class Subscribers:
                 self.remove(socket)
 
 
-class ClaudeEvents(Subscribers):
-    """What goes to Claude: each event is kept first, so a Resend can send it again."""
+class AgentEvents(Subscribers):
+    """What goes to the agent: each event is kept first, so a Resend can send it again."""
 
     def __init__(self, kept: LastEventStore) -> None:
         super().__init__()

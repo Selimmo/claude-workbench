@@ -1,6 +1,6 @@
-"""The last event sent to Claude, kept so it can be sent again.
+"""The last event sent to the agent, kept so it can be sent again.
 
-`/events` is fire-and-forget: an event sent before Claude's Monitor connects is lost.
+`/events` is fire-and-forget: an event sent before the agent's watcher connects is lost.
 Keeping the latest one in the issue's last_event.json lets the viewer offer a Resend.
 """
 
@@ -38,5 +38,5 @@ class LastEventStore:
 
 
 def answered(status: Status | None, last: LastEvent) -> bool:
-    """Whether Claude set a status after the event was sent (an older one is a past round's)."""
+    """Whether the agent set a status after the event was sent (an older one is a past round's)."""
     return status is not None and status.at > last.sent_at

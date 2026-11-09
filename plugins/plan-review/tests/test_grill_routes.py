@@ -26,7 +26,7 @@ def question(qid: str) -> dict[str, Any]:
 
 @pytest.fixture
 def work(tmp_path: Path) -> Path:
-    folder = tmp_path / ".claude" / "work" / "42"
+    folder = tmp_path / ".plan-review" / "work" / "42"
     folder.mkdir(parents=True)
     return folder
 
@@ -263,7 +263,7 @@ def test_the_server_names_run_files_by_their_project_relative_path_as_serve_does
     tmp_path: Path, static_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)  # `plan-review serve` runs from the project root
-    work = Path(".claude/work/42")
+    work = Path(".plan-review/work/42")
     (tmp_path / work).mkdir(parents=True)
     issue = {"id": "42", "kind": "issue", "title": "x"}
     (tmp_path / work / "plan.json").write_text(json.dumps({"issue": issue}))
@@ -273,9 +273,9 @@ def test_the_server_names_run_files_by_their_project_relative_path_as_serve_does
     bad_json = "Invalid JSON: key must be a string at line 1 column 2"
 
     expected = {
-        "/api/grill": f".claude/work/42/grill.json: {bad_json}",
-        "/api/plan": ".claude/work/42/plan.json: summary: Field required",
-        "/api/threads": f".claude/work/42/comments.json: {bad_json}",
+        "/api/grill": f".plan-review/work/42/grill.json: {bad_json}",
+        "/api/plan": ".plan-review/work/42/plan.json: summary: Field required",
+        "/api/threads": f".plan-review/work/42/comments.json: {bad_json}",
     }
     for url, line in expected.items():
         response = client.get(url)

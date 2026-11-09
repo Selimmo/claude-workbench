@@ -22,7 +22,7 @@ async function open() {
   await screen.findByRole('tablist')
 }
 
-const banner = () => screen.getByRole('status', { name: 'Claude' })
+const banner = () => screen.getByRole('status', { name: 'Agent' })
 const later = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)))
 const working = { text: 'Answering questions', done: false, at: '2026-11-04T10:00:30Z' }
 
@@ -30,10 +30,23 @@ async function submitReview() {
   server.drafts = [draft('d-1', 'risk:1', 'Too vague')]
   await open()
   fireEvent.click(await screen.findByRole('button', { name: 'Submit review (1)' }))
-  return screen.findByRole('status', { name: 'Claude' })
+  return screen.findByRole('status', { name: 'Agent' })
 }
 
-test('submitting a review shows that the page is waiting for Claude', async () => {
+test('the banner is labelled Agent and speaks of the agent', async () => {
+  const waiting = await submitReview()
+  expect(waiting).toHaveAccessibleName('Agent')
+  expect(waiting).toHaveTextContent('Sent to the agent, waiting for a response')
+
+  server.status = working
+  server.lastEvent = { ...server.lastEvent!, answered: true }
+  await act(async () => server.push({ type: 'status_changed' }))
+  expect(await screen.findByRole('status', { name: 'Agent' })).toHaveTextContent(
+    'Agent: Answering questions',
+  )
+})
+
+test('submitting a review shows that the page is waiting for the agent', async () => {
   const waiting = await submitReview()
 
   expect(waiting).toHaveTextContent('waiting')
@@ -47,7 +60,7 @@ test('with no status for 120 s the banner turns red with Resend', async () => {
   expect(banner()).toHaveAttribute('data-state', 'waiting')
   await later(2_000)
 
-  expect(banner()).toHaveTextContent('No response from Claude yet')
+  expect(banner()).toHaveTextContent('No response from the agent yet')
   expect(banner()).toHaveAttribute('data-state', 'no-response')
   expect(screen.getByRole('button', { name: 'Resend' })).toBeInTheDocument()
 })
@@ -91,10 +104,10 @@ test('Resend is disabled while the request is in flight, so a double click sends
   expect(server.calls.filter((c) => c.method === 'POST' && c.url === '/api/resend')).toHaveLength(1)
 })
 
-test('Resend after Claude answered shows the status and sends nothing', async () => {
+test('Resend after the agent answered shows the status and sends nothing', async () => {
   await submitReview()
   await later(121_000)
-  server.status = working // set by Claude, but the page has not been pushed about it yet
+  server.status = working // set by the agent, but the page has not been pushed about it yet
   server.lastEvent = { ...server.lastEvent!, answered: true }
   const sentAt = server.lastEvent.sent_at
 
@@ -112,7 +125,7 @@ test('a Resend the server refuses leaves the page working', async () => {
 
   fireEvent.click(screen.getByRole('button', { name: 'Resend' }))
 
-  await vi.waitFor(() => expect(screen.queryByRole('status', { name: 'Claude' })).toBeNull())
+  await vi.waitFor(() => expect(screen.queryByRole('status', { name: 'Agent' })).toBeNull())
   expect(screen.getByRole('tablist')).toBeInTheDocument()
 })
 
@@ -129,7 +142,7 @@ test('a server without the last-event route shows no banner', async () => {
 
   await open()
 
-  expect(screen.queryByRole('status', { name: 'Claude' })).toBeNull()
+  expect(screen.queryByRole('status', { name: 'Agent' })).toBeNull()
 })
 
 test('a reload long after the event shows red at once', async () => {
@@ -140,7 +153,7 @@ test('a reload long after the event shows red at once', async () => {
   }
   await open()
 
-  expect(await screen.findByText('No response from Claude yet')).toBeInTheDocument()
+  expect(await screen.findByText('No response from the agent yet')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Resend' })).toBeInTheDocument()
 })
 
@@ -148,7 +161,7 @@ test('an approved read-only page still shows the banner and Resend', async () =>
   await open()
   fireEvent.click(await screen.findByRole('button', { name: 'Approve plan' }))
   await screen.findByText(/Approved/)
-  expect(await screen.findByRole('status', { name: 'Claude' })).toHaveAttribute(
+  expect(await screen.findByRole('status', { name: 'Agent' })).toHaveAttribute(
     'data-state',
     'waiting',
   )
@@ -162,7 +175,7 @@ test('an approved read-only page still shows the banner and Resend', async () =>
 test('red is reserved for no response', async () => {
   server.status = working
   await open()
-  expect(await screen.findByRole('status', { name: 'Claude' })).toHaveAttribute(
+  expect(await screen.findByRole('status', { name: 'Agent' })).toHaveAttribute(
     'data-state',
     'status',
   )

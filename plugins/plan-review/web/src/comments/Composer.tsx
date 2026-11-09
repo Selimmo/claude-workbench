@@ -13,7 +13,7 @@ interface Props {
   onDirty?: (dirty: boolean) => void
 }
 
-/** Writes a comment into the owner's pending review. Nothing reaches Claude until submit. */
+/** Writes a comment into the owner's pending review. Nothing reaches the agent until submit. */
 export function Composer({ anchor, draft, onSaved, onClose, onDirty }: Props) {
   const [text, setText] = useState(draft?.text ?? '')
   const [error, setError] = useState<string | null>(null)
@@ -80,7 +80,7 @@ export function Composer({ anchor, draft, onSaved, onClose, onDirty }: Props) {
         <button onClick={onClose}>Cancel</button>
       </div>
       {!draft && (
-        <p className="hint">Saved as a draft. Claude sees it when you submit the review.</p>
+        <p className="hint">Saved as a draft. The agent sees it when you submit the review.</p>
       )}
     </div>
   )

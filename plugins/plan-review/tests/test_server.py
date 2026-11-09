@@ -20,7 +20,7 @@ EXAMPLE = Path(__file__).parents[1] / "examples" / "plan.json"
 
 @pytest.fixture
 def plan_file(tmp_path: Path) -> Path:
-    path = tmp_path / ".claude" / "work" / "42" / "plan.json"
+    path = tmp_path / ".plan-review" / "work" / "42" / "plan.json"
     path.parent.mkdir(parents=True)
     shutil.copy(EXAMPLE, path)
     return path
@@ -553,7 +553,7 @@ def test_resend_with_nothing_kept_is_409(plan_file: Path, static_dir: Path) -> N
     response = client.post("/api/resend")
 
     assert response.status_code == 409
-    assert response.json() == {"errors": ["nothing has been sent to Claude yet"]}
+    assert response.json() == {"errors": ["nothing has been sent to the agent yet"]}
     assert not (plan_file.parent / "last_event.json").exists()
 
 

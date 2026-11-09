@@ -1,6 +1,6 @@
-// What the Claude banner shows, given what was last sent to Claude and what it answered.
+// What the Agent banner shows, given what was last sent to the agent and what it answered.
 
-import type { ClaudeStatus, LastEvent } from './threads'
+import type { AgentStatus, LastEvent } from './threads'
 
 /** How long to wait for any status before suggesting a Resend. */
 export const NO_RESPONSE_AFTER_MS = 120_000
@@ -9,10 +9,10 @@ export type Banner =
   | { kind: 'none' }
   | { kind: 'waiting' }
   | { kind: 'no-response' }
-  | { kind: 'status'; status: ClaudeStatus }
+  | { kind: 'status'; status: AgentStatus }
 
 export function bannerState(
-  status: ClaudeStatus | null,
+  status: AgentStatus | null,
   last: LastEvent | null,
   now: number,
 ): Banner {

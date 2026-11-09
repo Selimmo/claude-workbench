@@ -53,6 +53,19 @@ def test_reply_appends_a_message_from_the_given_author(store: ThreadStore) -> No
     ]
 
 
+def test_old_comments_with_the_claude_author_still_load(store: ThreadStore, tmp_path: Path) -> None:
+    thread = store.create("class:HintPolicy", "Why a class?")
+    store.reply(thread.id, "Because.", author="agent")
+    path = tmp_path / "comments.json"
+    old = path.read_bytes().replace(b'"agent"', b'"claude"')
+    path.write_bytes(old)
+
+    (loaded,) = ThreadStore(path).all()
+
+    assert [m.author for m in loaded.messages] == ["owner", "claude"]
+    assert path.read_bytes() == old  # reading never rewrites it
+
+
 def test_resolve_and_reopen_toggle_the_thread(store: ThreadStore) -> None:
     thread = store.create("risk:1", "Agreed")
 

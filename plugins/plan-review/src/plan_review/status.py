@@ -1,4 +1,4 @@
-"""What Claude is doing with the owner's review, shown live in the viewer.
+"""What the agent is doing with the owner's review, shown live in the viewer.
 
 The orchestrator sets it with `plan-review status`; it sits in the issue's status.json,
 next to comments.json, so a reloaded page still shows it. Only the latest text is kept.
@@ -16,7 +16,7 @@ from plan_review.threads import write_atomically
 
 class Status(BaseModel):
     text: str
-    done: bool = False  # False: Claude is still working on it
+    done: bool = False  # False: the agent is still working on it
     at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -49,7 +49,7 @@ class StatusStore:
     def set_aside(self) -> Path | None:
         """Move a broken status.json to status.json.broken (replacing an older copy there).
 
-        The file holds only this line, so Claude's next status may replace it; the old bytes
+        The file holds only this line, so the agent's next status may replace it; the old bytes
         are kept. Returns the new path, or None if nothing was broken."""
         try:
             self.get()

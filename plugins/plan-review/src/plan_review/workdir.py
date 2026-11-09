@@ -1,4 +1,4 @@
-"""`.claude/work/`: each run's plan, comments and reports, kept out of the project's git.
+"""`.plan-review/work/`: each run's plan, comments and reports, kept out of the project's git.
 
 A run is keyed by a run id (see `run_id`): an issue key, or a dated prompt name.
 The folder ignores itself with its own `.gitignore`, so a project needs no setup.
@@ -10,26 +10,31 @@ from pathlib import Path
 
 
 def work_dir(root: Path, run_id: str) -> Path:
-    """`.claude/work/<run_id>/` under the project root `root`."""
-    return root / ".claude" / "work" / run_id
+    """`.plan-review/work/<run_id>/` under the project root `root`."""
+    return root / ".plan-review" / "work" / run_id
 
 
 def ensure_work_dir(root: Path, run_id: str) -> Path:
-    """Create `.claude/work/<run_id>/` under the project root `root`, and return it."""
+    """Create `.plan-review/work/<run_id>/` under the project root `root`, and return it."""
     work = work_dir(root, run_id)
     work.mkdir(parents=True, exist_ok=True)
     _ignore_work_folder(work.parent)
     return work
 
 
+def config_path(root: Path) -> Path:
+    """`.plan-review/config.json`, without creating anything."""
+    return root / ".plan-review" / "config.json"
+
+
 def preferences_path(root: Path) -> Path:
-    """Where `.claude/work/preferences.json` is, without creating anything."""
-    return root / ".claude" / "work" / "preferences.json"
+    """Where `.plan-review/work/preferences.json` is, without creating anything."""
+    return root / ".plan-review" / "work" / "preferences.json"
 
 
 def preferences_file(root: Path) -> Path:
-    """`.claude/work/preferences.json`, with the folder and its `.gitignore` in place."""
-    folder = root / ".claude" / "work"
+    """`.plan-review/work/preferences.json`, with the folder and its `.gitignore` in place."""
+    folder = root / ".plan-review" / "work"
     folder.mkdir(parents=True, exist_ok=True)
     _ignore_work_folder(folder)
     return preferences_path(root)

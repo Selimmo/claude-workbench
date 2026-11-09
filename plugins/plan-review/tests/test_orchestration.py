@@ -72,10 +72,10 @@ def test_a_prompt_branch_is_its_id_whatever_the_pattern(pattern: str) -> None:
 def branch_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A project root (the cwd) with the example plan for issue 42 and a branch pattern."""
     monkeypatch.chdir(tmp_path)
-    work = tmp_path / ".claude" / "work" / "42"
+    work = tmp_path / ".plan-review" / "work" / "42"
     work.mkdir(parents=True)
     (work / "plan.json").write_text(EXAMPLE.read_text())
-    (tmp_path / ".claude" / "pipeline.json").write_text(
+    (tmp_path / ".plan-review" / "config.json").write_text(
         json.dumps({"branch": "feat/{issue}-{slug}"})
     )
     return work / "plan.json"
@@ -114,7 +114,7 @@ def test_branch_reuses_the_recorded_branch_even_with_a_broken_pipeline(
 ) -> None:
     raw = json.loads(branch_project.read_text())
     branch_project.write_text(json.dumps({**raw, "branch": "old-name"}))
-    (branch_project.parents[2] / "pipeline.json").write_text('{"viewer": 3}')
+    (branch_project.parents[2] / "config.json").write_text('{"viewer": 3}')
 
     assert main(["branch", "42"]) == 0
 
@@ -130,7 +130,7 @@ def repo(tmp_path: Path) -> Path:
     git(tmp_path, "init", "-q")
     git(tmp_path, "config", "user.email", "t@example.com")
     git(tmp_path, "config", "user.name", "t")
-    (tmp_path / ".gitignore").write_text(".claude/work/\n")
+    (tmp_path / ".gitignore").write_text(".plan-review/work/\n")
     (tmp_path / "app.py").write_text("x = 1\n")
     git(tmp_path, "add", ".")
     git(tmp_path, "commit", "-qm", "init")
@@ -165,8 +165,8 @@ def test_tree_hash_sees_edits_inside_an_already_untracked_file(repo: Path) -> No
 
 def test_tree_hash_ignores_gitignored_files_such_as_the_pipelines_reports(repo: Path) -> None:
     before = tree_hash(repo)
-    (repo / ".claude" / "work").mkdir(parents=True)
-    (repo / ".claude" / "work" / "test-review.md").write_text("VERDICT: PASS\n")
+    (repo / ".plan-review" / "work").mkdir(parents=True)
+    (repo / ".plan-review" / "work" / "test-review.md").write_text("VERDICT: PASS\n")
 
     assert tree_hash(repo) == before
 

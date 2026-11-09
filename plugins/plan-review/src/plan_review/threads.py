@@ -15,8 +15,9 @@ from filelock import FileLock
 from pydantic import BaseModel, Field, TypeAdapter, field_validator
 
 from plan_review.file_errors import read_file
+from plan_review.migration import LegacyAuthor
 
-Author = Literal["owner", "claude"]
+Author = Literal["owner", "agent", LegacyAuthor]
 
 # Anchors that are always on the page, whatever the plan holds.
 FIXED_ANCHOR_PREFIXES = ("tab:", "header:")

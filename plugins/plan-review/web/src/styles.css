@@ -980,7 +980,7 @@ button.icon {
   background: var(--bg);
 }
 
-.messages li[data-author='claude'] {
+.messages li[data-author='agent'] {
   border-left: 3px solid var(--accent);
 }
 
@@ -1186,8 +1186,8 @@ header .sticky-head {
   display: none;
 }
 
-/* What Claude is doing with the review. */
-.claude-banner {
+/* What the agent is doing with the review. */
+.agent-banner {
   background: var(--surface);
   display: flex;
   align-items: center;
@@ -1199,7 +1199,7 @@ header .sticky-head {
   font-size: 1rem;
 }
 
-.claude-banner-mark {
+.agent-banner-mark {
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -1207,25 +1207,25 @@ header .sticky-head {
   animation: status-blink 1.4s ease-in-out infinite;
 }
 
-.claude-banner[data-state='no-response'] {
+.agent-banner[data-state='no-response'] {
   border-color: var(--removed);
   color: var(--removed);
 }
 
-.claude-banner[data-state='no-response'] .claude-banner-mark {
+.agent-banner[data-state='no-response'] .agent-banner-mark {
   background: currentcolor;
   animation: none;
 }
 
-.claude-banner button {
+.agent-banner button {
   margin-left: auto;
 }
 
-.claude-banner[data-done='true'] {
+.agent-banner[data-done='true'] {
   border-color: var(--added);
 }
 
-.claude-banner[data-done='true'] .claude-banner-mark {
+.agent-banner[data-done='true'] .agent-banner-mark {
   background: var(--added);
   animation: none;
 }
@@ -1516,7 +1516,7 @@ header .sticky-head {
   text-decoration: none;
 }
 
-/* The sticky Claude banner sits over the top of the page while scrolling. Anything the browser
+/* The sticky Agent banner sits over the top of the page while scrolling. Anything the browser
    scrolls to (focus, links, scrollIntoView) must stop below it, not hide under it. */
 html {
   scroll-padding-top: calc(var(--head-clear) + 1rem);

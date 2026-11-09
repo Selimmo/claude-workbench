@@ -10,7 +10,7 @@ import {
   submitGrill,
 } from './api'
 import type { AnswerDraft, Grill } from './grill'
-import { useClaude } from './useClaude'
+import { useAgent } from './useAgent'
 import { useFileErrors } from './useFileErrors'
 
 /** The grill page's live state, kept current by the server's update pushes. */
@@ -19,8 +19,8 @@ export function useGrill() {
   const [grillErrors, setGrillErrors] = useState<string[] | null>(null)
   const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>({})
   const { errors: brokenFiles, report } = useFileErrors()
-  const claude = useClaude(report)
-  const { refreshStatus, refreshLastEvent } = claude
+  const agent = useAgent(report)
+  const { refreshStatus, refreshLastEvent } = agent
   const [planReady, setPlanReady] = useState(false)
   const refreshPlan = useCallback(async () => {
     const plan = await fetchPlan()
@@ -65,7 +65,7 @@ export function useGrill() {
   }, [refreshGrill, refreshDrafts, refreshPlan, refreshStatus, refreshLastEvent])
 
   return {
-    ...claude,
+    ...agent,
     grill,
     grillErrors,
     brokenFiles,

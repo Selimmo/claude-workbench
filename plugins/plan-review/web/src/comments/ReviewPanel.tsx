@@ -54,7 +54,7 @@ export function ReviewPanel({ drafts, onChanged, onEdit, onNotify }: Props) {
       <button className="primary" disabled={busy} onClick={() => void submit()}>
         Submit review ({drafts.length})
       </button>
-      <p className="hint">Claude sees these comments only when you submit.</p>
+      <p className="hint">The agent sees these comments only when you submit.</p>
       {error && <p className="error">{error}</p>}
       <ul>
         {drafts.map((d) => (

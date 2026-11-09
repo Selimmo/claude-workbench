@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { App } from './App'
 import example from '../../examples/plan.json'
 import old from '../../tests/fixtures/plan-0.1.11.json'
-import { FakeServer, draft, thread } from './test/fakeServer'
+import { FakeServer, draft, message, thread } from './test/fakeServer'
 
 let server: FakeServer
 
@@ -75,7 +75,46 @@ test('clicking a pin opens the whole thread', async () => {
     within(card)
       .getAllByRole('listitem')
       .map((m) => m.textContent),
-  ).toEqual(['YouWhy None?', 'ClaudeIt means no hints left.'])
+  ).toEqual(['YouWhy None?', 'AgentIt means no hints left.'])
+})
+
+test('a thread shows Agent for old and new replies, styled the same', async () => {
+  const mixed = thread('t-1', 'class:HintPolicy.next_level', 'Why None?', 'It means none.')
+  mixed.messages.push(message('owner', 'And?'), message('claude', 'Old reply.'))
+  server.threads = [mixed]
+  await open()
+
+  fireEvent.click(await screen.findByRole('button', { name: /on class:HintPolicy.next_level/ }))
+
+  const rows = within(screen.getByRole('dialog')).getAllByRole('listitem')
+  expect(rows.map((m) => m.textContent)).toEqual([
+    'YouWhy None?',
+    'AgentIt means none.',
+    'YouAnd?',
+    'AgentOld reply.',
+  ])
+  expect(rows.map((m) => m.getAttribute('data-author'))).toEqual([
+    'owner',
+    'agent',
+    'owner',
+    'agent',
+  ])
+})
+
+test('the composer and the review panel say the agent sees the comments on submit', async () => {
+  await open()
+  await screen.findByText('HintPolicy')
+
+  fireEvent.click(element('rel:orch-policy'))
+  const composer = screen.getByRole('dialog', { name: 'New comment on rel:orch-policy' })
+  expect(within(composer).getByText(/The agent sees it when you submit the review/)).toBeVisible()
+  write(composer, 'Keep it?')
+  fireEvent.click(within(composer).getByRole('button', { name: 'Add to review' }))
+
+  const review = await screen.findByRole('region', { name: 'Your review' })
+  expect(
+    within(review).getByText(/The agent sees these comments only when you submit/),
+  ).toBeVisible()
 })
 
 test("a thread card's × closes it", async () => {
@@ -521,7 +560,7 @@ test('orphaned threads are listed on every tab', async () => {
   expect(screen.getByRole('region', { name: 'Orphaned comments' })).toBeInTheDocument()
 })
 
-test("Claude's reply, pushed by the server, appears without a reload", async () => {
+test("the agent's reply, pushed by the server, appears without a reload", async () => {
   server.threads = [thread('t-1', 'class:HintPolicy', 'Rename?')]
   await open()
   await screen.findByRole('button', { name: '1 message on class:HintPolicy' })
@@ -605,31 +644,31 @@ test('clicking another element while writing keeps the comment being written', a
 
 const working = { text: 'Answering questions', done: false, at: '2026-11-03T10:00:00Z' }
 
-test("Claude's status line shows what it is doing, as still in progress", async () => {
+test("the agent's status line shows what it is doing, as still in progress", async () => {
   server.status = working
   await open()
 
-  const line = await screen.findByRole('status', { name: 'Claude' })
+  const line = await screen.findByRole('status', { name: 'Agent' })
   expect(line).toHaveTextContent('Answering questions')
   expect(line).toHaveAttribute('data-done', 'false')
 })
 
-test("Claude's status line follows the server's pushes, up to done", async () => {
+test("the agent's status line follows the server's pushes, up to done", async () => {
   server.status = working
   await open()
-  await screen.findByRole('status', { name: 'Claude' })
+  await screen.findByRole('status', { name: 'Agent' })
 
   server.status = { text: 'Replies posted', done: true, at: '2026-11-03T10:05:00Z' }
   await act(async () => server.push({ type: 'status_changed' }))
 
   expect(await screen.findByText('Replies posted')).toBeInTheDocument()
-  expect(screen.getByRole('status', { name: 'Claude' })).toHaveAttribute('data-done', 'true')
+  expect(screen.getByRole('status', { name: 'Agent' })).toHaveAttribute('data-done', 'true')
 })
 
-test('no status line while Claude has not set one', async () => {
+test('no status line while the agent has not set one', async () => {
   await open()
 
-  expect(screen.queryByRole('status', { name: 'Claude' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('status', { name: 'Agent' })).not.toBeInTheDocument()
 })
 
 test('once a composer with text is cancelled, clicking an element comments again', async () => {
@@ -776,7 +815,7 @@ test("a draft's Edit in the review panel while writing keeps the comment being w
 })
 
 const BAD_JSON = 'Invalid JSON: key must be a string at line 1 column 2'
-const brokenLine = (file: string) => `.claude/work/42/${file}: ${BAD_JSON}`
+const brokenLine = (file: string) => `.plan-review/work/42/${file}: ${BAD_JSON}`
 
 test('a broken comments.json shows a banner naming it, and the plan stays', async () => {
   await open()
@@ -821,7 +860,7 @@ test('a broken status.json or last_event.json shows in the banner beside the pla
     expect(banner).toHaveTextContent(brokenLine('status.json'))
     expect(banner).toHaveTextContent(brokenLine('last_event.json'))
   })
-  expect(screen.queryByRole('status', { name: 'Claude' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('status', { name: 'Agent' })).not.toBeInTheDocument()
 })
 
 test('one broken file named by two routes is listed once', async () => {

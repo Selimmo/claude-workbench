@@ -11,7 +11,7 @@ import { FlowsTab } from './tabs/FlowsTab'
 import { RisksTab } from './tabs/RisksTab'
 import { TestsTab } from './tabs/TestsTab'
 import { BrokenFilesBanner } from './BrokenFilesBanner'
-import { ClaudeBanner } from './ClaudeBanner'
+import { AgentBanner } from './AgentBanner'
 import { StickyHead } from './StickyHead'
 import { ApprovalBar } from './ApprovalBar'
 import { HEADER_ANCHORS, threadsFor } from './threadGroups'
@@ -70,7 +70,7 @@ export function PlanView({ plan, live }: { plan: Plan; live: Live }) {
     <header>
       <StickyHead>
         <BrokenFilesBanner errors={brokenFiles} />
-        <ClaudeBanner status={status} lastEvent={lastEvent} onResend={resend} />
+        <AgentBanner status={status} lastEvent={lastEvent} onResend={resend} />
       </StickyHead>
       <div className="header-row">
         <h1 data-element-id={HEADER_ANCHORS.title}>

@@ -1,18 +1,19 @@
 import type { AnswerDraft, GrillQuestion } from '../grill'
 import { otherIsFinal, pick, type Pick } from '../grillModel'
+import { authorLabel } from '../threads'
 
 const CHOICE_HINT = 'Add a few words to your choice (optional)'
 const OTHER_HINT = 'Type your own option, a question, or a comment'
-const FINAL_HINT = 'Claude has replied enough: this text now counts as your answer'
+const FINAL_HINT = 'The agent has replied enough: this text now counts as your answer'
 
-/** The owner's messages and Claude's replies on a question, if there are any. */
+/** The owner's messages and the agent's replies on a question, if there are any. */
 export function Thread({ question }: { question: GrillQuestion }) {
   if (question.thread.length === 0) return null
   return (
     <ul className="ask-thread" aria-label="Conversation">
       {question.thread.map((m, i) => (
-        <li key={i} data-author={m.author}>
-          <strong>{m.author === 'owner' ? 'You' : 'Claude'}:</strong> {m.text}
+        <li key={i} data-author={m.author === 'owner' ? 'owner' : 'agent'}>
+          <strong>{authorLabel(m.author)}:</strong> {m.text}
         </li>
       ))}
     </ul>

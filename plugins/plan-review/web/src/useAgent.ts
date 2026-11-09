@@ -1,11 +1,11 @@
 import { useCallback, useState } from 'react'
 
 import { fetchLastEvent, fetchStatus, resend as resendLast } from './api'
-import type { ClaudeStatus, LastEvent } from './threads'
+import type { AgentStatus, LastEvent } from './threads'
 
-/** What Claude is doing and the last event sent to it: the data of the banner on both pages. */
-export function useClaude(report: (source: string, lines: string[]) => void) {
-  const [status, setStatus] = useState<ClaudeStatus | null>(null)
+/** What the agent is doing and the last event sent to it: the data of the banner on both pages. */
+export function useAgent(report: (source: string, lines: string[]) => void) {
+  const [status, setStatus] = useState<AgentStatus | null>(null)
   const [lastEvent, setLastEvent] = useState<LastEvent | null>(null)
   const refreshStatus = useCallback(async () => {
     const part = await fetchStatus()

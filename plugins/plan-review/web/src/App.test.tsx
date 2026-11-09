@@ -35,11 +35,11 @@ test('shows loading, then the issue and its summary', async () => {
 })
 
 test('an invalid plan shows its errors', async () => {
-  serve(422, { errors: ['.claude/work/42/plan.json: summary: Field required'] })
+  serve(422, { errors: ['.plan-review/work/42/plan.json: summary: Field required'] })
   render(<App />)
 
   expect(await screen.findByRole('alert')).toHaveTextContent(
-    '.claude/work/42/plan.json: summary: Field required',
+    '.plan-review/work/42/plan.json: summary: Field required',
   )
 })
 

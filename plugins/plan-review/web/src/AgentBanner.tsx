@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react'
 
 import { NO_RESPONSE_AFTER_MS, bannerState } from './banner'
-import type { ClaudeStatus, LastEvent } from './threads'
+import type { AgentStatus, LastEvent } from './threads'
 
-/** What Claude is doing with the owner's last review or approval, full width above the plan. */
-export function ClaudeBanner({
+/** What the agent is doing with the owner's last review or approval, full width above the plan. */
+export function AgentBanner({
   status,
   lastEvent,
   onResend,
 }: {
-  status: ClaudeStatus | null
+  status: AgentStatus | null
   lastEvent: LastEvent | null
   onResend: () => void | Promise<void>
 }) {
@@ -38,21 +38,21 @@ export function ClaudeBanner({
   return (
     <div
       role="status"
-      aria-label="Claude"
-      className="claude-banner"
+      aria-label="Agent"
+      className="agent-banner"
       data-state={state.kind}
       data-done={state.kind === 'status' ? state.status.done : undefined}
     >
-      <span className="claude-banner-mark" aria-hidden="true" />
+      <span className="agent-banner-mark" aria-hidden="true" />
       {state.kind === 'status' && (
         <>
-          Claude: <span>{state.status.text}</span>
+          Agent: <span>{state.status.text}</span>
         </>
       )}
-      {state.kind === 'waiting' && 'Sent to Claude, waiting for a response'}
+      {state.kind === 'waiting' && 'Sent to the agent, waiting for a response'}
       {state.kind === 'no-response' && (
         <>
-          No response from Claude yet
+          No response from the agent yet
           <button onClick={resend} disabled={resending}>
             Resend
           </button>
