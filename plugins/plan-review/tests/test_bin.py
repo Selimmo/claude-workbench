@@ -58,8 +58,8 @@ def test_runs_by_name_from_path_like_the_bash_tool(tmp_path: Path) -> None:
 
 
 def test_keeps_the_callers_directory_as_the_project_root(tmp_path: Path) -> None:
-    (tmp_path / ".claude").mkdir()
-    (tmp_path / ".claude" / "pipeline.json").write_text(json.dumps({"max_review_rounds": 5}))
+    (tmp_path / ".plan-review").mkdir()
+    (tmp_path / ".plan-review" / "config.json").write_text(json.dumps({"max_review_rounds": 5}))
 
     result = run_launcher(WRAPPER, "config", cwd=tmp_path)
 
@@ -85,3 +85,34 @@ def test_an_installed_copy_gets_only_the_clis_own_dependencies(tmp_path: Path) -
     assert packages is not None, "the first run created no virtualenv"
     assert list(packages.glob("*plan_review*"))  # the package, or uv's editable .pth
     assert not (packages / "pytest").exists()
+
+
+@pytest.mark.timeout(120)  # a cold first run builds a whole virtualenv
+def test_an_installed_copy_finds_its_adapter(tmp_path: Path) -> None:
+    # Laid out like the release zip: only the marker says it was installed through Claude Code.
+    plugin = tmp_path / "plan-review"
+    plugin.mkdir()
+    for name in ["bin", "src", ".claude-plugin"]:
+        shutil.copytree(
+            WRAPPER.parents[1] / name, plugin / name, ignore=shutil.ignore_patterns("__pycache__")
+        )
+    for name in ["pyproject.toml", "uv.lock", "README.md", ".python-version"]:
+        shutil.copy2(WRAPPER.parents[1] / name, plugin / name)
+    log = tmp_path / "calls.log"
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    (fake_bin / "claude").write_text(f'#!/bin/sh\necho "$*" >> {log}\n')
+    (fake_bin / "claude").chmod(0o755)
+    if sys.platform == "win32":
+        (fake_bin / "claude.cmd").write_text(f'@echo off\n>>"{log}" echo %*\n')
+    path = os.pathsep.join([str(fake_bin), os.environ["PATH"]])
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("PATH", path)
+        result = run_launcher(plugin / "bin" / "plan-review", "upgrade", cwd=tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert log.read_text().splitlines() == [
+        "plugin marketplace update claude-workbench",
+        "plugin update plan-review@claude-workbench",
+    ]

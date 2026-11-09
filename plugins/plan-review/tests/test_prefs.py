@@ -15,14 +15,14 @@ def test_recording_a_preference_writes_preferences_json_and_ignores_the_folder(
 
     record(path, "page")
 
-    assert path == tmp_path / ".claude" / "work" / "preferences.json"
+    assert path == tmp_path / ".plan-review" / "work" / "preferences.json"
     assert json.loads(path.read_text()) == {"grill": "page"}
-    assert (tmp_path / ".claude" / "work" / ".gitignore").read_text() == "*\n"
+    assert (tmp_path / ".plan-review" / "work" / ".gitignore").read_text() == "*\n"
     assert load_preferences(path).grill == "page"
 
 
 def test_recording_keeps_a_gitignore_the_project_already_has(tmp_path: Path) -> None:
-    ignore = tmp_path / ".claude" / "work" / ".gitignore"
+    ignore = tmp_path / ".plan-review" / "work" / ".gitignore"
     ignore.parent.mkdir(parents=True)
     ignore.write_text("*\n!decisions.md\n")
 

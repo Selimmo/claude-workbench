@@ -1,7 +1,7 @@
 [project]
 name = "plan-review"
-version = "0.1.12"
-description = "A visual, commentable plan viewer for Claude Code agent pipelines"
+version = "0.2.0"
+description = "A visual, commentable plan viewer for coding-agent pipelines"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.15"

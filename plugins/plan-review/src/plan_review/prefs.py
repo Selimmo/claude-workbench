@@ -1,4 +1,4 @@
-"""The owner's own choices, kept per project in `.claude/work/preferences.json`."""
+"""The owner's own choices, kept per project in `.plan-review/work/preferences.json`."""
 
 from pathlib import Path
 from typing import Literal
@@ -26,5 +26,5 @@ def record(path: Path, grill: GrillMode) -> None:
 
 
 def grill_mode(config: PipelineConfig, prefs: Preferences) -> GrillMode | None:
-    """The team's setting in pipeline.json wins over the owner's recorded preference."""
+    """The team's setting in the config wins over the owner's recorded preference."""
     return config.grill or prefs.grill

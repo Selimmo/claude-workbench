@@ -30,7 +30,7 @@ claude plugin install plan-review --marketplace Selimmo/claude-workbench
 
 ```bash
 plan-review init 42
-curl -fsSL https://raw.githubusercontent.com/Selimmo/claude-workbench/main/plugins/plan-review/examples/plan.json -o .claude/work/42/plan.json
+curl -fsSL https://raw.githubusercontent.com/Selimmo/claude-workbench/main/plugins/plan-review/examples/plan.json -o .plan-review/work/42/plan.json
 ```
 
 Then ask Claude to *run `plan-review serve 42` in the background*; it keeps running and opens the viewer in your browser. Comment on anything and submit the review; `plan-review threads 42` shows what Claude would read. Any valid `plan.json` works, whoever wrote it ([format](plugins/plan-review/README.md#the-plan-format-planjson)).
@@ -61,9 +61,11 @@ Every tab of the [sample plan](plugins/plan-review/examples/plan.json). Elements
 
 ## What it can touch
 
+From 0.2.0 the project files live in `.plan-review/`: `config.json` for settings and `work/<id>/` for each run. Files that 0.1.x left under `.claude/` are still read when they are the only ones, and are never changed (see the plugin README).
+
 plan-review runs inside your Claude Code session, under your permission settings: anything an agent does through Bash or file edits goes through the same approval prompts as the rest of your session.
 
-- **The viewer** is a local server bound to `127.0.0.1` on a random port. It reads and writes only `.claude/work/<id>/` in your project (the plan, comment threads, drafts, approval, and the grill's `grill.json` and `grill_drafts.json`), plus a `.claude/work/.gitignore` that keeps it all out of git. It has no authentication, and cross-site requests to it are not blocked yet ([#36](https://github.com/Selimmo/claude-workbench/issues/36)).
+- **The viewer** is a local server bound to `127.0.0.1` on a random port. It reads and writes only `.plan-review/work/<id>/` in your project (the plan, comment threads, drafts, approval, and the grill's `grill.json` and `grill_drafts.json`), plus a `.plan-review/work/.gitignore` that keeps it all out of git. It has no authentication, and cross-site requests to it are not blocked yet ([#36](https://github.com/Selimmo/claude-workbench/issues/36)).
 - **Your tracker**, read once at the start: `/ship` reads the issue through your logged-in `gh` (GitHub) or the Jira or Linear connector you set up in Claude Code. Nothing is written to the tracker: no comments, no status changes.
 - **Git**: `/ship` creates a branch and commits only after your explicit OK. It never pushes, opens a PR or merges unless you ask.
 - **Agents**: all four can read your project and run shell commands, so your permission prompts are the real limit. The architect is told to write only `plan.json`, but has a Write tool. The implementer edits files and runs your configured checks. The two reviewers have no edit tools, and `/ship` discards any review that changed a file.

@@ -2,7 +2,7 @@
 
 import example from '../../../examples/plan.json'
 import type { AnswerDraft, Grill } from '../grill'
-import type { ClaudeStatus, Draft, LastEvent, Thread } from '../threads'
+import type { AgentStatus, Draft, LastEvent, Thread } from '../threads'
 
 export interface Call {
   method: string
@@ -18,8 +18,8 @@ export class FakeServer {
   grillDrafts: Record<string, AnswerDraft> = {}
   threads: Thread[] = []
   drafts: Draft[] = []
-  status: ClaudeStatus | null = null
-  /** What was last sent to Claude; set by review and approve, as the server does. */
+  status: AgentStatus | null = null
+  /** What was last sent to the agent; set by review and approve, as the server does. */
   lastEvent: LastEvent | null = null
   reviewError: string | null = null
   /** When set, a submit waits for it: lets a test look at the page mid-submit. */
@@ -55,7 +55,7 @@ export class FakeServer {
     if (broken) return json({ errors: broken }, 422)
     if (url === '/api/plan')
       return this.plan === null
-        ? json({ errors: ['.claude/work/42/plan.json: file not found'] }, 404)
+        ? json({ errors: ['.plan-review/work/42/plan.json: file not found'] }, 404)
         : json(this.plan)
     const grillReply = this.handleGrill(url, method, body, json)
     if (grillReply) return grillReply
@@ -100,7 +100,7 @@ export class FakeServer {
     if (url === '/api/last-event') return json({ last_event: this.lastEvent })
     if (url === '/api/resend' && method === 'POST') {
       if (this.resendHold) await this.resendHold
-      if (!this.lastEvent) return json({ errors: ['nothing has been sent to Claude yet'] }, 409)
+      if (!this.lastEvent) return json({ errors: ['nothing has been sent to the agent yet'] }, 409)
       if (this.lastEvent.answered) return json({ sent: false, status: this.status })
       this.sent(this.lastEvent.type)
       return json({ sent: true })
@@ -152,7 +152,7 @@ export class FakeServer {
     if (this.grillErrors && readsGrill) return json({ errors: this.grillErrors }, 422)
     const grill = this.grill
     if (!grill && readsGrill)
-      return json({ errors: ['.claude/work/42/grill.json: file not found'] }, 404)
+      return json({ errors: ['.plan-review/work/42/grill.json: file not found'] }, 404)
     if (url === '/api/grill/drafts') return json({ drafts: this.grillDrafts })
     if (!grill) return json({ errors: [`no route ${method} ${url}`] }, 404)
     if (url === '/api/grill') return json(grill)
@@ -210,7 +210,7 @@ export class FakeServer {
     this.lastEvent = { type, sent_at: new Date().toISOString(), answered: false }
   }
 
-  /** Simulate the server's push, e.g. after Claude replies through the CLI. */
+  /** Simulate the server's push, e.g. after agent replies through the CLI. */
   push(message: object) {
     for (const socket of FakeSocket.open) socket.onmessage?.({ data: JSON.stringify(message) })
   }
@@ -227,7 +227,7 @@ class FakeSocket {
   }
 }
 
-export function message(author: 'owner' | 'claude', text: string) {
+export function message(author: 'owner' | 'agent' | 'claude', text: string) {
   return { author, text, at: '2026-11-02T10:00:00Z' }
 }
 
@@ -235,7 +235,7 @@ export function thread(id: string, anchor: string, ...texts: string[]): Thread {
   return {
     id,
     anchor,
-    messages: texts.map((text, i) => message(i % 2 === 0 ? 'owner' : 'claude', text)),
+    messages: texts.map((text, i) => message(i % 2 === 0 ? 'owner' : 'agent', text)),
     resolved: false,
     orphaned: false,
   }

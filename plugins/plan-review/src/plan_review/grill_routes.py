@@ -1,7 +1,7 @@
 """The grill page: rounds of questions, the owner's drafts, and one submit that sends them all.
 
 Like the plan review, answers are drafts that only the owner sees until they submit. Submitting
-records every answer in grill.json and tells Claude with a single `grill_submitted` event.
+records every answer in grill.json and tells the agent with a single `grill_submitted` event.
 """
 
 from typing import Any
@@ -10,7 +10,7 @@ from fastapi import APIRouter, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from plan_review.events import ClaudeEvents
+from plan_review.events import AgentEvents
 from plan_review.grill import MAX_REPLIES, GrillError, GrillStore, SubmittedAnswer
 from plan_review.grill_drafts import AnswerDraft, GrillDraftStore
 
@@ -20,7 +20,7 @@ class Reopen(BaseModel):
 
 
 def grill_routes(
-    store: GrillStore, drafts: GrillDraftStore, events: ClaudeEvents, *, label: str
+    store: GrillStore, drafts: GrillDraftStore, events: AgentEvents, *, label: str
 ) -> APIRouter:
     router = APIRouter()
 
@@ -55,7 +55,7 @@ def grill_routes(
         # Drafts stay locked for the whole submit so an edit cannot land in between and be
         # lost. Lock order: drafts, then grill.json (the store takes its own lock).
         with drafts.held():
-            # A draft for a question that is no longer open (Claude closed it meanwhile) is
+            # A draft for a question that is no longer open (the agent closed it meanwhile) is
             # dropped rather than refusing the whole submit.
             open_ids = {q.id for q in store.get().open_questions()}
             drafts.keep_only(open_ids)

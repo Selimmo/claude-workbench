@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { discardDraft, draftReply, setResolved } from '../api'
-import type { Draft, Thread } from '../threads'
+import { authorLabel, type Draft, type Thread } from '../threads'
 
 interface Props {
   thread: Thread
@@ -43,8 +43,8 @@ export function ThreadCard({ thread, drafts, onChanged, onEditDraft, onClose, re
       </div>
       <ol className="messages">
         {thread.messages.map((m, i) => (
-          <li key={i} data-author={m.author}>
-            <span className="author">{m.author === 'owner' ? 'You' : 'Claude'}</span>
+          <li key={i} data-author={m.author === 'owner' ? 'owner' : 'agent'}>
+            <span className="author">{authorLabel(m.author)}</span>
             <span className="text">{m.text}</span>
           </li>
         ))}

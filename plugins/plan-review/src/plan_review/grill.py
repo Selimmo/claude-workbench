@@ -17,7 +17,7 @@ from plan_review.threads import Message, file_lock, write_atomically
 if TYPE_CHECKING:
     from plan_review.grill_turn import Turn
 
-MAX_REPLIES: Final = 3  # Claude's replies to Others on one question; then it must settle
+MAX_REPLIES: Final = 3  # the agent's replies to Others on one question; then it must settle
 
 
 class GrillError(Exception):
@@ -54,12 +54,12 @@ class Question(BaseModel):
     explanation: str
     choices: list[Choice]  # the first is the recommendation
     updated: bool = False  # explanation or choices revised in a reply
-    thread: list[Message] = []  # the owner's Other answers and Claude's replies
+    thread: list[Message] = []  # the owner's Other answers and the agent's replies
     answer: Answer | None = None  # None while open
 
     def replies(self) -> int:
-        """Claude's messages in the thread."""
-        return sum(1 for m in self.thread if m.author == "claude")
+        """The agent's messages in the thread, old ones included."""
+        return sum(1 for m in self.thread if m.author != "owner")
 
     def must_settle(self) -> bool:
         return self.replies() >= MAX_REPLIES
@@ -111,7 +111,7 @@ class GrillState(BaseModel):
     handled: int = 0  # owner actions the agent has answered (set by each post)
 
     def owners_turn(self) -> bool:
-        """Whether Claude has handled everything the owner did."""
+        """Whether the agent has handled everything the owner did."""
         return self.handled == len(self.log)
 
     def question(self, question_id: str) -> Question:
@@ -169,12 +169,12 @@ class GrillStore:
         return action
 
     def confirm(self) -> OwnerAction:
-        """The owner accepts the shared understanding; only once Claude says it is done."""
+        """The owner accepts the shared understanding; only once the agent says it is done."""
         with file_lock(self._path):
             state = self.get()
             _require_owners_turn(state)
             if not state.done:
-                raise GrillError(["Claude has not said the grill is done yet"], conflict=True)
+                raise GrillError(["The agent has not said the grill is done yet"], conflict=True)
             action = OwnerAction(kind="confirm")
             state.log.append(action)
             state.confirmed_at = action.at
@@ -187,7 +187,7 @@ class GrillStore:
             state = self.get()
             _require_owners_turn(state)
             if not state.done:
-                raise GrillError(["Claude has not said the grill is done yet"], conflict=True)
+                raise GrillError(["The agent has not said the grill is done yet"], conflict=True)
             if not text.strip():
                 raise GrillError(["text: say what is missing"])
             action = OwnerAction(kind="reopen", text=text)
@@ -210,7 +210,7 @@ def _require_owners_turn(state: GrillState) -> None:
     if state.confirmed_at is not None:
         raise GrillError(["the owner already confirmed the grill"], conflict=True)
     if not state.owners_turn():
-        raise GrillError(["waiting for Claude to handle your last action"], conflict=True)
+        raise GrillError(["waiting for the agent to handle your last action"], conflict=True)
 
 
 def _describe(action: OwnerAction, questions: dict[str, Question]) -> dict[str, Any]:

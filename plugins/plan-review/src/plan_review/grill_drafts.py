@@ -1,6 +1,6 @@
 """The owner's unsent answers on the grill page, kept in the run's grill_drafts.json.
 
-Like review drafts, they live in their own file: Claude and the grill state only ever see
+Like review drafts, they live in their own file: The agent and the grill state only ever see
 submitted answers. Kept on disk because `serve` picks a new port, so browser storage is
 empty on every run. The server owns this file; the agent never reads it.
 """
@@ -76,7 +76,7 @@ class GrillDraftStore:
             self._save({k: d for k, d in self.all().items() if k not in question_ids})
 
     def keep_only(self, question_ids: set[str]) -> None:
-        """Drop the drafts of every question not in this set (e.g. closed by Claude's turn)."""
+        """Drop the drafts of every question not in this set (e.g. closed by the agent's turn)."""
         with self._lock():
             kept = {k: d for k, d in self.all().items() if k in question_ids}
             if kept != self.all():

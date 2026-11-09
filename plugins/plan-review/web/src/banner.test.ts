@@ -1,8 +1,8 @@
 import { NO_RESPONSE_AFTER_MS, bannerState } from './banner'
-import type { ClaudeStatus, LastEvent } from './threads'
+import type { AgentStatus, LastEvent } from './threads'
 
 const SENT = Date.parse('2026-11-04T10:00:00Z')
-const working: ClaudeStatus = {
+const working: AgentStatus = {
   text: 'Answering questions',
   done: false,
   at: '2026-11-04T09:00:00Z',
@@ -13,7 +13,7 @@ const event = (answered: boolean): LastEvent => ({
   answered,
 })
 
-test('banner waits for Claude right after an event, even if an older status exists', () => {
+test('banner waits for the agent right after an event, even if an older status exists', () => {
   expect(bannerState(working, event(false), SENT + 1000)).toEqual({ kind: 'waiting' })
 })
 
@@ -23,7 +23,7 @@ test('banner says no response after 120 s', () => {
   expect(bannerState(null, event(false), SENT + 120_000)).toEqual({ kind: 'no-response' })
 })
 
-test('banner shows the status once Claude answered', () => {
+test('banner shows the status once the agent answered', () => {
   expect(bannerState(working, event(true), SENT + 500_000)).toEqual({
     kind: 'status',
     status: working,

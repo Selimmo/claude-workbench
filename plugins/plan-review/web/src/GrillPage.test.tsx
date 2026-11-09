@@ -176,7 +176,48 @@ test("after three replies, Other's hint says it now counts as the answer", async
   )
 })
 
-test("Claude's reply to an Other shows under the question, which is open to pick again", async () => {
+test('a question shows Agent for old and new replies, and its final hint says the agent', async () => {
+  const server = new FakeServer()
+  server.grill = grill([
+    question('q1', {
+      thread: [
+        message('owner', 'one?'),
+        message('claude', 'old reply 1'),
+        message('owner', 'two?'),
+        message('claude', 'old reply 2'),
+        message('owner', 'three?'),
+        message('agent', 'new reply'),
+      ],
+    }),
+  ])
+  open(server)
+  const card = await screen.findByRole('group', { name: 'Question q1?' })
+
+  const rows = within(card).getAllByRole('listitem')
+  expect(rows.map((r) => r.textContent)).toEqual([
+    'You: one?',
+    'Agent: old reply 1',
+    'You: two?',
+    'Agent: old reply 2',
+    'You: three?',
+    'Agent: new reply',
+  ])
+  expect(rows.map((r) => r.getAttribute('data-author'))).toEqual([
+    'owner',
+    'agent',
+    'owner',
+    'agent',
+    'owner',
+    'agent',
+  ])
+  fireEvent.click(within(card).getByRole('radio', { name: 'Other' }))
+  expect(within(card).getByRole('textbox')).toHaveAttribute(
+    'placeholder',
+    'The agent has replied enough: this text now counts as your answer',
+  )
+})
+
+test("the agent's reply to an Other shows under the question, which is open to pick again", async () => {
   const server = new FakeServer()
   server.grill = grill([question('q1')])
   open(server)
@@ -525,7 +566,7 @@ test('after a No is sent, the next final step starts fresh at Yes or No', async 
 
 test('a refusal shown earlier is gone from a later final step', async () => {
   const server = doneGrill()
-  server.grillRefusal = 'waiting for Claude to handle your last action'
+  server.grillRefusal = 'waiting for the agent to handle your last action'
   open(server)
   fireEvent.click(await screen.findByRole('button', { name: 'Yes' }))
   await expectRefusal()
@@ -541,28 +582,28 @@ test('a refusal shown earlier is gone from a later final step', async () => {
   await act(async () => server.push({ type: 'grill_changed' }))
 
   expect(await screen.findByRole('button', { name: 'Yes' })).toBeInTheDocument()
-  expect(screen.queryByText('waiting for Claude to handle your last action')).toBeNull()
+  expect(screen.queryByText('waiting for the agent to handle your last action')).toBeNull()
 })
 
-test('confirming tells Claude: the banner waits for its answer', async () => {
+test('confirming tells the agent: the banner waits for its answer', async () => {
   const server = doneGrill()
   open(server)
 
   fireEvent.click(await screen.findByRole('button', { name: 'Yes' }))
 
-  const banner = await screen.findByRole('status', { name: 'Claude' })
+  const banner = await screen.findByRole('status', { name: 'Agent' })
   expect(banner).toHaveAttribute('data-state', 'waiting')
 })
 
 async function refusedGrill(): Promise<void> {
   const server = doneGrill()
-  server.grillRefusal = 'waiting for Claude to handle your last action'
+  server.grillRefusal = 'waiting for the agent to handle your last action'
   open(server)
   await screen.findByRole('button', { name: 'Yes' })
 }
 
 async function expectRefusal(): Promise<void> {
-  expect(await screen.findByText('waiting for Claude to handle your last action')).toBeVisible()
+  expect(await screen.findByText('waiting for the agent to handle your last action')).toBeVisible()
   expect(screen.getByRole('button', { name: 'Yes' })).toBeInTheDocument()
 }
 
@@ -617,7 +658,7 @@ test('with a plan present, the top bar marks Grill as the current page', async (
   expect(within(nav).getByRole('link', { name: 'Plan' })).not.toHaveAttribute('aria-current')
 })
 
-test('the grill page shows the Claude banner and Resend', async () => {
+test('the grill page shows the Agent banner and Resend', async () => {
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'], shouldAdvanceTime: true })
   try {
     const server = new FakeServer()
@@ -630,7 +671,7 @@ test('the grill page shows the Claude banner and Resend', async () => {
     )
     fireEvent.click(screen.getByRole('button', { name: 'Submit answers' }))
 
-    const banner = await screen.findByRole('status', { name: 'Claude' })
+    const banner = await screen.findByRole('status', { name: 'Agent' })
     expect(banner).toHaveAttribute('data-state', 'waiting')
 
     await later(121_000)
@@ -665,11 +706,11 @@ test('a refused draft or submit says why and does not keep the draft', async () 
   server.grill = grill([question('q1')])
   open(server)
   const card = await screen.findByRole('group', { name: 'Question q1?' })
-  server.grillRefusal = "it is Claude's turn"
+  server.grillRefusal = "it is the agent's turn"
 
   fireEvent.click(within(card).getByRole('radio', { name: 'Choice a' }))
 
-  expect(await screen.findByText("it is Claude's turn")).toBeInTheDocument()
+  expect(await screen.findByText("it is the agent's turn")).toBeInTheDocument()
   await waitFor(() =>
     expect(within(card).getByRole('radio', { name: 'Choice a' })).not.toBeChecked(),
   )
@@ -678,7 +719,8 @@ test('a refused draft or submit says why and does not keep the draft', async () 
 
 test('a grill.json that does not parse shows its errors instead of loading forever', async () => {
   const server = new FakeServer()
-  const line = '.claude/work/42/grill.json: Invalid JSON: key must be a string at line 1 column 2'
+  const line =
+    '.plan-review/work/42/grill.json: Invalid JSON: key must be a string at line 1 column 2'
   server.grillErrors = [line]
   open(server)
 
@@ -692,11 +734,11 @@ test('a refused submit says why', async () => {
   open(server)
   fireEvent.click(await screen.findByRole('radio', { name: 'Choice a' }))
   await waitFor(() => expect(screen.getByRole('button', { name: 'Submit answers' })).toBeEnabled())
-  server.grillRefusal = 'waiting for Claude'
+  server.grillRefusal = 'waiting for the agent'
 
   fireEvent.click(screen.getByRole('button', { name: 'Submit answers' }))
 
-  expect(await screen.findByText('waiting for Claude')).toBeInTheDocument()
+  expect(await screen.findByText('waiting for the agent')).toBeInTheDocument()
 })
 
 test('the Grill and Plan switch appears when the plan shows up, without a reload', async () => {
@@ -715,7 +757,7 @@ test('the Grill and Plan switch appears when the plan shows up, without a reload
 const BAD_JSON = 'Invalid JSON: key must be a string at line 1 column 2'
 
 test('a broken grill_drafts.json keeps the questions and decisions visible under a banner naming it', async () => {
-  const line = `.claude/work/42/grill_drafts.json: ${BAD_JSON}`
+  const line = `.plan-review/work/42/grill_drafts.json: ${BAD_JSON}`
   const server = new FakeServer()
   server.grill = grill([question('q1')])
   server.brokenFiles['/api/grill/drafts'] = [line]
@@ -725,10 +767,10 @@ test('a broken grill_drafts.json keeps the questions and decisions visible under
   expect(await screen.findByRole('alert', { name: 'Broken files' })).toHaveTextContent(line)
 })
 
-test('the broken-files alert and the Claude banner share one sticky header', async () => {
+test('the broken-files alert and the Agent banner share one sticky header', async () => {
   const server = new FakeServer()
   server.grill = grill([question('q1')])
-  server.brokenFiles['/api/grill/drafts'] = [`.claude/work/42/grill_drafts.json: ${BAD_JSON}`]
+  server.brokenFiles['/api/grill/drafts'] = [`.plan-review/work/42/grill_drafts.json: ${BAD_JSON}`]
   server.lastEvent = { type: 'grill', sent_at: new Date().toISOString(), answered: false }
   open(server)
 
@@ -739,7 +781,7 @@ test('the broken-files alert and the Claude banner share one sticky header', asy
 })
 
 test('picking a choice while grill_drafts.json is broken shows the same named message', async () => {
-  const line = `.claude/work/42/grill_drafts.json: ${BAD_JSON}`
+  const line = `.plan-review/work/42/grill_drafts.json: ${BAD_JSON}`
   const server = new FakeServer()
   server.grill = grill([question('q1')])
   server.brokenFiles['/api/grill/drafts'] = [line]
@@ -753,7 +795,7 @@ test('picking a choice while grill_drafts.json is broken shows the same named me
 })
 
 test("an invalid plan.json shows in the grill page's banner, a missing one does not", async () => {
-  const line = `.claude/work/42/plan.json: summary: Field required`
+  const line = `.plan-review/work/42/plan.json: summary: Field required`
   const server = new FakeServer()
   server.grill = grill([question('q1')])
   open(server) // plan is null: 404, the normal case while grilling
@@ -846,7 +888,7 @@ test('a choice whose id is "other" is a real choice, apart from the Other radio'
   expect(within(card).getAllByRole('textbox')).toHaveLength(1)
 })
 
-test("an answered row, opened, also shows the thread of the owner's messages and Claude's replies", async () => {
+test("an answered row, opened, also shows the thread of the owner's messages and the agent's replies", async () => {
   const server = new FakeServer()
   server.grill = grill([
     question('q1', {

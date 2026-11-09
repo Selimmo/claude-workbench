@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { BrokenFilesBanner } from './BrokenFilesBanner'
-import { ClaudeBanner } from './ClaudeBanner'
+import { AgentBanner } from './AgentBanner'
 import { StickyHead } from './StickyHead'
 import { CollapsedRound } from './grill/CollapsedRound'
 import { ConfirmBar } from './grill/ConfirmBar'
@@ -46,7 +46,7 @@ export function GrillPage() {
     <main className="grill-page">
       <StickyHead>
         <BrokenFilesBanner errors={brokenFiles} />
-        <ClaudeBanner status={status} lastEvent={lastEvent} onResend={resend} />
+        <AgentBanner status={status} lastEvent={lastEvent} onResend={resend} />
       </StickyHead>
       <h1>
         {grill.label} {grill.title}

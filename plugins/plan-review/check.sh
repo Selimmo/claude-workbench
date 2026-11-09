@@ -7,4 +7,5 @@ npm --prefix web run check   # first: builds the page the Python package serves
 uv run ruff check
 uv run ruff format --check
 uv run pyright
+uv run python -m plan_review.generate --check  # generated skill and agents are fresh
 uv run pytest

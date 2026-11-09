@@ -105,7 +105,7 @@ test('in a read-only (approved) plan, leftover drafts show no pins', async () =>
 
 test('a broken approved.json shows in the banner, and Approve shows the same message', async () => {
   const line =
-    '.claude/work/42/approved.json: Invalid JSON: key must be a string at line 1 column 2'
+    '.plan-review/work/42/approved.json: Invalid JSON: key must be a string at line 1 column 2'
   server.brokenFiles['/api/approve'] = [line]
   await open()
 
@@ -117,8 +117,8 @@ test('a broken approved.json shows in the banner, and Approve shows the same mes
   expect(screen.queryByText(/read-only/)).not.toBeInTheDocument()
 })
 
-test('the broken-files alert and the Claude banner share one sticky header on the plan page', async () => {
-  server.brokenFiles['/api/approve'] = ['.claude/work/42/approved.json: Invalid JSON']
+test('the broken-files alert and the Agent banner share one sticky header on the plan page', async () => {
+  server.brokenFiles['/api/approve'] = ['.plan-review/work/42/approved.json: Invalid JSON']
   server.lastEvent = { type: 'plan', sent_at: new Date().toISOString(), answered: false }
   await open()
 

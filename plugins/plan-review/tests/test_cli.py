@@ -1,7 +1,10 @@
+import io
 import json
 import queue
+import shutil
 import socket
 import subprocess
+import sys
 import threading
 import time
 from datetime import date
@@ -141,7 +144,7 @@ class FakeServer:
 def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A project root (the cwd) with a valid plan for issue 7 and a built page."""
     monkeypatch.chdir(tmp_path)
-    work = tmp_path / ".claude" / "work" / "7"
+    work = tmp_path / ".plan-review" / "work" / "7"
     work.mkdir(parents=True)
     (work / "plan.json").write_text(json.dumps(VALID_PLAN))
     static = tmp_path / "static"
@@ -165,7 +168,7 @@ def test_serve_without_a_plan_exits_2_and_starts_nothing(
     exit_code = main(["serve", "8"])
 
     assert exit_code == 2
-    assert ".claude/work/8/plan.json: file not found" in capsys.readouterr().err
+    assert ".plan-review/work/8/plan.json: file not found" in capsys.readouterr().err
     assert server.addresses == []
 
 
@@ -192,7 +195,7 @@ def test_serve_open_none_prints_the_url_instead_of_opening_a_browser(
 
 
 def write_pipeline(project: Path, config: object) -> None:
-    (project / ".claude" / "pipeline.json").write_text(json.dumps(config))
+    (project / ".plan-review" / "config.json").write_text(json.dumps(config))
 
 
 def test_serve_follows_viewer_open_from_pipeline_json(project: Path, server: FakeServer) -> None:
@@ -201,6 +204,15 @@ def test_serve_follows_viewer_open_from_pipeline_json(project: Path, server: Fak
     main(["serve", "7"])
 
     assert server.opened == []
+
+
+def test_serve_with_open_flag_does_not_read_a_broken_config(
+    project: Path, server: FakeServer
+) -> None:
+    (project / ".plan-review" / "config.json").write_text("{bad")
+
+    assert main(["serve", "7", "--open", "none"]) == 0
+    assert len(server.addresses) == 1
 
 
 def test_serve_open_flag_overrides_pipeline_json(project: Path, server: FakeServer) -> None:
@@ -266,17 +278,21 @@ def test_serve_prints_its_url_immediately_when_stdout_is_a_pipe(project: Path) -
 
 
 def comments(project: Path) -> ThreadStore:
-    return ThreadStore(project / ".claude" / "work" / "7" / "comments.json")
+    return ThreadStore(project / ".plan-review" / "work" / "7" / "comments.json")
 
 
-def test_reply_posts_as_claude(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_reply_is_signed_agent(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
     thread = comments(project).create("tab:files", "Why touch the config?")
+    comments(project).reply(thread.id, "Old reply.", author="claude")
 
     exit_code = main(["reply", "7", thread.id, "For max_hints."])
 
     (saved,) = comments(project).all()
     assert exit_code == 0
-    assert (saved.messages[-1].author, saved.messages[-1].text) == ("claude", "For max_hints.")
+    assert [(m.author, m.text) for m in saved.messages][1:] == [
+        ("claude", "Old reply."),
+        ("agent", "For max_hints."),
+    ]
 
 
 def test_reply_to_unknown_thread_exits_1(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -338,7 +354,7 @@ def test_config_with_a_bad_file_exits_1_with_readable_errors(
 
 
 def status_of(project: Path) -> StatusStore:
-    return StatusStore(project / ".claude" / "work" / "7" / "status.json")
+    return StatusStore(project / ".plan-review" / "work" / "7" / "status.json")
 
 
 def test_status_sets_what_claude_is_doing(project: Path) -> None:
@@ -380,7 +396,7 @@ def test_status_for_an_issue_without_a_work_folder_exits_1(
     exit_code = main(["status", "99", "Answering questions"])
 
     assert exit_code == 1
-    assert "no .claude/work/99/" in capsys.readouterr().err
+    assert "no .plan-review/work/99/" in capsys.readouterr().err
 
 
 def test_init_creates_the_issues_work_folder_and_prints_it(
@@ -391,16 +407,16 @@ def test_init_creates_the_issues_work_folder_and_prints_it(
     exit_code = main(["init", "42"])
 
     assert exit_code == 0
-    assert (tmp_path / ".claude" / "work" / "42").is_dir()
-    assert (tmp_path / ".claude" / "work" / ".gitignore").is_file()
-    assert capsys.readouterr().out == ".claude/work/42\n"
+    assert (tmp_path / ".plan-review" / "work" / "42").is_dir()
+    assert (tmp_path / ".plan-review" / "work" / ".gitignore").is_file()
+    assert capsys.readouterr().out == ".plan-review/work/42\n"
 
 
 def test_serve_keeps_the_work_folder_out_of_git(project: Path, server: FakeServer) -> None:
     # The page writes comments.json and drafts.json there, even for a hand-made folder.
     main(["serve", "7"])
 
-    assert (project / ".claude" / "work" / ".gitignore").read_text() == "*\n"
+    assert (project / ".plan-review" / "work" / ".gitignore").read_text() == "*\n"
 
 
 @pytest.mark.usefixtures("windows_style_paths")
@@ -412,9 +428,9 @@ def test_paths_in_messages_use_forward_slashes_on_every_os(
     assert main(["init", "42"]) == 0
 
     captured = capsys.readouterr()
-    assert ".claude/work/8/plan.json: file not found" in captured.err
-    assert "no .claude/work/99/ for #99" in captured.err
-    assert captured.out == ".claude/work/42\n"
+    assert ".plan-review/work/8/plan.json: file not found" in captured.err
+    assert "no .plan-review/work/99/ for #99" in captured.err
+    assert captured.out == ".plan-review/work/42\n"
 
 
 def test_a_plan_path_is_reported_with_forward_slashes(tmp_path: Path) -> None:
@@ -438,11 +454,11 @@ def test_a_pipeline_path_is_reported_with_forward_slashes(tmp_path: Path) -> Non
 
 def key_project(project: Path) -> Path:
     """The project with a second run, keyed `PROJ-123`, next to issue 7's."""
-    work = project / ".claude" / "work" / "PROJ-123"
+    work = project / ".plan-review" / "work" / "PROJ-123"
     work.mkdir()
     plan = {**VALID_PLAN, "issue": {"id": "PROJ-123", "kind": "issue", "title": "Add hints"}}
     (work / "plan.json").write_text(json.dumps(plan))
-    (project / ".claude" / "pipeline.json").write_text(json.dumps({"branch": "{issue}-{slug}"}))
+    (project / ".plan-review" / "config.json").write_text(json.dumps({"branch": "{issue}-{slug}"}))
     return work
 
 
@@ -464,7 +480,7 @@ COMMANDS = ["init", "serve", "threads", "reply", "status", "branch"]
 @pytest.mark.parametrize(
     ("argv", "expected_out"),
     [
-        (["init", "PROJ-123"], ".claude/work/PROJ-123\n"),
+        (["init", "PROJ-123"], ".plan-review/work/PROJ-123\n"),
         (["branch", "PROJ-123"], "PROJ-123-add-hints\n"),
     ],
 )
@@ -520,7 +536,7 @@ def test_reply_writes_into_the_text_id_folder(project: Path) -> None:
 def test_a_bad_run_id_is_rejected_before_anything_runs(
     name: str, bad: str, project: Path, server: FakeServer, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    before = sorted(p.name for p in (project / ".claude" / "work").iterdir())
+    before = sorted(p.name for p in (project / ".plan-review" / "work").iterdir())
 
     exit_code = run_command(name, bad)  # main() returns; it must not raise SystemExit
 
@@ -530,8 +546,8 @@ def test_a_bad_run_id_is_rejected_before_anything_runs(
     assert len(err.splitlines()) == 1
     assert f"'{bad}'" in err
     assert "letters, digits" in err
-    assert sorted(p.name for p in (project / ".claude" / "work").iterdir()) == before
-    assert not (project / ".claude" / "x").exists()
+    assert sorted(p.name for p in (project / ".plan-review" / "work").iterdir()) == before
+    assert not (project / ".plan-review" / "x").exists()
     assert server.addresses == []
 
 
@@ -546,8 +562,8 @@ def test_init_prompt_creates_a_dated_run_and_prints_it(
 
     assert (first, second) == (0, 0)
     assert capsys.readouterr().out.splitlines() == [
-        ".claude/work/add-dark-mode-2026-11-05",
-        ".claude/work/add-dark-mode-2026-11-05-2",
+        ".plan-review/work/add-dark-mode-2026-11-05",
+        ".plan-review/work/add-dark-mode-2026-11-05-2",
     ]
 
 
@@ -560,7 +576,7 @@ def test_init_prompt_rejects_a_name_that_cannot_make_a_run_id(
 
     assert exit_code == 2
     assert "invalid run id" in capsys.readouterr().err
-    assert not (tmp_path / ".claude").exists()
+    assert not (tmp_path / ".plan-review").exists()
 
 
 def test_init_needs_either_a_run_id_or_a_prompt_name(
@@ -570,7 +586,7 @@ def test_init_needs_either_a_run_id_or_a_prompt_name(
 
     assert main(["init"]) == 2
     assert main(["init", "42", "--prompt", "x"]) == 2
-    assert not (tmp_path / ".claude").exists()
+    assert not (tmp_path / ".plan-review").exists()
     assert capsys.readouterr().err.count("plan-review init:") == 2
 
 
@@ -607,7 +623,7 @@ def test_cli_messages_use_the_label(project: Path, capsys: pytest.CaptureFixture
         "OK: plan for add-dark-mode-2026-11-05 (1 elements)",
     ]
     assert err.splitlines() == [
-        "no .claude/work/99/ for #99: is this the project root?",
+        "no .plan-review/work/99/ for #99: is this the project root?",
         "no thread 't-nope' for #7",
     ]
 
@@ -619,7 +635,7 @@ def test_prefs_command_sets_and_prints_the_grill_mode(
     assert "no grill mode chosen" in capsys.readouterr().err
 
     assert main(["prefs", "grill", "chat"]) == 0
-    assert json.loads((project / ".claude" / "work" / "preferences.json").read_text()) == {
+    assert json.loads((project / ".plan-review" / "work" / "preferences.json").read_text()) == {
         "grill": "chat"
     }
     capsys.readouterr()
@@ -643,7 +659,7 @@ def test_prefs_command_sets_and_prints_the_grill_mode(
 def test_prefs_grill_with_an_unreadable_preferences_file_exits_1(
     project: Path, capsys: pytest.CaptureFixture[str], content: str
 ) -> None:
-    (project / ".claude" / "work" / "preferences.json").write_text(content)
+    (project / ".plan-review" / "work" / "preferences.json").write_text(content)
     assert main(["prefs", "grill"]) == 1
     err = capsys.readouterr().err
     assert "preferences.json" in err
@@ -676,7 +692,7 @@ def test_grill_post_appends_a_turn_and_reports_a_bad_one_readably(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert main(["grill", "post", "7", str(write_turn(project, FIRST_TURN))]) == 0
-    saved = json.loads((project / ".claude" / "work" / "7" / "grill.json").read_text())
+    saved = json.loads((project / ".plan-review" / "work" / "7" / "grill.json").read_text())
     assert saved["rounds"][0]["questions"][0]["id"] == "q1"
     capsys.readouterr()
 
@@ -699,7 +715,7 @@ def test_grill_post_refuses_a_misspelled_turn_key(
 
 
 def grill_store(project: Path) -> GrillStore:
-    return GrillStore(project / ".claude" / "work" / "7" / "grill.json")
+    return GrillStore(project / ".plan-review" / "work" / "7" / "grill.json")
 
 
 def test_grill_pending_prints_whether_confirmed_and_what_is_pending(
@@ -739,7 +755,7 @@ def test_grill_decisions_writes_decisions_md_only_once_confirmed(
 
     main(["grill", "post", "7", str(write_turn(project, decided))])
     store = grill_store(project)
-    decisions = project / ".claude" / "work" / "7" / "decisions.md"
+    decisions = project / ".plan-review" / "work" / "7" / "decisions.md"
 
     assert main(["grill", "decisions", "7"]) == 1
     assert "not confirmed" in capsys.readouterr().err
@@ -765,9 +781,9 @@ def test_grill_schema_prints_the_turn_schema(capsys: pytest.CaptureFixture[str])
 def test_serve_starts_from_grill_json_and_points_at_the_grill_page(
     project: Path, server: FakeServer, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    (project / ".claude" / "work" / "7" / "plan.json").unlink()
+    (project / ".plan-review" / "work" / "7" / "plan.json").unlink()
     assert main(["serve", "7"]) == 2  # neither a plan nor a grill
-    assert ".claude/work/7/plan.json: file not found" in capsys.readouterr().err
+    assert ".plan-review/work/7/plan.json: file not found" in capsys.readouterr().err
     assert server.addresses == []
 
     main(["grill", "post", "7", str(write_turn(project, FIRST_TURN))])
@@ -785,7 +801,7 @@ def test_serve_with_an_invalid_plan_still_exits_1_even_with_a_grill(
     project: Path, server: FakeServer, capsys: pytest.CaptureFixture[str]
 ) -> None:
     main(["grill", "post", "7", str(write_turn(project, FIRST_TURN))])
-    (project / ".claude" / "work" / "7" / "plan.json").write_text("{}")
+    (project / ".plan-review" / "work" / "7" / "plan.json").write_text("{}")
 
     assert main(["serve", "7"]) == 1
     assert server.addresses == []
@@ -794,13 +810,13 @@ def test_serve_with_an_invalid_plan_still_exits_1_even_with_a_grill(
 def test_serve_with_an_invalid_plan_names_the_file(
     project: Path, server: FakeServer, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    (project / ".claude" / "work" / "7" / "plan.json").write_text("{bad")
+    (project / ".plan-review" / "work" / "7" / "plan.json").write_text("{bad")
 
     assert main(["serve", "7"]) == 1
 
     err = capsys.readouterr().err
     assert err.splitlines() == [
-        ".claude/work/7/plan.json: Invalid JSON: key must be a string at line 1 column 2"
+        ".plan-review/work/7/plan.json: Invalid JSON: key must be a string at line 1 column 2"
     ]
     assert server.addresses == []
 
@@ -816,13 +832,13 @@ def test_grill_with_no_subcommand_prints_help_and_exits_2(
 def test_grill_pending_with_an_unreadable_grill_json_exits_1(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    (project / ".claude" / "work" / "7").mkdir(parents=True, exist_ok=True)
-    (project / ".claude" / "work" / "7" / "grill.json").write_text("{bad")
+    (project / ".plan-review" / "work" / "7").mkdir(parents=True, exist_ok=True)
+    (project / ".plan-review" / "work" / "7" / "grill.json").write_text("{bad")
 
     assert main(["grill", "pending", "7"]) == 1
 
     assert capsys.readouterr().err == (
-        ".claude/work/7/grill.json: Invalid JSON: key must be a string at line 1 column 2\n"
+        ".plan-review/work/7/grill.json: Invalid JSON: key must be a string at line 1 column 2\n"
     )
 
 
@@ -830,14 +846,14 @@ def test_grill_pending_with_an_unreadable_grill_json_exits_1(
 def test_commands_print_a_broken_files_named_lines_and_exit_1(
     argv: list[str], project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    comments = project / ".claude" / "work" / "7" / "comments.json"
+    comments = project / ".plan-review" / "work" / "7" / "comments.json"
     comments.write_bytes(b"{bad")
 
     assert main(argv) == 1
 
     err = capsys.readouterr().err
     assert err == (
-        ".claude/work/7/comments.json: Invalid JSON: key must be a string at line 1 column 2\n"
+        ".plan-review/work/7/comments.json: Invalid JSON: key must be a string at line 1 column 2\n"
     )
     assert comments.read_bytes() == b"{bad"
 
@@ -846,13 +862,14 @@ def test_commands_print_a_broken_files_named_lines_and_exit_1(
 def test_status_over_a_broken_status_json_says_where_it_was_moved(
     extra: list[str], project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    work = project / ".claude" / "work" / "7"
+    work = project / ".plan-review" / "work" / "7"
     (work / "status.json").write_bytes(b"{bad")
 
     assert main(["status", "7", *extra]) == 0
 
     assert capsys.readouterr().err == (
-        ".claude/work/7/status.json was broken: moved to .claude/work/7/status.json.broken\n"
+        ".plan-review/work/7/status.json was broken: "
+        "moved to .plan-review/work/7/status.json.broken\n"
     )
     assert (work / "status.json.broken").read_bytes() == b"{bad"
     assert (work / "status.json").exists() == (extra == ["working"])
@@ -861,7 +878,7 @@ def test_status_over_a_broken_status_json_says_where_it_was_moved(
 def test_blank_status_text_over_a_broken_status_json_moves_nothing(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    work = project / ".claude" / "work" / "7"
+    work = project / ".plan-review" / "work" / "7"
     (work / "status.json").write_bytes(b"{bad")
 
     assert main(["status", "7", "  "]) == 1
@@ -872,7 +889,7 @@ def test_blank_status_text_over_a_broken_status_json_moves_nothing(
 
 
 def test_grill_post_keeps_only_the_drafts_of_questions_still_open(project: Path) -> None:
-    work = project / ".claude" / "work" / "7"
+    work = project / ".plan-review" / "work" / "7"
     q1 = FIRST_TURN["round"][0]
     first = {**FIRST_TURN, "round": [q1, {**q1, "id": "q2", "title": "Where?"}]}
     assert main(["grill", "post", "7", str(write_turn(project, first))]) == 0
@@ -900,7 +917,7 @@ def test_grill_post_keeps_only_the_drafts_of_questions_still_open(project: Path)
 def test_grill_post_leaves_a_drafts_file_alone_when_all_its_drafts_are_still_open(
     project: Path,
 ) -> None:
-    work = project / ".claude" / "work" / "7"
+    work = project / ".plan-review" / "work" / "7"
     q1 = FIRST_TURN["round"][0]
     first = {**FIRST_TURN, "round": [q1, {**q1, "id": "q2", "title": "Where?"}]}
     assert main(["grill", "post", "7", str(write_turn(project, first))]) == 0
@@ -931,7 +948,7 @@ def test_grill_post_leaves_a_drafts_file_alone_when_all_its_drafts_are_still_ope
 
 
 def test_grill_post_does_not_create_grill_drafts_json(project: Path) -> None:
-    work = project / ".claude" / "work" / "7"
+    work = project / ".plan-review" / "work" / "7"
 
     assert main(["grill", "post", "7", str(write_turn(project, FIRST_TURN))]) == 0
 
@@ -940,7 +957,7 @@ def test_grill_post_does_not_create_grill_drafts_json(project: Path) -> None:
 
 
 def test_grill_post_waits_for_the_drafts_lock(project: Path) -> None:
-    work = project / ".claude" / "work" / "7"
+    work = project / ".plan-review" / "work" / "7"
     turn = write_turn(project, FIRST_TURN)
     codes: list[int] = []
     thread = threading.Thread(target=lambda: codes.append(main(["grill", "post", "7", str(turn)])))
@@ -959,7 +976,7 @@ def test_grill_post_waits_for_the_drafts_lock(project: Path) -> None:
 def test_grill_post_still_succeeds_when_grill_drafts_json_is_broken(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    work = project / ".claude" / "work" / "7"
+    work = project / ".plan-review" / "work" / "7"
     work.mkdir(parents=True, exist_ok=True)
     (work / "grill_drafts.json").write_text("{nope")
 
@@ -967,7 +984,8 @@ def test_grill_post_still_succeeds_when_grill_drafts_json_is_broken(
 
     err = capsys.readouterr().err
     assert err.splitlines() == [
-        ".claude/work/7/grill_drafts.json: Invalid JSON: key must be a string at line 1 column 2"
+        ".plan-review/work/7/grill_drafts.json: "
+        "Invalid JSON: key must be a string at line 1 column 2"
     ]
     assert json.loads((work / "grill.json").read_text())["rounds"][0]["questions"][0]["id"] == "q1"
     assert (work / "grill_drafts.json").read_bytes() == b"{nope"
@@ -1005,3 +1023,212 @@ def test_schema_says_validate_requires_side_name_and_kind(
         defs["Member"]["properties"]["kind"],
     ):
         assert "validate` requires it" in field["description"]
+
+
+def write_old_config(project: Path, config: object) -> Path:
+    old = project / ".claude" / "pipeline.json"
+    old.parent.mkdir(exist_ok=True)
+    old.write_text(json.dumps(config))
+    return old
+
+
+def snapshot(root: Path) -> dict[str, bytes | None]:
+    return {
+        p.relative_to(root).as_posix(): p.read_bytes() if p.is_file() else None
+        for p in sorted(root.rglob("*"))
+    }
+
+
+def test_config_reads_the_new_file(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write_pipeline(project, {"max_review_rounds": 5})
+
+    assert main(["config"]) == 0
+
+    out, err = capsys.readouterr()
+    assert json.loads(out)["max_review_rounds"] == 5
+    assert err == ""
+
+
+def test_config_with_only_the_old_file_keeps_stdout_clean_and_hints_on_stderr(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_old_config(project, {"max_review_rounds": 4})
+
+    assert main(["config"]) == 0
+
+    out, err = capsys.readouterr()
+    assert json.loads(out)["max_review_rounds"] == 4
+    assert len(err.splitlines()) == 1
+    assert ".claude/pipeline.json" in err
+    assert ".plan-review/config.json" in err
+
+
+def test_prefs_grill_with_the_old_file_and_no_mode_still_prints_the_move_hint(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_old_config(project, {"max_review_rounds": 4})
+
+    assert main(["prefs", "grill"]) == 3
+
+    err = capsys.readouterr().err
+    assert ".claude/pipeline.json" in err
+    assert ".plan-review/config.json" in err
+
+
+def test_reading_the_old_config_writes_and_moves_nothing(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_old_config(project, {"max_review_rounds": 4})
+    shutil.rmtree(project / ".plan-review")
+    before = snapshot(project)
+
+    main(["config"])
+
+    assert snapshot(project) == before
+    assert not (project / ".plan-review").exists()
+
+
+def test_a_broken_new_config_is_an_error_even_with_an_old_file(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_pipeline(project, {"viewer": 3})
+    write_old_config(project, {"max_review_rounds": 4})
+
+    assert main(["config"]) == 1
+
+    err = capsys.readouterr().err
+    assert ".plan-review/config.json" in err
+    assert "pipeline.json" not in err
+
+
+def test_a_broken_old_config_is_reported_under_its_own_name(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_old_config(project, {"viewer": 3})
+
+    assert main(["config"]) == 1
+
+    assert ".claude/pipeline.json" in capsys.readouterr().err
+
+
+def test_branch_uses_the_old_config_and_prints_only_the_branch_on_stdout(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_old_config(project, {"branch": "feat/{issue}-{slug}"})
+
+    assert main(["branch", "7"]) == 0
+
+    out, err = capsys.readouterr()
+    assert out.startswith("feat/7-")
+    assert len(out.splitlines()) == 1
+    assert ".claude/pipeline.json" in err
+
+
+def test_serve_prints_its_url_line_before_the_hint(
+    project: Path, server: FakeServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_old_config(project, {"viewer": {"open": "none"}})
+    combined = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", combined)
+    monkeypatch.setattr(sys, "stderr", combined)
+
+    assert main(["serve", "7"]) == 0
+
+    lines = combined.getvalue().splitlines()
+    assert server.opened == []
+    assert lines[0].startswith("plan-review: #7 at http://127.0.0.1:")
+    assert ".claude/pipeline.json" in lines[1]
+    assert len(lines) == 2
+
+
+def test_prefs_grill_reads_the_old_file_when_it_is_the_only_one(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    old = project / ".claude" / "work" / "preferences.json"
+    old.parent.mkdir(parents=True)
+    old.write_text('{"grill": "chat"}')
+    before = snapshot(project)
+
+    assert main(["prefs", "grill"]) == 0
+
+    out, err = capsys.readouterr()
+    assert out == "chat\n"
+    assert len(err.splitlines()) == 1
+    assert "plan-review prefs grill" in err
+    assert snapshot(project) == before
+
+
+def test_prefs_grill_from_the_old_config_hints_on_stderr(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_old_config(project, {"grill": "page"})
+
+    assert main(["prefs", "grill"]) == 0
+
+    out, err = capsys.readouterr()
+    assert out == "page\n"
+    assert ".claude/pipeline.json" in err
+    assert ".plan-review/config.json" in err
+
+
+def test_a_broken_old_preferences_file_is_reported_under_its_own_name(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    old = project / ".claude" / "work" / "preferences.json"
+    old.parent.mkdir(parents=True)
+    old.write_text("{bad")
+
+    assert main(["prefs", "grill"]) == 1
+
+    assert ".claude/work/preferences.json" in capsys.readouterr().err
+
+
+def test_prefs_grill_set_writes_the_new_file_and_leaves_the_old_one(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    old = project / ".claude" / "work" / "preferences.json"
+    old.parent.mkdir(parents=True)
+    old.write_text('{"grill": "chat"}')
+
+    assert main(["prefs", "grill", "page"]) == 0
+    capsys.readouterr()
+
+    assert old.read_text() == '{"grill": "chat"}'
+    assert json.loads((project / ".plan-review" / "work" / "preferences.json").read_text()) == {
+        "grill": "page"
+    }
+    assert main(["prefs", "grill"]) == 0
+    out, err = capsys.readouterr()
+    assert (out, err) == ("page\n", "")
+
+
+def test_an_old_run_folder_is_left_alone(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    old = project / ".claude" / "work" / "42"
+    old.mkdir(parents=True)
+    (old / "plan.json").write_text("{}")
+
+    assert main(["init", "42"]) == 0
+
+    assert (project / ".plan-review" / "work" / "42").is_dir()
+    assert snapshot(old) == {"plan.json": b"{}"}
+    assert [p.name for p in old.parent.iterdir()] == ["42"]
+
+
+def _help(capsys: pytest.CaptureFixture[str], command: list[str]) -> str:
+    with pytest.raises(SystemExit):
+        main([*command, "--help"])
+    return capsys.readouterr().out
+
+
+def test_help_texts_say_the_agent(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("COLUMNS", "200")
+    top = _help(capsys, [])
+    serve_help = _help(capsys, ["serve"])
+
+    assert "answer a comment thread as the agent" in top
+    assert "what the agent is doing" in top
+    assert "Claude" not in top
+    assert ".plan-review/config.json" in serve_help
+    assert ".claude" not in serve_help

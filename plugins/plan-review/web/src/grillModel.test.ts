@@ -65,7 +65,7 @@ test('picking another option keeps the text already typed', () => {
   })
 })
 
-test('Other is final once Claude has replied the limit', () => {
+test('Other is final once the agent has replied the limit', () => {
   const thread = (claude: number) =>
     Array.from({ length: claude }, () => [
       { author: 'owner' as const, text: '?', at: '' },
@@ -74,6 +74,16 @@ test('Other is final once Claude has replied the limit', () => {
 
   expect(otherIsFinal(question('q1', { thread: thread(2) }), 3)).toBe(false)
   expect(otherIsFinal(question('q1', { thread: thread(3) }), 3)).toBe(true)
+})
+
+test('the reply limit counts old and new replies alike', () => {
+  const said = (author: 'owner' | 'agent' | 'claude') => ({ author, text: '.', at: '' })
+  const mixed = (...authors: ('agent' | 'claude')[]) =>
+    question('q1', { thread: authors.flatMap((a) => [said('owner'), said(a)]) })
+
+  expect(otherIsFinal(mixed('claude', 'agent'), 3)).toBe(false)
+  expect(otherIsFinal(mixed('claude', 'claude', 'agent'), 3)).toBe(true)
+  expect(otherIsFinal(mixed('agent', 'agent', 'agent'), 3)).toBe(true)
 })
 
 test('an answered question reads as its answer and note', () => {

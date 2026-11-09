@@ -1,18 +1,18 @@
-"""Seeing and resending the last event sent to Claude.
+"""Seeing and resending the last event sent to the agent.
 
-Claude's Monitor may connect after the owner submitted or approved; the viewer then offers
-to send the kept event again, unless Claude has already answered it.
+The agent's watcher may connect after the owner submitted or approved; the viewer then offers
+to send the kept event again, unless the agent has already answered it.
 """
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from plan_review.events import ClaudeEvents
+from plan_review.events import AgentEvents
 from plan_review.last_event import LastEventStore, answered
 from plan_review.status import StatusStore
 
 
-def resend_routes(kept: LastEventStore, status: StatusStore, events: ClaudeEvents) -> APIRouter:
+def resend_routes(kept: LastEventStore, status: StatusStore, events: AgentEvents) -> APIRouter:
     router = APIRouter()
 
     @router.get("/api/last-event")
@@ -32,7 +32,7 @@ def resend_routes(kept: LastEventStore, status: StatusStore, events: ClaudeEvent
     async def resend() -> dict[str, object] | JSONResponse:  # pyright: ignore[reportUnusedFunction]
         last = kept.get()
         if last is None:
-            return JSONResponse({"errors": ["nothing has been sent to Claude yet"]}, 409)
+            return JSONResponse({"errors": ["nothing has been sent to the agent yet"]}, 409)
         current = status.get()
         if answered(current, last):
             return {"sent": False, "status": current}

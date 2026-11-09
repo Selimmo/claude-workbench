@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from plan_review import upgrade
+from plan_review.adapters import claude_code
+from plan_review.adapters.claude_code import ClaudeCode
 from plan_review.cli import main
 
 
@@ -58,7 +60,19 @@ def test_without_claude_on_path_says_so_and_exits_1(
 
     exit_code = main(["upgrade"])
 
+    err = capsys.readouterr().err
     assert exit_code == 1
+    assert "Claude Code was not found on PATH" in err
+    assert "claude plugin marketplace update claude-workbench" in err
+    assert "claude plugin update plan-review@claude-workbench" in err
+
+
+def test_the_adapter_itself_says_so_without_claude_on_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    assert ClaudeCode().upgrade() == 1
     assert "`claude` not found on PATH" in capsys.readouterr().err
 
 
@@ -78,11 +92,35 @@ def test_runs_the_claude_that_path_lookup_finds(monkeypatch: pytest.MonkeyPatch)
         calls.append(argv)
         return subprocess.CompletedProcess(argv, 0)
 
-    monkeypatch.setattr(upgrade.shutil, "which", lambda _: "C:/npm/claude.cmd")
-    monkeypatch.setattr(upgrade.subprocess, "run", run)
+    monkeypatch.setattr(claude_code.shutil, "which", lambda _: "C:/npm/claude.cmd")
+    monkeypatch.setattr(claude_code.subprocess, "run", run)
 
     assert main(["upgrade"]) == 0
     assert calls == [
         ["C:/npm/claude.cmd", "plugin", "marketplace", "update", "claude-workbench"],
         ["C:/npm/claude.cmd", "plugin", "update", "plan-review@claude-workbench"],
     ]
+
+
+def test_the_commands_it_prints_are_the_steps_upgrade_runs(claude: Path) -> None:
+    ClaudeCode().upgrade()
+
+    ran = [f"claude {line}" for line in claude.read_text().splitlines()]
+    assert ClaudeCode().upgrade_commands() == ran
+
+
+def test_upgrade_that_cannot_tell_prints_what_to_run_and_changes_nothing(
+    claude: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(upgrade, "PACKAGE_ROOT", tmp_path / "nowhere")
+
+    exit_code = main(["upgrade"])
+
+    err = capsys.readouterr().err
+    assert exit_code == 1
+    assert "can't tell how it was installed" in err
+    assert "claude plugin update plan-review@claude-workbench" in err
+    assert not claude.exists()  # the fake claude was never called

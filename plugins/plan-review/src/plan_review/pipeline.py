@@ -1,4 +1,4 @@
-"""A project's pipeline settings, from .claude/pipeline.json. Every field is optional."""
+"""A project's pipeline settings, from .plan-review/config.json. Every field is optional."""
 
 from pathlib import Path
 from typing import Literal

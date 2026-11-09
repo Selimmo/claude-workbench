@@ -11,11 +11,11 @@ You are the **orchestrator**. You run the steps below for the input `$ARGUMENTS`
 
 **Which agents.** For each role (`architect`, `implementer`, `test-reviewer`, `code-reviewer`), use the project's own agent when `.claude/agents/<name>.md` exists in the project, otherwise `plan-review:<name>` from this plugin. Check once at the start and say which ones you are using. Below, `plan-review:<name>` means "the agent chosen for that role".
 
-Throughout, `ID` is the run id and `W` is `.claude/work/ID/`. Step 0 settles `ID` from `$ARGUMENTS` (optionally followed by `--grill`, `--grill=page` or `--grill=chat`): the issue number or key (`42`, `PROJ-123`), or a dated name for a prompt (`add-dark-mode-2026-11-05`). The label of a run is `#42` when `ID` is all digits, otherwise `ID` itself; use it when you talk to the owner. Hand-offs between steps are files in `W`. Pass agents paths, not file contents, and keep your own context small. Only you read the issue from its tracker, once, in step 0. The agents read `W/issue.md`.
+Throughout, `ID` is the run id and `W` is `.plan-review/work/ID/`. Step 0 settles `ID` from `$ARGUMENTS` (optionally followed by `--grill`, `--grill=page` or `--grill=chat`): the issue number or key (`42`, `PROJ-123`), or a dated name for a prompt (`add-dark-mode-2026-11-05`). The label of a run is `#42` when `ID` is all digits, otherwise `ID` itself; use it when you talk to the owner. Hand-offs between steps are files in `W`. Pass agents paths, not file contents, and keep your own context small. Only you read the issue from its tracker, once, in step 0. The agents read `W/issue.md`.
 
 ## 0. Preconditions
 
-1. Run `plan-review config`. If it fails, show the errors and stop.
+1. Run `plan-review config`. If it fails, show the errors and stop. If it works but also prints a line about moving an old file, show the owner that line once and carry on.
 2. Run `git status --porcelain`. If there are uncommitted changes, stop and ask the owner: the reviewers' read-only check needs a clean starting point.
 3. Read the input (without `--grill`, `--grill=page` or `--grill=chat`) and decide what it is, in this order:
    - A GitHub issue: `42` or `#42` (read it with `gh issue view 42 --comments`), or a `https://github.com/<owner>/<repo>/issues/<n>` link (`gh issue view <link> --comments`). `ID` is the number.
@@ -23,7 +23,7 @@ Throughout, `ID` is the run id and `W` is `.claude/work/ID/`. Step 0 settles `ID
    - A bare key such as `PROJ-123`: use the one issue-tracker connector that is available. If none fits, or several do, ask the owner which tracker it is, or whether it is a prompt.
    - Anything else is a prompt.
 
-   For an issue, read its title, link, body and comments once. If it cannot be read (no connector for the tracker, `gh` not logged in), stop with one line: "<tracker> needs a connector; paste the text as a prompt". Then run `plan-review init ID`; an existing `W` means you are resuming that run. It creates `W`, and on first use `.claude/work/.gitignore`, so nothing in `.claude/work/` is ever committed and the project needs no gitignore entry. Overwrite `W/issue.md` with:
+   For an issue, read its title, link, body and comments once. If it cannot be read (no connector for the tracker, `gh` not logged in), stop with one line: "<tracker> needs a connector; paste the text as a prompt". Then run `plan-review init ID`; an existing `W` means you are resuming that run. It creates `W`, and on first use `.plan-review/work/.gitignore`, so nothing in `.plan-review/work/` is ever committed and the project needs no gitignore entry. Overwrite `W/issue.md` with:
 
    ```
    # <title>
@@ -35,7 +35,7 @@ Throughout, `ID` is the run id and `W` is `.claude/work/ID/`. Step 0 settles `ID
    <each comment, with its author>
    ```
 
-   For a prompt, pick a name of two to four lowercase words joined by dashes, tell the owner which one you picked, and run `plan-review init --prompt <name>`. It prints the new folder, `.claude/work/<name>-<date>`, with `-2`, `-3`, ... when that name was already used today. `ID` is that folder's name. Write `W/issue.md` as the prompt exactly as given, nothing added.
+   For a prompt, pick a name of two to four lowercase words joined by dashes, tell the owner which one you picked, and run `plan-review init --prompt <name>`. It prints the new folder, `.plan-review/work/<name>-<date>`, with `-2`, `-3`, ... when that name was already used today. `ID` is that folder's name. Write `W/issue.md` as the prompt exactly as given, nothing added.
 
 ## 1. Settle the decisions (only with `--grill`)
 
@@ -45,8 +45,8 @@ Run this step only when the arguments include `--grill`, `--grill=page` or `--gr
 
 **Which mode.** Settle it in this order:
 1. `--grill=page` or `--grill=chat` decides.
-2. For a plain `--grill`, run `plan-review prefs grill`. It prints `page` or `chat` from `grill` in `.claude/pipeline.json`, else from the owner's recorded preference, and exits 0.
-3. If it exits 1 (the preferences file or pipeline.json is unreadable), show the owner its message and stop: they fix the file or choose with `--grill=page` / `--grill=chat`.
+2. For a plain `--grill`, run `plan-review prefs grill`. It prints `page` or `chat` from `grill` in `.plan-review/config.json`, else from the owner's recorded preference, and exits 0.
+3. If it exits 1 (the preferences file or config.json is unreadable), show the owner its message and stop: they fix the file or choose with `--grill=page` / `--grill=chat`.
 4. If it exits 3 (nothing is chosen), the skill asks once: "Answer the grilling questions on a page in the viewer, or here in the chat?" Record the answer with `plan-review prefs grill <mode>` and say in one line how to change it: `plan-review prefs grill page|chat`, or `--grill=page` / `--grill=chat` for one run.
 
 **Chat grill.** Run the `grilling` skill on the run described in `W/issue.md` with the Skill tool. It is Matt Pocock's interview skill: facts are looked up, and every open decision is put to the owner in rounds until none is left. Follow it fully, including waiting for the owner to confirm that you have reached a shared understanding. Once the owner confirms, write `W/decisions.md` by hand. Write only what was settled, in the owner's terms, so the architect can follow it without the conversation:

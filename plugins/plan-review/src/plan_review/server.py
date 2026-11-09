@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from plan_review.approval import approval_routes
 from plan_review.drafts import DraftNotFound, DraftStore
-from plan_review.events import ClaudeEvents, Subscribers
+from plan_review.events import AgentEvents, Subscribers
 from plan_review.file_errors import BrokenFile
 from plan_review.grill import GrillError, GrillStore
 from plan_review.grill_drafts import GrillDraftStore
@@ -100,14 +100,14 @@ def _page_routes(app: FastAPI, plan_file: Path, static_dir: Path) -> None:
 def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5) -> FastAPI:
     comments_file = plan_file.parent / "comments.json"  # sits next to the plan it comments on
     drafts_file = plan_file.parent / "drafts.json"  # the owner's unsent review comments
-    status_file = plan_file.parent / "status.json"  # what Claude is doing, set by the CLI
+    status_file = plan_file.parent / "status.json"  # what the agent is doing, set by the CLI
     grill_file = plan_file.parent / "grill.json"  # the grilling before the plan
     grill_drafts_file = plan_file.parent / "grill_drafts.json"  # the owner's unsent answers
     subscribers = Subscribers()  # viewer pages, on /api/updates
-    # Claude (through Monitor), on /events. Its last event is kept, but last_event.json is
+    # the agent, on /events. Its last event is kept, but last_event.json is
     # not watched: pages are not told about it, so /api/updates is unchanged.
     kept = LastEventStore(plan_file.parent / "last_event.json")
-    events = ClaudeEvents(kept)
+    events = AgentEvents(kept)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
@@ -141,7 +141,7 @@ def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5)
         await _listen(socket, subscribers)
 
     @app.websocket("/events")
-    async def claude_events(socket: WebSocket) -> None:  # pyright: ignore[reportUnusedFunction]
+    async def agent_events(socket: WebSocket) -> None:  # pyright: ignore[reportUnusedFunction]
         await _listen(socket, events)
 
     _error_handlers(app)

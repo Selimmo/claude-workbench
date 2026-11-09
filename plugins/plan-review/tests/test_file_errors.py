@@ -6,7 +6,7 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 from plan_review.file_errors import BrokenFile, named_errors, read_file
 from plan_review.threads import Thread
 
-PLAN = Path(".claude/work/42/plan.json")
+PLAN = Path(".plan-review/work/42/plan.json")
 
 
 class _Two(BaseModel):
@@ -19,8 +19,8 @@ def test_named_errors_put_the_files_path_before_each_line() -> None:
         _Two.model_validate({})
 
     assert named_errors(PLAN, caught.value) == [
-        ".claude/work/42/plan.json: a: Field required",
-        ".claude/work/42/plan.json: b: Field required",
+        ".plan-review/work/42/plan.json: a: Field required",
+        ".plan-review/work/42/plan.json: b: Field required",
     ]
 
 

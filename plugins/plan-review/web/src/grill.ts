@@ -23,7 +23,7 @@ export interface GrillQuestion {
   choices: Choice[]
   /** The explanation or choices were revised in a reply. */
   updated: boolean
-  /** The owner's Other answers and Claude's replies. */
+  /** The owner's Other answers and the agent's replies. */
   thread: Message[]
   /** Null while the question is open. */
   answer: Answer | null
@@ -57,13 +57,13 @@ export interface Grill {
   rounds: GrillRound[]
   decisions: GrillDecision[]
   out_of_scope: string[]
-  /** Claude says nothing is left to ask: the page asks Yes or No. */
+  /** The agent says nothing is left to ask: the page asks Yes or No. */
   done: boolean
   confirmed_at: string | null
   log: OwnerAction[]
-  /** How many owner actions Claude has answered; fewer than log.length means it's Claude's turn. */
+  /** How many owner actions the agent has answered; fewer than log.length means it's the agent's turn. */
   handled: number
-  /** How many replies Claude may give to Others on one question; then it must settle. */
+  /** How many replies the agent may give to Others on one question; then it must settle. */
   max_replies: number
 }
 

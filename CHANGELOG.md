@@ -4,6 +4,14 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
+### 0.2.0
+
+- plan-review no longer depends on Claude Code inside. Settings are now `.plan-review/config.json`, runs live in `.plan-review/work/<id>/`, and your recorded grill mode in `.plan-review/work/preferences.json`. If the new file is missing, the old `.claude/pipeline.json` and `.claude/work/preferences.json` are still read, with one line on stderr saying how to move them; nothing is ever written or moved. Runs already in `.claude/work/` stay where they are and are not opened: finish a run before upgrading, or move its folder by hand. `examples/pipeline.json` is now `examples/config.json`.
+- Replies are signed `agent` instead of `claude`, help texts and the page say "the agent", and the page shows **Agent** for old and new replies alike (saved files are not rewritten).
+- Everything that belongs to one CLI moved into a Claude Code adapter: the upgrade steps, the generated files, and how `/ship` waits and starts the viewer. `plan-review upgrade` finds the adapter from the plugin's own folder; if it cannot tell, or the CLI is missing, it prints what to run and changes nothing.
+- The `/ship` workflow and the four agents are written once in `workflow/`; `skills/ship/SKILL.md` and `agents/*.md` are generated from them (`uv run python -m plan_review.generate`), and `check.sh` fails on a stale copy.
+- **If you copied the agents into your project's `.claude/agents/`, copy them again after upgrading**: the old copies write the plan to `.claude/work/<id>/`, where `/ship` no longer looks.
+
 ### 0.1.12 (2026-11-07)
 
 - The Classes tab is smaller and clearer. Each class says which side it is on (`side`: `front` or `back`), and the tab draws one side at a time with a **Front end** / **Back end** switch (no switch when the plan has one side). A box lists only member names (properties first, methods as `name()`) with a small colour mark on new, changed and removed ones, and its title shows what it extends or implements (`Car: AutoMobile, Insurable`, from a new `bases` list) instead of inherits/implements arrows. New and changed classes are drawn in full, unchanged classes linked to them faded, and plain functions live in a `module` box. Clicking a box opens a popup beside it with the full signatures, what the plan changes and Comment buttons (so commenting on a class takes two clicks). Members get `name`, `kind` (`property` or `method`) and an optional `note`; classes get `side`, `bases`, an optional `note` and the kind `component`. The architecture diagram uses smaller gaps and wrapped edge labels, so arrows stay short. Old plans still open and are drawn as before; only `plan-review validate` now requires the new shape (a new `shape_problems` check), and the architect agent writes it ([#60](https://github.com/Selimmo/claude-workbench/issues/60)).

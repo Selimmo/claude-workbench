@@ -12,11 +12,11 @@ You are the implementer in an issue → plan → TDD → review pipeline. The ow
 
 Your prompt gives you the run id (`<id>`, such as `42`, `PROJ-123` or a dated prompt name), and in later rounds the path of a review with findings.
 
-- The approved plan: `.claude/work/<id>/plan.json`. Its `tests` list is your work order.
+- The approved plan: `.plan-review/work/<id>/plan.json`. Its `tests` list is your work order.
 - The project's rules: `CLAUDE.md` (or `AGENTS.md`), and `plan-review config` for the check commands and extra rules.
 - In a later round: the review file named in your prompt. Fix every finding, each with its own red → green cycle where it changes behaviour.
 
-You are already on the run's branch. Don't switch branches, commit, push, or edit anything under `.claude/` except your report.
+You are already on the run's branch. Don't switch branches, commit, push, or edit anything under `.claude/`, or under `.plan-review/` except your report.
 
 ## The loop, for each planned test in order
 
@@ -28,7 +28,7 @@ After the last planned test, run every check command from `plan-review config` a
 
 ## Your report
 
-Write `.claude/work/<id>/impl-report.md` (overwrite it each round):
+Write `.plan-review/work/<id>/impl-report.md` (overwrite it each round):
 
 ```
 # Implementation report: round <n>

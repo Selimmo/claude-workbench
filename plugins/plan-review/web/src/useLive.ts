@@ -8,18 +8,18 @@ import {
   fetchPlan,
   fetchThreads,
 } from './api'
-import { useClaude } from './useClaude'
+import { useAgent } from './useAgent'
 import { useFileErrors } from './useFileErrors'
 import { changedIds } from './revisions'
-import type { ClaudeStatus, Draft, LastEvent, Thread } from './threads'
+import type { AgentStatus, Draft, LastEvent, Thread } from './threads'
 
 export interface Live {
   result: PlanResult | null
   threads: Thread[]
   refreshThreads: () => Promise<void>
-  /** What Claude is doing with the review, or null if it hasn't said. */
-  status: ClaudeStatus | null
-  /** The last event sent to Claude, or null if nothing was sent yet. */
+  /** What the agent is doing with the review, or null if it hasn't said. */
+  status: AgentStatus | null
+  /** The last event sent to the agent, or null if nothing was sent yet. */
   lastEvent: LastEvent | null
   /** The owner's unsent review comments. */
   drafts: Draft[]
@@ -28,7 +28,7 @@ export interface Live {
   /** Elements changed by revisions since the owner last marked them seen. */
   revised: Set<string>
   markSeen: () => void
-  /** Send the last event to Claude again (a no-op if Claude has answered it). */
+  /** Send the last event to the agent again (a no-op if the agent has answered it). */
   resend: () => Promise<void>
   approved: boolean
   /** The lines naming each broken file: comments, drafts, status, last event, approval. */
@@ -42,7 +42,7 @@ export function useLive(): Live {
   const [threads, setThreads] = useState<Thread[]>([])
   const [drafts, setDrafts] = useState<Draft[]>([])
   const { errors: brokenFiles, report } = useFileErrors()
-  const { status, lastEvent, resend, refreshStatus, refreshLastEvent } = useClaude(report)
+  const { status, lastEvent, resend, refreshStatus, refreshLastEvent } = useAgent(report)
   const [revised, setRevised] = useState<Set<string>>(new Set())
   const [approved, setApproved] = useState(false)
   const shown = useRef<PlanResult | null>(null)

@@ -19,8 +19,9 @@ from plan_review.file_errors import BrokenFile, named_errors
 from plan_review.grill import GrillError, GrillStore
 from plan_review.grill_drafts import GrillDraftStore
 from plan_review.grill_turn import Turn
+from plan_review.migration import config_source, preferences_source
 from plan_review.orchestration import MalformedReview, branch_name, tree_hash, verdict
-from plan_review.pipeline import PipelineConfigError, load_pipeline
+from plan_review.pipeline import PipelineConfig, PipelineConfigError, load_pipeline
 from plan_review.plan import Plan, PlanFileError, load_plan, record_branch, shape_problems
 from plan_review.prefs import GrillMode, grill_mode, load_preferences, record
 from plan_review.run_id import InvalidRunId, check_run_id, label
@@ -32,7 +33,6 @@ from plan_review.workdir import (
     ensure_work_dir,
     new_prompt_work_dir,
     preferences_file,
-    preferences_path,
     work_dir,
 )
 
@@ -66,7 +66,7 @@ def _parser() -> argparse.ArgumentParser:
     command("schema", "print the plan.json JSON Schema", lambda a: _schema())
     init = command(
         "init",
-        "create a run's .claude/work/<id>/ folder (or --prompt <name>: <name>-<date>)",
+        "create a run's .plan-review/work/<id>/ folder (or --prompt <name>: <name>-<date>)",
         lambda a: _init(a.run_id, a.prompt),
     )
     init.add_argument("run_id", nargs="?", help="an issue number or key, e.g. 42 or PROJ-123")
@@ -80,7 +80,7 @@ def _parser() -> argparse.ArgumentParser:
         "--open",
         choices=["browser", "none"],
         help="open the default browser, or only print the URL "
-        "(default: viewer.open in .claude/pipeline.json, else browser)",
+        "(default: viewer.open in .plan-review/config.json, else browser)",
     )
     command(
         "config", "print this project's pipeline settings, defaults filled in", lambda a: _config()
@@ -90,7 +90,7 @@ def _parser() -> argparse.ArgumentParser:
     ).add_argument("run_id")
     reply = command(
         "reply",
-        "answer a comment thread as Claude",
+        "answer a comment thread as the agent",
         lambda a: _reply(a.run_id, a.thread_id, a.text),
     )
     reply.add_argument("run_id")
@@ -98,7 +98,7 @@ def _parser() -> argparse.ArgumentParser:
     reply.add_argument("text")
     status = command(
         "status",
-        "show the owner what Claude is doing with their review (latest text wins)",
+        "show the owner what the agent is doing with their review (latest text wins)",
         lambda a: _status(a.run_id, a.text, done=a.done, clear=a.clear),
     )
     status.add_argument("run_id")
@@ -182,7 +182,15 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
 
-PIPELINE_FILE = Path(".claude", "pipeline.json")
+def _pipeline() -> tuple[PipelineConfig, str | None]:
+    """The project's settings, and a hint to show when they came from an old file."""
+    source = config_source(Path())
+    return load_pipeline(source.path), source.move_hint
+
+
+def _hint(line: str | None) -> None:
+    if line is not None:
+        print(line, file=sys.stderr)
 
 
 def _usage(parser: argparse.ArgumentParser) -> int:
@@ -192,11 +200,12 @@ def _usage(parser: argparse.ArgumentParser) -> int:
 
 def _config() -> int:
     try:
-        config = load_pipeline(PIPELINE_FILE)
+        config, hint = _pipeline()
     except PipelineConfigError as error:
         print("\n".join(error.errors), file=sys.stderr)
         return 1
     print(config.model_dump_json(indent=2))
+    _hint(hint)
     return 0
 
 
@@ -210,17 +219,20 @@ def _prefs(setting: str, value: str | None) -> int:
         record(preferences_file(Path()), mode)
         return 0
     try:
-        config = load_pipeline(PIPELINE_FILE)
+        config, config_hint = _pipeline()
     except PipelineConfigError as error:
         print("\n".join(error.errors), file=sys.stderr)
         return 1
-    path = preferences_path(Path())
+    source = preferences_source(Path())
+    path = source.path
     try:
         prefs_file = load_preferences(path)
     except ValidationError as error:
         print("\n".join(named_errors(path, error)), file=sys.stderr)
         return 1
     chosen = grill_mode(config, prefs_file)
+    _hint(config_hint)
+    _hint(source.move_hint)
     if chosen is None:
         print(
             "no grill mode chosen: ask the owner, then `plan-review prefs grill <mode>`",
@@ -326,8 +338,13 @@ def _validate(file: Path) -> int:
 
 
 def _serve(run_id: str, open_flag: str | None) -> int:
+    hint = None
     try:
-        open_mode = open_flag or load_pipeline(PIPELINE_FILE).viewer.open
+        if open_flag:
+            open_mode = open_flag  # the flag wins, so a broken config doesn't matter
+        else:
+            config, hint = _pipeline()
+            open_mode = config.viewer.open
     except PipelineConfigError as error:
         print("\n".join(error.errors), file=sys.stderr)
         return 1
@@ -355,6 +372,7 @@ def _serve(run_id: str, open_flag: str | None) -> int:
         sock.listen()
         url = f"http://127.0.0.1:{sock.getsockname()[1]}/{page}"
         print(f"plan-review: {label(run_id)} at {url} (Ctrl+C to stop)", flush=True)
+        _hint(hint)  # after the URL line: /ship reads the first line of the output
         if open_mode == "browser":
             webbrowser.open(url)
         run_server(create_app(plan_file, STATIC_DIR), sock)
@@ -399,7 +417,7 @@ def _status(run_id: str, text: str, *, done: bool, clear: bool) -> int:
 
 def _reply(run_id: str, thread_id: str, text: str) -> int:
     try:
-        ThreadStore(_work_dir(run_id) / "comments.json").reply(thread_id, text, author="claude")
+        ThreadStore(_work_dir(run_id) / "comments.json").reply(thread_id, text, author="agent")
     except ThreadNotFound:
         print(f"no thread '{thread_id}' for {label(run_id)}", file=sys.stderr)
         return 1
@@ -431,11 +449,13 @@ def _branch(run_id: str) -> int:
         if plan.branch:  # already named (and maybe created): never name it again
             print(plan.branch)
             return 0
-        pattern = load_pipeline(PIPELINE_FILE).branch
+        config, hint = _pipeline()
+        pattern = config.branch
     except (PlanFileError, PipelineConfigError) as error:
         print("\n".join(error.errors), file=sys.stderr)
         return 1
     branch = branch_name(run_id, plan.issue, pattern)
     record_branch(plan_file, branch)
     print(branch)
+    _hint(hint)
     return 0

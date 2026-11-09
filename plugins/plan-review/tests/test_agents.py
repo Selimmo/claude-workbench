@@ -68,7 +68,7 @@ def test_no_agent_reads_the_issue_with_gh(name: str) -> None:
 
 @pytest.mark.parametrize("name", ["architect", "code-reviewer"])
 def test_the_agents_that_need_the_issue_read_issue_md(name: str) -> None:
-    assert ".claude/work/<id>/issue.md" in body_of(name)
+    assert ".plan-review/work/<id>/issue.md" in body_of(name)
 
 
 def test_the_architect_writes_criteria_for_a_prompt_and_the_reviewer_checks_them() -> None:
@@ -84,8 +84,8 @@ def test_the_architect_writes_criteria_for_a_prompt_and_the_reviewer_checks_them
 def test_agents_find_their_files_by_run_id(name: str) -> None:
     text = body_of(name)
 
-    assert ".claude/work/<id>/" in text
-    assert ".claude/work/<issue>/" not in text
+    assert ".plan-review/work/<id>/" in text
+    assert ".plan-review/work/<issue>/" not in text
 
 
 def test_the_architect_leaves_branch_out_of_the_plan() -> None:
@@ -99,3 +99,9 @@ def test_the_architect_writes_classes_in_the_new_shape() -> None:
         assert needle in text
     assert "keep every id" in text
     assert "old shape" in text or "written before" in text
+
+
+def test_the_implementer_may_not_edit_the_run_folder_except_its_report() -> None:
+    text = body_of("implementer")
+
+    assert "edit anything under `.claude/`, or under `.plan-review/` except your report" in text

@@ -84,7 +84,7 @@ class Turn(_Strict):
         by_id = {q.id: q for r in state.rounds for q in r.questions}
         for reply in self.replies:
             question = by_id[reply.question_id]
-            question.thread.append(Message(author="claude", text=reply.text))
+            question.thread.append(Message(author="agent", text=reply.text))
             if reply.revised is not None:
                 question.explanation = reply.revised.explanation
                 question.choices = reply.revised.choices

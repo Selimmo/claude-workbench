@@ -1,6 +1,6 @@
 import type { AnswerDraft, Grill } from './grill'
 import type { Plan } from './plan'
-import type { ClaudeStatus, Draft, LastEvent, Thread } from './threads'
+import type { AgentStatus, Draft, LastEvent, Thread } from './threads'
 
 export type PlanResult =
   { ok: true; plan: Plan } | { ok: false; errors: string[]; missing: boolean; broken: boolean }
@@ -76,7 +76,7 @@ export const fetchThreads = (): Promise<Part<Thread[]>> =>
 export const fetchDrafts = (): Promise<Part<Draft[]>> =>
   fetchPart('/api/drafts', (body) => (body as { drafts?: Draft[] }).drafts, [])
 
-/** Comments and replies are drafts first; nothing reaches Claude until submitReview. */
+/** Comments and replies are drafts first; nothing reaches the agent until submitReview. */
 export const draftComment = async (anchor: string, text: string) =>
   void (await send('/api/drafts', { anchor, text }))
 export const draftReply = async (threadId: string, text: string) =>
@@ -85,7 +85,7 @@ export const editDraft = async (id: string, text: string) =>
   void (await send(`/api/drafts/${id}`, { text }, 'PUT'))
 export const discardDraft = async (id: string) =>
   void (await send(`/api/drafts/${id}`, undefined, 'DELETE'))
-/** Submits every draft; returns how many comments the server sent to Claude. */
+/** Submits every draft; returns how many comments the server sent to the agent. */
 export async function submitReview(): Promise<number> {
   const { comments } = (await send('/api/review')) as { comments: unknown[] }
   return comments.length
@@ -93,8 +93,8 @@ export async function submitReview(): Promise<number> {
 export const setResolved = async (id: string, resolved: boolean) =>
   void (await send(`/api/threads/${id}/${resolved ? 'resolve' : 'reopen'}`))
 
-export const fetchStatus = (): Promise<Part<ClaudeStatus | null>> =>
-  fetchPart('/api/status', (body) => (body as { status?: ClaudeStatus | null }).status, null)
+export const fetchStatus = (): Promise<Part<AgentStatus | null>> =>
+  fetchPart('/api/status', (body) => (body as { status?: AgentStatus | null }).status, null)
 
 export const fetchApproval = (): Promise<Part<boolean>> =>
   fetchPart('/api/approve', (body) => (body as { approved: boolean }).approved === true, false)
@@ -109,9 +109,9 @@ export const fetchLastEvent = (): Promise<Part<LastEvent | null>> =>
     null,
   )
 
-/** Sends the last event to Claude again, unless Claude already answered it. */
+/** Sends the last event to the agent again, unless the agent already answered it. */
 export const resend = async () =>
-  (await send('/api/resend')) as { sent: true } | { sent: false; status: ClaudeStatus }
+  (await send('/api/resend')) as { sent: true } | { sent: false; status: AgentStatus }
 
 export type GrillResult = { ok: true; grill: Grill } | { ok: false; errors: string[] }
 
@@ -136,7 +136,7 @@ export const fetchGrillDrafts = (): Promise<Part<Record<string, AnswerDraft>>> =
 
 export const saveGrillDraft = async (questionId: string, draft: AnswerDraft) =>
   void (await send(`/api/grill/drafts/${questionId}`, draft, 'PUT'))
-/** Records every draft as an answer and tells Claude. */
+/** Records every draft as an answer and tells the agent. */
 export const submitGrill = async () => void (await send('/api/grill/submit'))
 
 export const confirmGrill = async () => void (await send('/api/grill/confirm'))

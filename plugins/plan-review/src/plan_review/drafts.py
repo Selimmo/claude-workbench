@@ -1,6 +1,6 @@
 """The owner's unsent review comments, kept in the issue's drafts.json.
 
-Drafts live in their own file, not in comments.json: Claude, the CLI and the approval
+Drafts live in their own file, not in comments.json: the agent, the CLI and the approval
 check only ever see submitted comments. Kept on disk rather than in the browser because
 `serve` picks a new port (so a new origin, with empty browser storage) on every run.
 """

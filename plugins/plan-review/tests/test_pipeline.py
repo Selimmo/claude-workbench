@@ -58,7 +58,7 @@ def test_bad_config_is_reported_readably(tmp_path: Path, config: object, error: 
 
 
 def test_example_pipeline_config_is_valid_and_sets_every_field() -> None:
-    example = Path(__file__).parents[1] / "examples" / "pipeline.json"
+    example = Path(__file__).parents[1] / "examples" / "config.json"
 
     config = load_pipeline(example)
 
