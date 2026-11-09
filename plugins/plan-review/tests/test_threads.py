@@ -68,6 +68,7 @@ def test_old_comments_with_the_claude_author_still_load(store: ThreadStore, tmp_
 
 def test_resolve_and_reopen_toggle_the_thread(store: ThreadStore) -> None:
     thread = store.create("risk:1", "Agreed")
+    store.reply(thread.id, "Noted.", author="agent")
 
     assert store.set_resolved(thread.id, True).resolved
     assert not store.set_resolved(thread.id, False).resolved
@@ -339,3 +340,68 @@ def test_a_broken_comments_json_is_reported_and_left_as_it_is(tmp_path: Path) ->
         assert error.value.errors == named
 
     assert path.read_bytes() == b"{bad"
+
+
+def test_resolve_is_refused_while_the_owner_has_the_last_word(
+    store: ThreadStore, tmp_path: Path
+) -> None:
+    thread = store.create("class:A", "Why?")
+    before = (tmp_path / "comments.json").read_bytes()
+
+    with pytest.raises(threads.ResolveRefused):
+        store.set_resolved(thread.id, True)
+
+    assert (tmp_path / "comments.json").read_bytes() == before
+
+
+def test_resolve_works_once_the_agent_has_replied(store: ThreadStore) -> None:
+    thread = store.create("class:A", "Why?")
+    store.reply(thread.id, "Because.", author="agent")
+
+    assert store.set_resolved(thread.id, True).resolved
+
+
+def test_a_reply_signed_with_the_old_author_counts_as_the_agent(store: ThreadStore) -> None:
+    thread = store.create("class:A", "Why?")
+    store.reply(thread.id, "Because.", author="claude")
+
+    assert store.set_resolved(thread.id, True).resolved
+
+
+def test_an_owner_follow_up_locks_resolve_again(store: ThreadStore) -> None:
+    thread = store.create("class:A", "Why?")
+    store.reply(thread.id, "Because.", author="agent")
+    store.reply(thread.id, "But why?", author="owner")
+
+    with pytest.raises(threads.ResolveRefused):
+        store.set_resolved(thread.id, True)
+
+
+def test_reopen_is_always_allowed(store: ThreadStore) -> None:
+    thread = store.create("class:A", "Why?")
+    store.reply(thread.id, "Because.", author="agent")
+    store.set_resolved(thread.id, True)
+    # an older file: resolved, with the owner speaking last
+    path = store._path  # pyright: ignore[reportPrivateUsage]
+    store.reply(thread.id, "Hm", author="owner")
+    saved = store.all()
+    saved[0].resolved = True
+    path.write_bytes(threads._Threads.dump_json(saved))  # pyright: ignore[reportPrivateUsage]
+
+    assert not store.set_resolved(thread.id, False).resolved
+
+
+def test_an_owner_reply_reopens_a_resolved_thread(store: ThreadStore) -> None:
+    thread = store.create("class:A", "Why?")
+    store.reply(thread.id, "Because.", author="agent")
+    store.set_resolved(thread.id, True)
+
+    assert not store.reply(thread.id, "Wait", author="owner").resolved
+
+
+def test_an_agent_reply_leaves_a_resolved_thread_resolved(store: ThreadStore) -> None:
+    thread = store.create("class:A", "Why?")
+    store.reply(thread.id, "Because.", author="agent")
+    store.set_resolved(thread.id, True)
+
+    assert store.reply(thread.id, "Also.", author="agent").resolved

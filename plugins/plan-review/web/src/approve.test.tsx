@@ -127,3 +127,15 @@ test('the broken-files alert and the Agent banner share one sticky header on the
   expect(alert.parentElement).toHaveClass('sticky-head')
   expect(banner.parentElement).toBe(alert.parentElement)
 })
+
+test('a withdrawn approval unlocks the page', async () => {
+  server.approved = true
+  await open()
+  expect(await screen.findByText(/Approved/)).toBeInTheDocument()
+
+  server.approved = false
+  server.push({ type: 'approval_changed' })
+
+  expect(await screen.findByRole('button', { name: 'Approve plan' })).toBeInTheDocument()
+  expect(screen.queryByText(/Approved/)).not.toBeInTheDocument()
+})

@@ -26,7 +26,9 @@ if [[ -z "$tag" ]]; then
   exit 1
 fi
 version="${tag#plan-review--v}"
-asset_id="$(gh api "repos/$repo/releases/tags/$tag" | jq -r '.assets[0].id')"
+# The release also holds the wheel, so pick the zip by name, not by position.
+zip_asset='.assets[] | select(.name | endswith(".zip"))'
+asset_id="$(gh api "repos/$repo/releases/tags/$tag" | jq -r "$zip_asset | .id")"
 gh release download "$tag" -R "$repo" -p '*.zip' -D "$dir/zips" --clobber
 sha256="$(shasum -a 256 "$dir/zips/plan-review-$version.zip" | cut -d ' ' -f 1)"
 
@@ -47,7 +49,7 @@ gh api "repos/$repo/contents/.claude-plugin/marketplace.json?ref=main" \
       | .strict = false | .headersHelper = $h
     else . end)' >"$dir/.claude-plugin/marketplace.json"
 
-downloads() { gh api "repos/$repo/releases/tags/$tag" | jq -r '.assets[0].download_count'; }
+downloads() { gh api "repos/$repo/releases/tags/$tag" | jq -r "$zip_asset | .download_count"; }
 echo "$tag: asset $asset_id, $(downloads) downloads before Claude Code's"
 export CLAUDE_CONFIG_DIR="$dir/config"
 cache="$dir/config/plugins/cache/claude-workbench/plan-review"

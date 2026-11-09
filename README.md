@@ -43,6 +43,17 @@ Then ask Claude to *run `plan-review serve 42` in the background*; it keeps runn
 
 The architect plans issue #42 and the plan opens as diagrams. Comment, submit your review, and Claude answers or revises. Approve it, and agents implement it with TDD and review the result. Nothing is committed without your OK.
 
+### Codex
+
+plan-review also runs in OpenAI Codex. You need [Codex](https://developers.openai.com/codex), `git` and [uv](https://docs.astral.sh/uv/) 0.13.0 or later. Install the command from the newest release's wheel, then put the skill and agents where Codex reads them:
+
+```bash
+uv tool install https://github.com/Selimmo/claude-workbench/releases/download/plan-review--v0.3.0/plan_review-0.3.0-py3-none-any.whl
+plan-review install codex
+```
+
+(Each public release updates the version in that link.) Then run `$ship <issue number, link or prompt>` in Codex; `plan-review upgrade` updates both parts. What differs from Claude Code: Codex has no background watcher, so the agent runs `plan-review serve <id> --detach` (the viewer is its own process, and stops 2 hours after its page closes) and waits with `plan-review wait`, about every 4 minutes while you are away. Codex's sandbox must allow network access, or `gh` and `uv` fail and the viewer can't listen on `127.0.0.1`: in `~/.codex/config.toml` set `network_access = true` under `[sandbox_workspace_write]` (or use a sandbox mode that has it). The agents read `AGENTS.md`; if your project keeps its rules in `CLAUDE.md` only, set `project_doc_fallback_filenames = ["CLAUDE.md"]` in the same file so Codex reads them. To override an agent for one project, put `.codex/agents/<name>.toml` in it. Not tested in Codex's own sandbox yet: run `$ship` once and report what you see.
+
 Upgrade with `plan-review upgrade`, or turn on marketplace auto-update. See [plan-review's README](plugins/plan-review/README.md) for every command, the `plan.json` format, the agents and the project settings.
 
 ## What a plan looks like

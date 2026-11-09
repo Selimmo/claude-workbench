@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { fetchGrill, fetchPlan } from './api'
+import { connectUpdates } from './updatesSocket'
 
 /** 'Grill · Plan' links in the top bar, once the run has both pages. */
 export function PageSwitch({ current }: { current: 'grill' | 'plan' }) {
@@ -12,12 +13,13 @@ export function PageSwitch({ current }: { current: 'grill' | 'plan' }) {
         setBoth(grill !== null && plan.ok),
       )
     check()
-    const socket = new WebSocket(`ws://${location.host}/api/updates`)
-    socket.onmessage = (event: MessageEvent<string>) => {
-      const { type } = JSON.parse(event.data) as { type: string }
-      if (type === 'plan_changed' || type === 'grill_changed') check()
-    }
-    return () => socket.close()
+    return connectUpdates(
+      `ws://${location.host}/api/updates`,
+      ({ type }) => {
+        if (type === 'plan_changed' || type === 'grill_changed') check()
+      },
+      check,
+    )
   }, [])
   if (!both) return null
   return (

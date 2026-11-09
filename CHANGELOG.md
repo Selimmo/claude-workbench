@@ -4,6 +4,13 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
+### Unreleased
+
+- plan-review runs in OpenAI Codex. `plan-review install codex` writes the `$ship` skill and four agents into your home folders; `plan-review upgrade` installs the newest release wheel and writes them again. Each release now also carries a wheel.
+- Your actions are kept in a per-run log (`events.json`). `plan-review wait <id>` hands them to the agent one at a time, again until the agent sets a status, so nothing is lost or repeated. `serve --detach` and `stop` run the viewer as its own process, which stops itself 2 hours after its page closes.
+- **Resolve now needs the agent to have the last word in the thread** (Claude Code too): the button appears only after the agent replied, the server answers 409 otherwise, and a follow-up from you reopens a resolved thread. Approval is refused while a thread still waits for an answer.
+- The viewer page reconnects when the viewer restarts and reads what it missed. A review submitted while an approval is waiting withdraws the approval.
+
 ### 0.2.0
 
 - plan-review no longer depends on Claude Code inside. Settings are now `.plan-review/config.json`, runs live in `.plan-review/work/<id>/`, and your recorded grill mode in `.plan-review/work/preferences.json`. If the new file is missing, the old `.claude/pipeline.json` and `.claude/work/preferences.json` are still read, with one line on stderr saying how to move them; nothing is ever written or moved. Runs already in `.claude/work/` stay where they are and are not opened: finish a run before upgrading, or move its folder by hand. `examples/pipeline.json` is now `examples/config.json`.

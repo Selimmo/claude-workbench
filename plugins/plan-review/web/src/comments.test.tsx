@@ -513,9 +513,9 @@ test('a draft reply can be discarded from its thread', async () => {
 })
 
 test('resolving a thread takes effect at once', async () => {
-  server.threads = [thread('t-1', 'class:HintPolicy', 'Rename?')]
+  server.threads = [thread('t-1', 'class:HintPolicy', 'Rename?', 'Yes.')]
   await open()
-  fireEvent.click(await screen.findByRole('button', { name: '1 message on class:HintPolicy' }))
+  fireEvent.click(await screen.findByRole('button', { name: '2 messages on class:HintPolicy' }))
 
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Resolve' }))
 
@@ -524,9 +524,9 @@ test('resolving a thread takes effect at once', async () => {
 })
 
 test('reopening a resolved thread takes effect at once', async () => {
-  server.threads = [{ ...thread('t-1', 'class:HintPolicy', 'Rename?'), resolved: true }]
+  server.threads = [{ ...thread('t-1', 'class:HintPolicy', 'Rename?', 'Yes.'), resolved: true }]
   await open()
-  fireEvent.click(await screen.findByRole('button', { name: '1 message on class:HintPolicy' }))
+  fireEvent.click(await screen.findByRole('button', { name: '2 messages on class:HintPolicy' }))
 
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reopen' }))
 
@@ -603,6 +603,8 @@ test('a failed submit says why in a toast', async () => {
   expect(await screen.findByRole('alert', { name: 'Notification' })).toHaveTextContent(
     'Review not sent: disk full',
   )
+  expect(screen.getByText('Too vague')).toBeInTheDocument() // kept, to submit again
+  expect(screen.getByRole('button', { name: 'Submit review (1)' })).toBeEnabled()
 })
 
 test('a failed submit shows its error once, not also in the panel', async () => {
@@ -884,4 +886,47 @@ test('a banner line goes away once the file is fixed and the server pushes a cha
   await vi.waitFor(() =>
     expect(screen.queryByRole('alert', { name: 'Broken files' })).not.toBeInTheDocument(),
   )
+})
+
+test('the Resolve button appears only after the agent replied', async () => {
+  server.threads = [thread('t-1', 'class:HintPolicy', 'Rename?')]
+  await open()
+  fireEvent.click(await screen.findByRole('button', { name: '1 message on class:HintPolicy' }))
+  expect(within(screen.getByRole('dialog')).queryByRole('button', { name: 'Resolve' })).toBeNull()
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' }))
+
+  server.threads = [thread('t-1', 'class:HintPolicy', 'Rename?', 'Yes.')]
+  server.push({ type: 'threads_changed' })
+  fireEvent.click(await screen.findByRole('button', { name: '2 messages on class:HintPolicy' }))
+  expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Resolve' })).toBeVisible()
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' }))
+
+  server.threads = [
+    { ...thread('t-1', 'class:HintPolicy', 'Rename?', 'Yes.', 'Hm'), resolved: true },
+  ]
+  server.push({ type: 'threads_changed' })
+  fireEvent.click(await screen.findByRole('button', { name: '3 messages on class:HintPolicy' }))
+  expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reopen' })).toBeVisible()
+})
+
+test('the page reloads what it missed after a reconnect', async () => {
+  server.threads = [thread('t-1', 'class:HintPolicy', 'Rename?')]
+  await open()
+  await screen.findByRole('button', { name: '1 message on class:HintPolicy' })
+  const fetched = (url: string) => server.calls.filter((c) => c.url === url).length
+  const plans = fetched('/api/plan')
+  const lists = fetched('/api/threads')
+
+  server.threads = [thread('t-1', 'class:HintPolicy', 'Rename?', 'Yes.')]
+  server.dropSockets()
+
+  expect(
+    await screen.findByRole(
+      'button',
+      { name: '2 messages on class:HintPolicy' },
+      { timeout: 3000 },
+    ),
+  ).toBeInTheDocument()
+  expect(fetched('/api/plan')).toBeGreaterThan(plans)
+  expect(fetched('/api/threads')).toBeGreaterThan(lists)
 })

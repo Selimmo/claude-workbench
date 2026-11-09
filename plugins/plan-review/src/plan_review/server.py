@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncGenerator, Awaitable, Callable
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager, nullcontext, suppress
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
@@ -10,7 +10,9 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 
 from plan_review.approval import approval_routes
+from plan_review.detach import DetachedViewer
 from plan_review.drafts import DraftNotFound, DraftStore
+from plan_review.event_log import EventLog
 from plan_review.events import AgentEvents, Subscribers
 from plan_review.file_errors import BrokenFile
 from plan_review.grill import GrillError, GrillStore
@@ -23,7 +25,7 @@ from plan_review.review import review_routes
 from plan_review.run_id import label
 from plan_review.status import StatusStore, status_routes
 from plan_review.thread_routes import thread_routes
-from plan_review.threads import BlankComment, ThreadNotFound, ThreadStore
+from plan_review.threads import BlankComment, ResolveRefused, ThreadNotFound, ThreadStore
 
 
 def _signature(path: Path) -> tuple[int, int] | None:
@@ -66,6 +68,10 @@ def _error_handlers(app: FastAPI) -> None:
     async def not_found(_: Request, error: ThreadNotFound) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
         return JSONResponse({"errors": [f"no thread '{error.args[0]}'"]}, status_code=404)
 
+    @app.exception_handler(ResolveRefused)
+    async def resolve_refused(_: Request, error: ResolveRefused) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
+        return JSONResponse({"errors": [str(error)]}, status_code=409)
+
     @app.exception_handler(DraftNotFound)
     async def no_draft(_: Request, error: DraftNotFound) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
         return JSONResponse({"errors": [f"no draft '{error.args[0]}'"]}, status_code=404)
@@ -97,7 +103,13 @@ def _page_routes(app: FastAPI, plan_file: Path, static_dir: Path) -> None:
         return FileResponse(static_dir / "index.html")
 
 
-def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5) -> FastAPI:
+def create_app(
+    plan_file: Path,
+    static_dir: Path,
+    *,
+    poll_interval: float = 0.5,
+    detached: DetachedViewer | None = None,
+) -> FastAPI:
     comments_file = plan_file.parent / "comments.json"  # sits next to the plan it comments on
     drafts_file = plan_file.parent / "drafts.json"  # the owner's unsent review comments
     status_file = plan_file.parent / "status.json"  # what the agent is doing, set by the CLI
@@ -107,7 +119,7 @@ def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5)
     # the agent, on /events. Its last event is kept, but last_event.json is
     # not watched: pages are not told about it, so /api/updates is unchanged.
     kept = LastEventStore(plan_file.parent / "last_event.json")
-    events = AgentEvents(kept)
+    events = AgentEvents(kept, EventLog(plan_file.parent / "events.json"))
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
@@ -116,11 +128,13 @@ def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5)
             comments_file: "threads_changed",
             drafts_file: "drafts_changed",  # e.g. a second tab of the viewer
             status_file: "status_changed",
+            plan_file.parent / "approved.json": "approval_changed",  # the agent withdrew it
             grill_file: "grill_changed",
             grill_drafts_file: "grill_drafts_changed",
         }
         watcher = asyncio.create_task(_watch(watched, poll_interval, subscribers))
-        yield
+        async with detached.watching(subscribers) if detached else nullcontext():
+            yield
         watcher.cancel()
         with suppress(asyncio.CancelledError):
             await watcher
@@ -162,6 +176,9 @@ def create_app(plan_file: Path, static_dir: Path, *, poll_interval: float = 0.5)
         )
     )
     app.include_router(approval_routes(store, drafts, plan_file, events))
+
+    if detached:
+        app.include_router(detached.routes())
 
     _page_routes(app, plan_file, static_dir)
 

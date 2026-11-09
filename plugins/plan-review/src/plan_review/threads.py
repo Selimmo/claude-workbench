@@ -27,6 +27,14 @@ class ThreadNotFound(KeyError):
     pass
 
 
+class ResolveRefused(Exception):
+    """The owner spoke last: the agent has not answered yet, so there is nothing to resolve."""
+
+    def __init__(self, thread_id: str) -> None:
+        super().__init__(f"thread '{thread_id}' awaits an answer from the agent")
+        self.thread_id = thread_id
+
+
 class BlankComment(ValueError):
     def __init__(self) -> None:
         super().__init__("comment text is empty")
@@ -50,6 +58,11 @@ class Thread(BaseModel):
     anchor: str
     messages: list[Message]
     resolved: bool = False
+
+    @property
+    def awaiting_answer(self) -> bool:
+        """The owner has the last word, so the agent still owes an answer."""
+        return self.messages[-1].author == "owner"
 
 
 _Threads = TypeAdapter(list[Thread])
@@ -93,12 +106,21 @@ class ThreadStore:
 
     def reply(self, thread_id: str, text: str, *, author: Author) -> Thread:
         require_text(text)
-        return self._update(
-            thread_id, lambda t: t.messages.append(Message(author=author, text=text))
-        )
+
+        def add(thread: Thread) -> None:
+            thread.messages.append(Message(author=author, text=text))
+            if author == "owner":
+                thread.resolved = False  # a follow-up reopens the thread
+
+        return self._update(thread_id, add)
 
     def set_resolved(self, thread_id: str, resolved: bool) -> Thread:
-        return self._update(thread_id, lambda t: setattr(t, "resolved", resolved))
+        def change(thread: Thread) -> None:
+            if resolved and thread.awaiting_answer:
+                raise ResolveRefused(thread.id)
+            thread.resolved = resolved
+
+        return self._update(thread_id, change)
 
     def _update(self, thread_id: str, change: Callable[[Thread], object]) -> Thread:
         with file_lock(self._path):
@@ -115,14 +137,15 @@ class ThreadStore:
 
 
 @contextmanager
-def file_lock(path: Path) -> Generator[None]:
+def file_lock(path: Path, timeout: float = -1) -> Generator[None]:
     """Hold an exclusive lock for a read-modify-write of `path`.
 
     The server's request threads and the CLI (another process) write the same files, so
     the lock is the OS's (a file lock on a sibling `.lock` file, through the filelock
-    package, which works on Windows too), not just a threading.Lock.
+    package, which works on Windows too), not just a threading.Lock. A `timeout` in seconds
+    raises filelock.Timeout when the lock stays busy; by default it waits for as long as it takes.
     """
-    with FileLock(path.with_name(f"{path.name}.lock")):
+    with FileLock(path.with_name(f"{path.name}.lock"), timeout=timeout):
         yield
 
 

@@ -47,7 +47,9 @@ def fakes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (fakes / "releases.json").write_text(
         json.dumps(releases + [{"tagName": "plan-review--v0.1.1"}])
     )
-    (fakes / "release.json").write_text(json.dumps({"assets": [{"id": 4242, "download_count": 3}]}))
+    (fakes / "release.json").write_text(
+        json.dumps({"assets": [{"id": 4242, "name": "plan-review-0.1.2.zip", "download_count": 3}]})
+    )
     marketplace = {
         "name": "claude-workbench",
         "plugins": [{"name": "plan-review", "source": "./p"}],
@@ -172,3 +174,19 @@ def test_a_usage_error_creates_nothing(fakes: Path, tmp_path: Path) -> None:
 
     assert result.returncode == 2
     assert list((tmp_path / "cwd").iterdir()) == []
+
+
+def test_prove_release_picks_the_zip_when_the_wheel_is_listed_first(
+    fakes: Path, tmp_path: Path
+) -> None:
+    wheel = {"id": 1, "name": "plan_review-0.1.2-py3-none-any.whl", "download_count": 9}
+    zip_asset = {"id": 4242, "name": "plan-review-0.1.2.zip", "download_count": 3}
+    (fakes / "release.json").write_text(json.dumps({"assets": [wheel, zip_asset]}))
+    work = tmp_path / "proof"
+
+    result = prove("install", str(work))
+
+    assert result.returncode == 0, result.stderr
+    marketplace = json.loads((work / ".claude-plugin" / "marketplace.json").read_text())
+    assert marketplace["plugins"][0]["source"]["url"] == f"{API}/4242"
+    assert "asset 4242, 3 downloads before" in result.stdout

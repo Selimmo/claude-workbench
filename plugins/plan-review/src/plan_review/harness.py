@@ -9,6 +9,7 @@ from plan_review.workflow import Workflow
 class Adapter(Protocol):
     """Everything specific to one CLI that runs the agents."""
 
+    key: str
     name: str
 
     def installed_at(self, package_root: Path) -> bool:
@@ -25,6 +26,10 @@ class Adapter(Protocol):
 
     def upgrade_commands(self) -> list[str]:
         """What a person would run, for when plan-review can't do it itself."""
+        ...
+
+    def install(self) -> int:
+        """Put the skill and agents where this CLI reads them; the exit code."""
         ...
 
     def files(self, workflow: Workflow) -> dict[PurePosixPath, str]:

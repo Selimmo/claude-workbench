@@ -307,6 +307,7 @@ def test_threads_lists_open_threads_as_json(
 ) -> None:
     open_thread = comments(project).create("tab:files", "Open")
     done = comments(project).create("tab:risks", "Done")
+    comments(project).reply(done.id, "Noted.", author="agent")
     comments(project).set_resolved(done.id, True)
 
     exit_code = main(["threads", "7"])
@@ -1232,3 +1233,12 @@ def test_help_texts_say_the_agent(
     assert "Claude" not in top
     assert ".plan-review/config.json" in serve_help
     assert ".claude" not in serve_help
+
+
+def test_help_does_not_list_the_internal_viewer_process(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    top = _help(capsys, [])
+
+    assert "viewer-process" not in top
+    assert "SUPPRESS" not in top

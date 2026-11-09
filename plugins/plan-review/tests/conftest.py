@@ -75,6 +75,11 @@ def repo(tmp_path: Path) -> Path:
     plugin = root / "plugins" / "plan-review"
     (plugin / ".claude-plugin").mkdir(parents=True)
     (root / "LICENSE").write_text("MIT\n")
+    (root / "README.md").write_text(
+        "# claude-workbench\n\nCodex:\n\n```bash\n"
+        "uv tool install https://github.com/o/r/releases/download/"
+        "plan-review--v0.1.0/plan_review-0.1.0-py3-none-any.whl\n```\n"
+    )
     (root / ".claude-plugin").mkdir()
     (root / ".claude-plugin" / "marketplace.json").write_text(
         json.dumps(

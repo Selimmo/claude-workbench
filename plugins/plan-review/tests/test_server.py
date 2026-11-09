@@ -8,12 +8,15 @@ from pathlib import Path
 import pytest
 import uvicorn
 from fastapi.testclient import TestClient
+from pydantic import TypeAdapter
 from websockets.sync.client import connect
 
 from plan_review.drafts import DraftStore
+from plan_review.event_log import EventLog
+from plan_review.last_event import LastEventStore
 from plan_review.server import create_app
 from plan_review.status import StatusStore
-from plan_review.threads import ThreadStore
+from plan_review.threads import Thread, ThreadStore
 
 EXAMPLE = Path(__file__).parents[1] / "examples" / "plan.json"
 
@@ -120,14 +123,19 @@ def test_real_uvicorn_server_pushes_plan_changes_over_websocket(
 
 
 def test_owner_can_list_resolve_and_reopen_threads(plan_file: Path, static_dir: Path) -> None:
-    thread = ThreadStore(plan_file.parent / "comments.json").create("class:HintPolicy", "Why?")
+    threads = ThreadStore(plan_file.parent / "comments.json")
+    thread = threads.create("class:HintPolicy", "Why?")
+    threads.reply(thread.id, "Because.", author="agent")
     client = TestClient(create_app(plan_file, static_dir))
 
     client.post(f"/api/threads/{thread.id}/resolve")
     client.post(f"/api/threads/{thread.id}/reopen")
     (listed,) = client.get("/api/threads").json()["threads"]
 
-    assert [(m["author"], m["text"]) for m in listed["messages"]] == [("owner", "Why?")]
+    assert [(m["author"], m["text"]) for m in listed["messages"]] == [
+        ("owner", "Why?"),
+        ("agent", "Because."),
+    ]
     assert listed["resolved"] is False
     assert listed["orphaned"] is False
 
@@ -342,9 +350,30 @@ def test_approve_is_refused_while_a_thread_is_unresolved(plan_file: Path, static
     assert not (plan_file.parent / "approved.json").exists()
 
 
+def test_a_broken_log_refuses_the_approval_before_it_is_saved(
+    plan_file: Path, static_dir: Path
+) -> None:
+    log = plan_file.parent / "events.json"
+    log.write_text("{ nope")
+    client = TestClient(create_app(plan_file, static_dir))
+
+    refused = client.post("/api/approve")
+
+    assert refused.status_code == 422
+    assert "events.json" in refused.json()["errors"][0]
+    assert not (plan_file.parent / "approved.json").exists()  # or the agent is never told
+
+    log.unlink()  # the owner repairs it and approves again
+
+    assert client.post("/api/approve").status_code == 200
+    assert (plan_file.parent / "approved.json").exists()
+
+
 def test_approve_records_approval_and_announces_it(plan_file: Path, static_dir: Path) -> None:
     store = ThreadStore(plan_file.parent / "comments.json")
-    store.set_resolved(store.create("risk:1", "Q").id, True)
+    thread = store.create("risk:1", "Q")
+    store.reply(thread.id, "A.", author="agent")
+    store.set_resolved(thread.id, True)
     with (
         TestClient(create_app(plan_file, static_dir)) as client,
         client.websocket_connect("/events") as events,
@@ -450,9 +479,10 @@ def test_an_approval_is_kept_as_the_last_event(plan_file: Path, static_dir: Path
     with TestClient(create_app(plan_file, static_dir)) as client:
         client.post("/api/drafts", json={"anchor": "class:HintPolicy", "text": "Why?"})
         client.post("/api/review")
-        ThreadStore(plan_file.parent / "comments.json").set_resolved(
-            ThreadStore(plan_file.parent / "comments.json").all()[0].id, True
-        )
+        threads = ThreadStore(plan_file.parent / "comments.json")
+        thread_id = threads.all()[0].id
+        threads.reply(thread_id, "A.", author="agent")
+        threads.set_resolved(thread_id, True)
         client.post("/api/approve")
 
     kept = json.loads((plan_file.parent / "last_event.json").read_text())
@@ -471,7 +501,8 @@ def test_pages_are_not_told_about_the_kept_event(plan_file: Path, static_dir: Pa
     app = create_app(plan_file, static_dir, poll_interval=0.01)
 
     with TestClient(app) as client, client.websocket_connect("/api/updates") as updates:
-        client.post("/api/approve")  # keeps an event; approved.json is not watched either
+        # keeps an event directly: unlike approving, this pushes nothing else to the pages
+        LastEventStore(plan_file.parent / "last_event.json").keep({"type": "approved"})
         StatusStore(plan_file.parent / "status.json").set("Approved, implementing")
 
         assert updates.receive_json() == {"type": "status_changed"}
@@ -700,3 +731,60 @@ def test_serve_still_opens_an_old_plan(plan_file: Path, static_dir: Path) -> Non
 
     assert response.status_code == 200
     assert response.json()["classes"][0]["id"] == "class:HintPolicy"
+
+
+def test_resolve_route_answers_409_with_the_reason(plan_file: Path, static_dir: Path) -> None:
+    thread = ThreadStore(plan_file.parent / "comments.json").create("class:HintPolicy", "Why?")
+    client = TestClient(create_app(plan_file, static_dir))
+
+    response = client.post(f"/api/threads/{thread.id}/resolve")
+
+    assert response.status_code == 409
+    assert response.json() == {"errors": [f"thread '{thread.id}' awaits an answer from the agent"]}
+
+
+def test_approve_is_refused_while_a_thread_awaits_an_answer(
+    plan_file: Path, static_dir: Path
+) -> None:
+    path = plan_file.parent / "comments.json"
+    threads = ThreadStore(path)
+    thread = threads.create("risk:1", "Q")
+    saved = threads.all()
+    saved[0].resolved = True  # an older file: resolved, but the owner spoke last
+    path.write_bytes(TypeAdapter(list[Thread]).dump_json(saved))
+    client = TestClient(create_app(plan_file, static_dir))
+
+    response = client.post("/api/approve")
+
+    assert response.status_code == 409
+    assert response.json() == {"errors": [f"thread '{thread.id}' awaits an answer from the agent"]}
+    assert not (plan_file.parent / "approved.json").exists()
+
+
+def test_an_approval_reaches_the_log(plan_file: Path, static_dir: Path) -> None:
+    with TestClient(create_app(plan_file, static_dir)) as client:
+        client.post("/api/approve")
+
+    assert EventLog(plan_file.parent / "events.json").offer() == {"type": "approved", "seq": 1}
+
+
+def test_resend_adds_nothing_to_the_log(plan_file: Path, static_dir: Path) -> None:
+    with TestClient(create_app(plan_file, static_dir)) as client:
+        client.post("/api/approve")
+        assert client.post("/api/resend").json() == {"sent": True}
+
+    log = EventLog(plan_file.parent / "events.json")
+    assert log.offer() == {"type": "approved", "seq": 1}
+    log.confirm()
+    assert log.offer() is None
+
+
+def test_pages_hear_when_the_approval_changes(plan_file: Path, static_dir: Path) -> None:
+    approved = plan_file.parent / "approved.json"
+    approved.write_text("{}")
+    app = create_app(plan_file, static_dir, poll_interval=0.01)
+
+    with TestClient(app) as client, client.websocket_connect("/api/updates") as updates:
+        approved.unlink()
+
+        assert updates.receive_json() == {"type": "approval_changed"}

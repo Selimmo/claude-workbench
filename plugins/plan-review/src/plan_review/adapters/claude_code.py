@@ -33,12 +33,44 @@ SLOTS: Mapping[str, str] = {
     "rules_file": "CLAUDE.md",
     "harness_folder": ".claude/",
     "skill_tool": "with the Skill tool",
-    "background": "with the Bash tool in the background (`run_in_background`)",
-    "event_source": (
-        "with the **Monitor** tool's WebSocket source: "
-        "`ws://127.0.0.1:<port>/events`, `timeout_ms: 1800000`, description"
+    "rules_also": " (or `AGENTS.md`)",
+    "start_viewer": (
+        "Start `plan-review serve ID` with the Bash tool in the background (`run_in_background`)."
     ),
-    "watcher": "Monitor",
+    "start_viewer_inline": (
+        "start `plan-review serve ID` with the Bash tool in the background (`run_in_background`)"
+    ),
+    "resume_viewer": "start `plan-review serve ID` as in point 2",
+    "ignore_repeat": "ignore it.",
+    "viewer_output": (
+        "Read its first output line, `plan-review: <label> at http://127.0.0.1:<port>/`, "
+        "from the task's output file, and give the owner that URL."
+    ),
+    "viewer_kept": (
+        "do not start another (point 1) or arm a second Monitor (point 2): "
+        "the same Monitor receives the review events too."
+    ),
+    "keep_viewer": "Keep the server and the Monitor running: step 3 reuses them.",
+    "stop_viewer": "stop the Monitor and the server task",
+    "abort_viewer": "stop the Monitor and the server",
+    "grill_listen": (
+        "Subscribe with the **Monitor** tool's WebSocket source: "
+        "`ws://127.0.0.1:<port>/events`, `timeout_ms: 1800000`, description "
+        "`plan-review <label> grill`. When it expires, arm it again and catch up with "
+        "`plan-review grill pending ID`, because events sent while no Monitor listens are "
+        "lost: handle every pending owner action as below."
+    ),
+    "review_listen": (
+        "Subscribe to the owner's actions with the **Monitor** tool's WebSocket source: "
+        "`ws://127.0.0.1:<port>/events`, `timeout_ms: 1800000`, description "
+        "`plan-review <label>`. A Monitor lasts at most 30 minutes: when it expires before "
+        "`approved`, arm it again. Events sent while no Monitor is listening are not replayed "
+        "(the viewer keeps the last one only so the owner can press Resend), so each time you "
+        "arm it again, catch up: run `plan-review threads ID` and treat every thread whose last "
+        "message is the owner's (no reply from you yet) as part of a review, and handle it as "
+        "below; if `W/approved.json` exists, the plan was approved: handle it as `approved` "
+        "below."
+    ),
 }
 
 
@@ -70,6 +102,7 @@ def _frontmatter(fields: Mapping[str, str]) -> str:
 
 
 class ClaudeCode:
+    key = "claude-code"
     name = "Claude Code"
     slots = SLOTS
     agent_settings = AGENT_SETTINGS
@@ -94,6 +127,13 @@ class ClaudeCode:
 
     def upgrade_commands(self) -> list[str]:
         return [" ".join(["claude", *step]) for step in STEPS]
+
+    def install(self) -> int:
+        print(
+            "Claude Code installs plan-review as a plugin: "
+            f"`claude plugin install plan-review@{MARKETPLACE}`"
+        )
+        return 2
 
     def files(self, workflow: Workflow) -> dict[PurePosixPath, str]:
         ship = workflow.ship

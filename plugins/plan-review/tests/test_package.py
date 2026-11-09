@@ -1,5 +1,6 @@
 """scripts/package.sh: the release zip, which is exactly what Claude Code installs."""
 
+import re
 import stat
 import subprocess
 import zipfile
@@ -120,3 +121,43 @@ def test_the_built_page_stays_out_of_git_on_main() -> None:
     )
 
     assert result.returncode == 0, "static/ is not gitignored"
+
+
+@pytest.mark.timeout(180)
+def test_the_wheel_holds_the_page_and_the_codex_files(tmp_path: Path) -> None:
+    page = PLUGIN / "src" / "plan_review" / "static" / "index.html"
+    if not page.is_file():
+        pytest.skip("the viewer page is not built: run `npm --prefix web run build`")
+
+    subprocess.run(["uv", "build", "--wheel", "--out-dir", str(tmp_path)], cwd=PLUGIN, check=True)
+
+    (wheel,) = tmp_path.glob("plan_review-*.whl")
+    names = zipfile.ZipFile(wheel).namelist()
+    assert "plan_review/static/index.html" in names
+    for shipped in [
+        "plan_review/adapters/codex_files/skills/ship/SKILL.md",
+        "plan_review/adapters/codex_files/skills/ship/agents/openai.yaml",
+        "plan_review/adapters/codex_files/agents/plan-review-architect.toml",
+    ]:
+        assert shipped in names
+
+
+ROOT = PLUGIN.parents[1]
+
+
+def test_the_release_workflow_uploads_the_zip_and_the_wheel() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "plan-review-release.yml").read_text()
+
+    assert workflow.index("./check.sh") < workflow.index("uv build --wheel")
+    assert re.search(r"gh release upload .*\.zip.*\.whl|gh release upload .*wheel_file", workflow)
+    assert "plan_review-$VERSION-py3-none-any.whl" in workflow
+    # the build job hands the wheel to the publish job along with the zip
+    assert "${{ runner.temp }}/dist/*.whl" in workflow
+
+
+def test_the_shipped_readme_holds_no_wheel_link() -> None:
+    # It ships in the zip: a link per release would be a commit per release (the version guard).
+    readme = (PLUGIN / "README.md").read_text()
+
+    assert not re.search(r"plan_review-[\d.]+-py3-none-any\.whl", readme)
+    assert "releases/download" not in readme

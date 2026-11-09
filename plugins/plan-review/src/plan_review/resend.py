@@ -36,7 +36,7 @@ def resend_routes(kept: LastEventStore, status: StatusStore, events: AgentEvents
         current = status.get()
         if answered(current, last):
             return {"sent": False, "status": current}
-        await events.send(last.event)
+        await events.resend(last.event)
         return {"sent": True}
 
     return router

@@ -258,3 +258,13 @@ def test_the_skill_uses_the_new_folder_and_config_file() -> None:
 def test_an_old_file_hint_is_passed_on_to_the_owner() -> None:
     assert "show the owner" in _step_0()
     assert "line about moving an old file" in _step_0()
+
+
+def test_claude_code_ship_keeps_its_waiting_text() -> None:
+    _, body = parts()
+
+    assert "Monitor" in body
+    assert "run_in_background" in body
+    assert "arm it again" in body
+    assert "plan-review wait" not in body
+    assert "--detach" not in body
