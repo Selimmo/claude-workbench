@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import math
 import socket
 import sys
 import webbrowser
@@ -14,7 +15,16 @@ import uvicorn
 from fastapi import FastAPI
 from pydantic import ValidationError
 
+from plan_review.adapters import ADAPTERS, adapter_by_key
 from plan_review.decisions_md import decisions_markdown
+from plan_review.detach import (
+    DetachedViewer,
+    ViewerFailed,
+    record_file,
+    start_viewer,
+    stop_viewer,
+)
+from plan_review.event_log import EventLog, wait_for_event
 from plan_review.file_errors import BrokenFile, named_errors
 from plan_review.grill import GrillError, GrillStore
 from plan_review.grill_drafts import GrillDraftStore
@@ -54,12 +64,13 @@ def _parser() -> argparse.ArgumentParser:
     # Handled here rather than with action="version", which calls sys.exit():
     # main() returns its exit code so callers (and tests) stay in control.
     parser.add_argument("--version", action="store_true", help="print the version and exit")
-    commands = parser.add_subparsers(dest="command")
+    commands = parser.add_subparsers(dest="command", metavar="command")
 
     def command(
-        name: str, help: str, run: Callable[[argparse.Namespace], int]
+        name: str, help: str | None, run: Callable[[argparse.Namespace], int]
     ) -> argparse.ArgumentParser:
-        sub = commands.add_parser(name, help=help)
+        # No `help=` at all hides a subcommand from the listing; `help=None` would not.
+        sub = commands.add_parser(name) if help is None else commands.add_parser(name, help=help)
         sub.set_defaults(run=run)
         return sub
 
@@ -74,14 +85,36 @@ def _parser() -> argparse.ArgumentParser:
     command("validate", "check a plan.json file", lambda a: _validate(a.file)).add_argument(
         "file", type=Path
     )
-    serve = command("serve", "open the viewer for a run's plan", lambda a: _serve(a.run_id, a.open))
+    serve = command(
+        "serve",
+        "open the viewer for a run's plan",
+        lambda a: _serve(a.run_id, a.open, detach=a.detach),
+    )
     serve.add_argument("run_id")
+    serve.add_argument(
+        "--detach",
+        action="store_true",
+        help="run the viewer as its own process and return (stop it with `plan-review stop`)",
+    )
     serve.add_argument(
         "--open",
         choices=["browser", "none"],
         help="open the default browser, or only print the URL "
         "(default: viewer.open in .plan-review/config.json, else browser)",
     )
+    install = command(
+        "install",
+        "put plan-review's skill and agents where a CLI reads them",
+        lambda a: _install(a.cli),
+    )
+    install.add_argument("cli", choices=[a.key for a in ADAPTERS])
+    command("stop", "stop a run's detached viewer", lambda a: _stop(a.run_id)).add_argument(
+        "run_id"
+    )
+    process = command("viewer-process", None, lambda a: _viewer_process(a))
+    process.add_argument("run_id")
+    process.add_argument("--port", type=int, required=True)
+    process.add_argument("--token", required=True)
     command(
         "config", "print this project's pipeline settings, defaults filled in", lambda a: _config()
     )
@@ -105,6 +138,15 @@ def _parser() -> argparse.ArgumentParser:
     status.add_argument("text", nargs="?", default="")
     status.add_argument("--done", action="store_true", help="mark it finished")
     status.add_argument("--clear", action="store_true", help="remove the status line")
+    wait = command(
+        "wait",
+        'the next thing the owner did, as one JSON line; {"type":"timeout"} if nothing',
+        lambda a: _wait(a.run_id, a.timeout),
+    )
+    wait.add_argument("run_id")
+    wait.add_argument(
+        "--timeout", default="240", metavar="SECONDS", help="how long to wait (default: 240)"
+    )
     command(
         "branch",
         "the branch name for a run: recorded in its plan, else made",
@@ -337,7 +379,7 @@ def _validate(file: Path) -> int:
     return 0
 
 
-def _serve(run_id: str, open_flag: str | None) -> int:
+def _serve(run_id: str, open_flag: str | None, *, detach: bool = False) -> int:
     hint = None
     try:
         if open_flag:
@@ -363,7 +405,9 @@ def _serve(run_id: str, open_flag: str | None) -> int:
             print("\n".join(error.errors), file=sys.stderr)
             return 2 if error.missing else 1
         page = "grill"
-    ensure_work_dir(Path(), run_id)  # the page writes comments and drafts there
+    work = ensure_work_dir(Path(), run_id)  # the page writes comments and drafts there
+    if detach:
+        return _serve_detached(run_id, work, page, open_mode, hint)
     # Bind and listen before opening the browser: its first request then waits in the
     # socket's queue until uvicorn accepts it, instead of racing the server's startup.
     # Port 0 lets the OS pick a free port.
@@ -379,6 +423,59 @@ def _serve(run_id: str, open_flag: str | None) -> int:
     return 0
 
 
+def _serve_detached(run_id: str, work: Path, page: str, open_mode: str, hint: str | None) -> int:
+    try:
+        record, started = start_viewer(Path(), work, run_id)
+    except ViewerFailed as error:
+        print(error.log, file=sys.stderr, end="" if error.log.endswith("\n") else "\n")
+        return error.code
+    url = f"http://127.0.0.1:{record.port}/{page}"
+    print(
+        f"plan-review: {label(run_id)} at {url} (stop it with `plan-review stop {run_id}`)",
+        flush=True,
+    )
+    _hint(hint)
+    if started and open_mode == "browser":
+        webbrowser.open(url)
+    return 0
+
+
+def _install(key: str) -> int:
+    adapter = adapter_by_key(key)
+    assert adapter is not None  # argparse limited the choices to the adapters
+    return adapter.install()
+
+
+def _stop(run_id: str) -> int:
+    if stop_viewer(_work_dir(run_id), run_id):
+        print(f"plan-review: stopped the viewer for {label(run_id)}")
+    else:
+        print(f"plan-review: no viewer is running for {label(run_id)}")
+    return 0
+
+
+def _viewer_process(args: argparse.Namespace) -> int:
+    """The detached viewer itself: the server of `serve`, stoppable and stopping when idle."""
+    run_id: str = args.run_id
+    work = _work_dir(run_id)
+    server: uvicorn.Server | None = None
+
+    def request_stop() -> None:
+        if server is not None:
+            server.should_exit = True
+
+    detached = DetachedViewer(
+        run_id=run_id, token=args.token, request_stop=request_stop, record=record_file(work)
+    )
+    app = create_app(work / "plan.json", STATIC_DIR, detached=detached)
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", args.port))
+        sock.listen()
+        server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
+        server.run(sockets=[sock])
+    return 0
+
+
 def _threads(run_id: str) -> int:
     open_threads = [
         t for t in ThreadStore(_work_dir(run_id) / "comments.json").all() if not t.resolved
@@ -387,13 +484,40 @@ def _threads(run_id: str) -> int:
     return 0
 
 
-def _status(run_id: str, text: str, *, done: bool, clear: bool) -> int:
+def _existing_work_dir(run_id: str) -> Path | None:
+    """The run's folder; None (after saying so) if there is none, e.g. a wrong directory."""
     work = _work_dir(run_id)
-    if not work.is_dir():
+    if work.is_dir():
+        return work
+    print(
+        f"no {work.as_posix()}/ for {label(run_id)}: is this the project root?",
+        file=sys.stderr,
+    )
+    return None
+
+
+def _wait(run_id: str, timeout: str) -> int:
+    try:
+        seconds = float(timeout)
+        if not 0 <= seconds < math.inf:
+            raise ValueError(timeout)
+    except ValueError:
         print(
-            f"no {work.as_posix()}/ for {label(run_id)}: is this the project root?",
+            f"plan-review wait: --timeout must be a number of seconds, not '{timeout}'",
             file=sys.stderr,
         )
+        return 2
+    work = _existing_work_dir(run_id)
+    if work is None:
+        return 1
+    event = wait_for_event(EventLog(work / "events.json"), seconds)
+    print(json.dumps(event, separators=(",", ":")), flush=True)
+    return 0
+
+
+def _status(run_id: str, text: str, *, done: bool, clear: bool) -> int:
+    work = _existing_work_dir(run_id)
+    if work is None:
         return 1
     if not clear and not text.strip():
         print("status text is empty", file=sys.stderr)  # before anything is moved aside
@@ -412,7 +536,17 @@ def _status(run_id: str, text: str, *, done: bool, clear: bool) -> int:
     except ValueError as error:
         print(error, file=sys.stderr)
         return 1
+    if not clear:
+        _confirm_delivered(work)
     return 0
+
+
+def _confirm_delivered(work: Path) -> None:
+    """A status says the agent has handled what `wait` last handed it."""
+    try:
+        EventLog(work / "events.json").confirm()
+    except BrokenFile as error:
+        print("\n".join(error.errors), file=sys.stderr)  # the status is written all the same
 
 
 def _reply(run_id: str, thread_id: str, text: str) -> int:
@@ -459,3 +593,7 @@ def _branch(run_id: str) -> int:
     print(branch)
     _hint(hint)
     return 0
+
+
+if __name__ == "__main__":  # the detached viewer starts as `python -m plan_review.cli`
+    sys.exit(main())

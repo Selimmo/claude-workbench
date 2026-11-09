@@ -58,25 +58,30 @@ def grill_routes(
             # A draft for a question that is no longer open (the agent closed it meanwhile) is
             # dropped rather than refusing the whole submit.
             open_ids = {q.id for q in store.get().open_questions()}
+            events.check_log()  # before anything is written, as a review does
             drafts.keep_only(open_ids)
             answers = [
                 SubmittedAnswer(question_id=qid, **draft.model_dump())
                 for qid, draft in drafts.all().items()
             ]
             store.submit(answers)
+            sent = [a.model_dump(exclude_none=True) for a in answers]
+            event = {"type": "grill_submitted", "answers": sent}
+            events.record(event)  # before the drafts go, like a review
             drafts.clear({a.question_id for a in answers})
-        sent = [a.model_dump(exclude_none=True) for a in answers]
-        await events.send({"type": "grill_submitted", "answers": sent})
+        await events.push(event)
         return {"answers": sent}
 
     @router.post("/api/grill/confirm")
     async def confirm() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
+        events.check_log()  # a confirm can't be repeated, so the log is checked before it
         store.confirm()
         await events.send({"type": "grill_confirmed"})
         return {"confirmed": True}
 
     @router.post("/api/grill/reopen")
     async def reopen(body: Reopen) -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
+        events.check_log()  # like a confirm
         store.reopen(body.text)
         await events.send({"type": "grill_reopened", "text": body.text})
         return {"reopened": True}

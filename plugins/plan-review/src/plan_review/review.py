@@ -81,9 +81,16 @@ def review_routes(threads: ThreadStore, drafts: DraftStore, events: AgentEvents)
             pending = drafts.all()
             if not pending:
                 return JSONResponse({"errors": ["no drafts to submit"]}, status_code=422)
+            # Before any thread: once written they can't be taken back, and the drafts stay
+            # on a failure, so a second submit would post every comment twice.
+            events.check_log()
             comments = submit(pending, threads)
+            event = {"type": "review_submitted", "comments": comments}
+            # Recorded once every thread is written, and before the drafts go: a failure in
+            # between then leaves the event in the log, never a log entry for half a review.
+            events.record(event)
             drafts.discard_all({d.id for d in pending})
-        await events.send({"type": "review_submitted", "comments": comments})
+        await events.push(event)
         return {"comments": comments}
 
     return router

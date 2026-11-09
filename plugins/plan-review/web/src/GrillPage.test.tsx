@@ -739,6 +739,8 @@ test('a refused submit says why', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Submit answers' }))
 
   expect(await screen.findByText('waiting for the agent')).toBeInTheDocument()
+  expect(screen.getByRole('radio', { name: 'Choice a' })).toBeChecked() // kept, to submit again
+  expect(screen.getByRole('button', { name: 'Submit answers' })).toBeEnabled()
 })
 
 test('the Grill and Plan switch appears when the plan shows up, without a reload', async () => {
@@ -905,4 +907,34 @@ test("an answered row, opened, also shows the thread of the owner's messages and
   fireEvent.click(row)
   expect(screen.getByText('What about X?')).toBeInTheDocument()
   expect(screen.getByText('X is fine.')).toBeInTheDocument()
+})
+
+test('the grill page reads what it missed after the viewer reconnects', async () => {
+  const server = new FakeServer()
+  server.grill = grill([question('q1')])
+  open(server)
+  await screen.findByRole('group', { name: 'Question q1?' })
+  const reads = () => server.calls.filter((c) => c.url === '/api/grill').length
+  const before = reads()
+
+  server.grill!.rounds[0].questions[0].thread.push(message('claude', 'Said while away.'))
+  server.dropSockets() // no push: only a reconnect can bring the new text
+
+  expect(await screen.findByText('Said while away.', {}, { timeout: 3000 })).toBeInTheDocument()
+  expect(reads()).toBeGreaterThan(before)
+})
+
+test('the Grill and Plan switch appears after a reconnect that missed the plan', async () => {
+  const server = new FakeServer()
+  server.grill = grill([question('q1')])
+  open(server)
+  await screen.findByRole('group', { name: 'Question q1?' })
+  expect(screen.queryByRole('navigation', { name: 'Pages' })).not.toBeInTheDocument()
+
+  server.plan = (await import('../../examples/plan.json')).default
+  server.dropSockets()
+
+  expect(
+    await screen.findByRole('navigation', { name: 'Pages' }, { timeout: 3000 }),
+  ).toBeInTheDocument()
 })

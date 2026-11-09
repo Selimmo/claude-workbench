@@ -5,10 +5,16 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from plan_review.event_log import EventLog
+from plan_review.events import AgentEvents
 from plan_review.grill import GrillStore, SubmittedAnswer
+from plan_review.grill_drafts import AnswerDraft, GrillDraftStore
+from plan_review.grill_routes import grill_routes
 from plan_review.grill_turn import Turn
+from plan_review.last_event import LastEventStore
 from plan_review.server import create_app
 
 
@@ -146,6 +152,64 @@ def test_submitting_an_other_draft_tells_claude_its_text(
     assert state.rounds[0].questions[1].answer is None
     assert state.rounds[0].questions[1].thread[0].text == "Why?"
     assert json.loads((work / "grill_drafts.json").read_text()) == {}
+
+
+def test_a_broken_log_refuses_the_grill_submit_before_anything_is_written(
+    work: Path, static_dir: Path, store: GrillStore
+) -> None:
+    post(store, title="T", round=[question("q1")])
+    (work / "events.json").write_text("{ nope")
+    client = TestClient(create_app(work / "plan.json", static_dir))
+    client.put("/api/grill/drafts/q1", json={"kind": "choice", "choice_id": "a"})
+
+    refused = client.post("/api/grill/submit")
+
+    assert refused.status_code == 422
+    assert "events.json" in refused.json()["errors"][0]
+    assert store.get().rounds[0].questions[0].answer is None
+    assert list(client.get("/api/grill/drafts").json()["drafts"]) == ["q1"]
+
+    (work / "events.json").unlink()  # the owner repairs it and submits again
+
+    assert client.post("/api/grill/submit").status_code == 200
+    assert store.get().rounds[0].questions[0].answer is not None
+    assert client.get("/api/grill/drafts").json()["drafts"] == {}
+
+
+def test_a_broken_log_refuses_the_confirm_before_anything_is_written(
+    work: Path, static_dir: Path, store: GrillStore
+) -> None:
+    post(store, title="T", done=True)
+    (work / "events.json").write_text("{ nope")
+    client = TestClient(create_app(work / "plan.json", static_dir))
+
+    refused = client.post("/api/grill/confirm")
+
+    assert refused.status_code == 422
+    assert "events.json" in refused.json()["errors"][0]
+    assert store.get().confirmed_at is None
+
+    (work / "events.json").unlink()  # the owner repairs it and tries again
+
+    assert client.post("/api/grill/confirm").status_code == 200
+
+
+def test_a_broken_log_refuses_the_reopen_before_anything_is_written(
+    work: Path, static_dir: Path, store: GrillStore
+) -> None:
+    post(store, title="T", done=True)
+    (work / "events.json").write_text("{ nope")
+    client = TestClient(create_app(work / "plan.json", static_dir))
+
+    refused = client.post("/api/grill/reopen", json={"text": "Ask about X"})
+
+    assert refused.status_code == 422
+    assert "events.json" in refused.json()["errors"][0]
+    assert store.get().done
+
+    (work / "events.json").unlink()  # the owner repairs it and tries again
+
+    assert client.post("/api/grill/reopen", json={"text": "Ask about X"}).status_code == 200
 
 
 def test_an_incomplete_or_untimely_submit_is_refused(
@@ -343,3 +407,46 @@ def test_a_draft_left_on_a_question_claude_closed_does_not_block_the_submit(
         assert reply.status_code == 200, reply.text
         assert [a["question_id"] for a in reply.json()["answers"]] == ["q3"]
         assert client.get("/api/grill/drafts").json() == {"drafts": {}}
+
+
+def test_grill_answers_a_reopen_and_a_confirm_reach_the_log(
+    work: Path, static_dir: Path, store: GrillStore
+) -> None:
+    post(store, title="T", round=[question("q1")])
+    log = EventLog(work / "events.json")
+    with TestClient(create_app(work / "plan.json", static_dir)) as client:
+        client.put("/api/grill/drafts/q1", json={"kind": "choice", "choice_id": "a"})
+        client.post("/api/grill/submit")
+        post(store, done=True)
+        client.post("/api/grill/reopen", json={"text": "more"})
+        post(store, done=True)
+        client.post("/api/grill/confirm")
+
+    seen: list[object] = []
+    while (event := log.offer()) is not None:
+        seen.append(event["type"])
+        log.confirm()
+    assert seen == ["grill_submitted", "grill_reopened", "grill_confirmed"]
+
+
+class ClearingFails(GrillDraftStore):
+    def clear(self, question_ids: set[str]) -> None:
+        raise OSError("disk full")
+
+
+def test_a_grill_submit_is_recorded_before_its_drafts_are_cleared(
+    work: Path, store: GrillStore
+) -> None:
+    post(store, title="T", round=[question("q1")])
+    drafts = ClearingFails(work / "grill_drafts.json")
+    drafts.put("q1", AnswerDraft(kind="choice", choice_id="a"))
+    app = FastAPI()
+    events = AgentEvents(LastEventStore(work / "last_event.json"), EventLog(work / "events.json"))
+    app.include_router(grill_routes(store, drafts, events, label="#42"))
+
+    with pytest.raises(OSError, match="disk full"):
+        TestClient(app).post("/api/grill/submit")
+
+    event = EventLog(work / "events.json").offer()
+    assert event is not None
+    assert event["type"] == "grill_submitted"

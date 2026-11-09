@@ -12,7 +12,7 @@ cd plugins/plan-review
 The tag starts `plan-review-release.yml`:
 
 1. **build** (read-only token): runs `check.sh`, which builds the viewer page, and zips the plugin with `scripts/package.sh` (the files in `scripts/shipped-paths`, the built page and `LICENSE`, plugin root at the top). The built page ships only in the zip: `static/` stays gitignored.
-2. **publish**: attaches `plan-review-<version>.zip` to the GitHub release, then runs `scripts/link-release.sh`. If the repo is **public**, it commits the marketplace entry (`archive` source: url, sha256, version) to `main`. If it is **private** (a fork, say), the release is a test release: the log says so and `main` is left alone, because the zip's URL is a 404 for anyone without access.
+2. **publish**: attaches `plan-review-<version>.zip` and `plan_review-<version>-py3-none-any.whl` (built after `check.sh`; Codex installs from it) to the GitHub release, then runs `scripts/link-release.sh`. If the repo is **public**, it commits the marketplace entry (`archive` source: url, sha256, version) to `main`. If it is **private** (a fork, say), the release is a test release: the log says so and `main` is left alone, because the zip's URL is a 404 for anyone without access.
 
 ## Version guard
 
@@ -31,6 +31,12 @@ If `release.sh`'s push is refused (it is atomic, so neither `main` nor the tag r
 `scripts/prove-release.sh` installs and upgrades the latest release in a throwaway Claude Code config (your own `~/.claude` is not touched). It works on private repos too, which is how 0.1.1 and 0.1.2 were proven before the repo went public ([#34](https://github.com/Selimmo/claude-workbench/issues/34)).
 
 After one release run `scripts/prove-release.sh install ~/tmp/proof`; after the next, `scripts/prove-release.sh upgrade ~/tmp/proof`. A private asset's download link takes no token, so the script builds a local copy of the marketplace whose entry downloads the latest release's zip through the GitHub API with your `gh` login, sent by a `headersHelper` (Claude Code asks you to accept it). It also prints the asset's download count before and after, and the versions now in the throwaway cache. When done, delete the folder (`rm -rf ~/tmp/proof`): it holds a whole throwaway Claude Code config, the zips and a Python environment.
+
+## Proving the Codex install and upgrade
+
+`scripts/prove-codex-release.sh ~/tmp/codex-proof` installs the release wheels in a throwaway home (`HOME`, `CODEX_HOME` and the uv tool folders are all inside the folder), checks the version, the ship skill and the four agents, and does not start Codex. With two releases that carry a wheel it installs the older one and runs its own `plan-review upgrade`; with one it proves the install and says the upgrade needs a second release. The first release with a wheel has nothing to upgrade from, so prove the upgrade after the next one.
+
+`link-release.sh` also rewrites the `uv tool install` line in the root README to the new wheel, in the same commit as the marketplace entry.
 
 ## Download counts
 

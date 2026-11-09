@@ -10,6 +10,7 @@ import {
   submitGrill,
 } from './api'
 import type { AnswerDraft, Grill } from './grill'
+import { connectUpdates } from './updatesSocket'
 import { useAgent } from './useAgent'
 import { useFileErrors } from './useFileErrors'
 
@@ -42,26 +43,29 @@ export function useGrill() {
   useEffect(() => {
     // Syncing with an external system (the server) is what effects are for.
     /* oxlint-disable react/set-state-in-effect */
-    void Promise.all([
-      refreshGrill(),
-      refreshDrafts(),
-      refreshPlan(),
-      refreshStatus(),
-      refreshLastEvent(),
-    ])
+    const refreshAll = () =>
+      void Promise.all([
+        refreshGrill(),
+        refreshDrafts(),
+        refreshPlan(),
+        refreshStatus(),
+        refreshLastEvent(),
+      ])
+    refreshAll()
     /* oxlint-enable react/set-state-in-effect */
-    const socket = new WebSocket(`ws://${location.host}/api/updates`)
-    socket.onmessage = (event: MessageEvent<string>) => {
-      const { type } = JSON.parse(event.data) as { type: string }
-      if (type === 'grill_changed') void refreshGrill()
-      if (type === 'grill_drafts_changed') void refreshDrafts()
-      if (type === 'plan_changed') void refreshPlan()
-      if (type === 'status_changed') {
-        void refreshStatus()
-        void refreshLastEvent()
-      }
-    }
-    return () => socket.close()
+    return connectUpdates(
+      `ws://${location.host}/api/updates`,
+      ({ type }) => {
+        if (type === 'grill_changed') void refreshGrill()
+        if (type === 'grill_drafts_changed') void refreshDrafts()
+        if (type === 'plan_changed') void refreshPlan()
+        if (type === 'status_changed') {
+          void refreshStatus()
+          void refreshLastEvent()
+        }
+      },
+      refreshAll, // the viewer was away: read everything again
+    )
   }, [refreshGrill, refreshDrafts, refreshPlan, refreshStatus, refreshLastEvent])
 
   return {

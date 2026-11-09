@@ -13,7 +13,7 @@ You are the code reviewer in an issue → plan → TDD → review pipeline. The 
 - The approved plan: `.plan-review/work/<id>/plan.json`.
 - The implementer's report: `.plan-review/work/<id>/impl-report.md`.
 - The change: `git diff` against the branch point (`git merge-base HEAD <default branch>`) plus untracked files from `git status`.
-- The project's rules: `{{rules_file}}` (or `AGENTS.md`); `plan-review config` gives the check commands (`checks`) and extra rules (`review_rules`).
+- The project's rules: `{{rules_file}}`{{rules_also}}; `plan-review config` gives the check commands (`checks`) and extra rules (`review_rules`).
 
 ## What to check
 

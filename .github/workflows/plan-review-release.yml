@@ -1,8 +1,10 @@
 name: plan-review release
 
 # Started by release.sh pushing a plan-review--v<version> tag. `build` checks the plugin
-# and zips it with a read-only token; `publish` attaches the zip to the GitHub release
-# and, once the repo is public, points main's marketplace.json at it (link-release.sh).
+# and zips it (and builds the wheel Codex installs) with a read-only token; `publish`
+# attaches both to the GitHub release and, once the repo is public, points main's
+# marketplace.json at the zip and the README's `uv tool install` line at the wheel
+# (link-release.sh).
 # While the repo is private, releases are test releases: main is left alone.
 # Re-run with "Re-run failed jobs": the release is reused and build's zip replaces the
 # asset. "Re-run all jobs" rebuilds the zip with a new sha256 while main may still pin
@@ -53,10 +55,14 @@ jobs:
         run: ./check.sh
       - name: Package
         run: mkdir -p "$RUNNER_TEMP/dist" && scripts/package.sh "$RUNNER_TEMP/dist"
+      - name: Build the wheel (Codex installs plan-review from it)
+        run: uv build --wheel --out-dir "$RUNNER_TEMP/dist"
       - uses: actions/upload-artifact@v4
         with:
           name: plugin-zip
-          path: ${{ runner.temp }}/dist/*.zip
+          path: |
+            ${{ runner.temp }}/dist/*.zip
+            ${{ runner.temp }}/dist/*.whl
           if-no-files-found: error
 
   publish:
@@ -77,12 +83,13 @@ jobs:
         with:
           name: plugin-zip
           path: ${{ runner.temp }}/dist
-      - name: GitHub release with the zip
+      - name: GitHub release with the zip and the wheel
         run: |
           zip_file="$RUNNER_TEMP/dist/plan-review-$VERSION.zip"
+          wheel_file="$RUNNER_TEMP/dist/plan_review-$VERSION-py3-none-any.whl"
           gh release view "$TAG" >/dev/null 2>&1 ||
             gh release create "$TAG" --verify-tag --title "plan-review $VERSION" --generate-notes
-          gh release upload "$TAG" "$zip_file" --clobber
+          gh release upload "$TAG" "$zip_file" "$wheel_file" --clobber
       - name: Point main's marketplace at the zip (public repo only)
         run: |
           zip_file="$RUNNER_TEMP/dist/plan-review-$VERSION.zip"

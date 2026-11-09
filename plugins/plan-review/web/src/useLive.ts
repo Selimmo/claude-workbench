@@ -8,6 +8,7 @@ import {
   fetchPlan,
   fetchThreads,
 } from './api'
+import { connectUpdates } from './updatesSocket'
 import { useAgent } from './useAgent'
 import { useFileErrors } from './useFileErrors'
 import { changedIds } from './revisions'
@@ -73,39 +74,46 @@ export function useLive(): Live {
     setResult(next)
   }, [])
 
-  useEffect(() => {
-    // Syncing with an external system (the server) is what effects are for.
-    /* oxlint-disable react/set-state-in-effect */
-    void Promise.all([
-      refreshPlan(),
-      refreshReview(),
+  const refreshApproval = useCallback(
+    () =>
       fetchApproval().then((part) => {
         report('approval', part.errors)
         setApproved(part.value)
       }),
-      refreshStatus(),
-    ])
+    [report],
+  )
+  const refreshAll = useCallback(
+    () => Promise.all([refreshPlan(), refreshReview(), refreshApproval(), refreshStatus()]),
+    [refreshPlan, refreshReview, refreshApproval, refreshStatus],
+  )
+
+  useEffect(() => {
+    // Syncing with an external system (the server) is what effects are for.
+    /* oxlint-disable react/set-state-in-effect */
+    void refreshAll()
     /* oxlint-enable react/set-state-in-effect */
-    const socket = new WebSocket(`ws://${location.host}/api/updates`)
-    socket.onmessage = (event: MessageEvent<string>) => {
-      const { type } = JSON.parse(event.data) as { type: string }
-      if (type === 'plan_changed') void refreshPlan()
-      if (type === 'threads_changed') void refreshThreads()
-      if (type === 'drafts_changed') void refreshDrafts()
-      if (type === 'status_changed') {
-        void refreshStatus()
-        void refreshLastEvent()
-      }
-    }
-    return () => socket.close()
+    return connectUpdates(
+      `ws://${location.host}/api/updates`,
+      ({ type }) => {
+        if (type === 'plan_changed') void refreshPlan()
+        if (type === 'threads_changed') void refreshThreads()
+        if (type === 'drafts_changed') void refreshDrafts()
+        if (type === 'approval_changed') void refreshApproval()
+        if (type === 'status_changed') {
+          void refreshStatus()
+          void refreshLastEvent()
+        }
+      },
+      () => void refreshAll(), // the viewer was away: read everything again
+    )
   }, [
+    refreshAll,
     refreshPlan,
-    refreshReview,
     refreshThreads,
     refreshDrafts,
+    refreshApproval,
     refreshLastEvent,
     refreshStatus,
-    report,
   ])
 
   return {

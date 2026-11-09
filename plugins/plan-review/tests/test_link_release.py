@@ -100,3 +100,48 @@ def test_gives_up_with_exit_1_when_main_keeps_rejecting_the_push(repo: Path) -> 
 
     assert result.returncode == 1
     assert "re-run the release workflow" in result.stderr
+
+
+ROOT_README = "origin/main:README.md"
+WHEEL_LINE = (
+    "uv tool install https://github.com/o/r/releases/download/"
+    "plan-review--v0.1.1/plan_review-0.1.1-py3-none-any.whl"
+)
+
+
+def test_a_public_release_updates_the_install_link_in_the_root_readme(repo: Path) -> None:
+    before = git(repo, "rev-parse", "origin/main")
+
+    result = link(repo, "PUBLIC")
+
+    assert result.returncode == 0, result.stderr
+    git(repo, "fetch", "--quiet", "origin")
+    assert WHEEL_LINE in git(repo, "show", ROOT_README)
+    # the marketplace entry and the link change in one commit
+    changed = git(repo, "diff", "--name-only", before, "origin/main").splitlines()
+    assert sorted(changed) == [".claude-plugin/marketplace.json", "README.md"]
+    assert git(repo, "rev-list", "--count", f"{before}..origin/main") == "1"
+    # a re-run changes nothing
+    linked = git(repo, "ls-remote", "origin", "refs/heads/main")
+    assert link(repo, "PUBLIC").returncode == 0
+    assert git(repo, "ls-remote", "origin", "refs/heads/main") == linked
+
+
+def test_a_test_release_leaves_the_install_link_alone(repo: Path) -> None:
+    before = git(repo, "ls-remote", "origin", "refs/heads/main")
+
+    link(repo, "PRIVATE")
+
+    assert git(repo, "ls-remote", "origin", "refs/heads/main") == before
+    assert "plan_review-0.1.0" in git(repo, "show", ROOT_README)
+
+
+def test_a_checkout_with_no_root_readme_still_points_the_marketplace(repo: Path) -> None:
+    git(repo, "rm", "--quiet", "../../README.md")
+    git(repo, "commit", "--quiet", "-m", "no readme")
+    git(repo, "push", "--quiet", "origin", "HEAD:main")
+
+    result = link(repo, "PUBLIC")
+
+    assert result.returncode == 0, result.stderr
+    assert origin_entry(repo)["version"] == "0.1.1"

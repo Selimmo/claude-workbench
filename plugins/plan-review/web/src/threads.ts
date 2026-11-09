@@ -21,6 +21,10 @@ export interface Thread {
   orphaned: boolean
 }
 
+/** Resolve is offered only once the agent has the last word (the server enforces it too). */
+export const canResolve = (thread: Thread): boolean =>
+  thread.messages[thread.messages.length - 1]?.author !== 'owner'
+
 /** What the agent is doing with the review, set with `plan-review status` (status.py). */
 export interface AgentStatus {
   text: string

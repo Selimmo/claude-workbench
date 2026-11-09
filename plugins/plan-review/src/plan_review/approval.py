@@ -13,7 +13,7 @@ from plan_review.drafts import DraftStore
 from plan_review.events import AgentEvents
 from plan_review.file_errors import read_file
 from plan_review.plan import PlanFileError, load_plan
-from plan_review.threads import ThreadStore
+from plan_review.threads import ResolveRefused, ThreadStore
 
 
 class ApprovalRecord(BaseModel):
@@ -54,6 +54,10 @@ def approval_routes(
         if unresolved:
             message = f"{len(unresolved)} unresolved thread(s): resolve them first"
             return JSONResponse({"errors": [message]}, status_code=409)
+        waiting = [t for t in store.all() if t.awaiting_answer]
+        if waiting:
+            return JSONResponse({"errors": [str(ResolveRefused(waiting[0].id))]}, status_code=409)
+        events.check_log()  # before the file is written: a saved approval must reach the agent
         record = {
             "approved_at": datetime.now(UTC).isoformat(),
             # Pins exactly which plan was approved, should the file change afterwards.

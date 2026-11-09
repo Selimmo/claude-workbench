@@ -129,6 +129,9 @@ export class FakeServer {
     const action = url.match(/^\/api\/threads\/([^/]+)\/(resolve|reopen)$/)
     if (action) {
       const [, id, verb] = action
+      const target = this.threads.find((t) => t.id === id)
+      if (verb === 'resolve' && target?.messages.at(-1)?.author === 'owner')
+        return json({ errors: [`thread '${id}' awaits an answer from the agent`] }, 409)
       this.threads = this.threads.map((t) =>
         t.id === id ? { ...t, resolved: verb === 'resolve' } : t,
       )
@@ -210,6 +213,14 @@ export class FakeServer {
     this.lastEvent = { type, sent_at: new Date().toISOString(), answered: false }
   }
 
+  /** Simulate the viewer going away: every open socket drops without being closed by the page. */
+  dropSockets() {
+    for (const socket of [...FakeSocket.open]) {
+      FakeSocket.open.delete(socket)
+      socket.onclose?.()
+    }
+  }
+
   /** Simulate the server's push, e.g. after agent replies through the CLI. */
   push(message: object) {
     for (const socket of FakeSocket.open) socket.onmessage?.({ data: JSON.stringify(message) })
@@ -219,8 +230,11 @@ export class FakeServer {
 class FakeSocket {
   static open = new Set<FakeSocket>()
   onmessage: ((event: { data: string }) => void) | null = null
+  onopen: (() => void) | null = null
+  onclose: (() => void) | null = null
   constructor() {
     FakeSocket.open.add(this)
+    queueMicrotask(() => this.onopen?.())
   }
   close() {
     FakeSocket.open.delete(this)

@@ -18,6 +18,10 @@ This adds the `claude-workbench` marketplace and installs the latest release: a 
 
 Then run `/plan-review:ship <issue number, issue link or prompt>` in your project, optionally with a `.plan-review/config.json` (see below). There is no other setup: plan-review keeps its files in `.plan-review/work/`, and creates `.plan-review/work/.gitignore` (`*`) the first time it writes there, so they are never committed.
 
+### Codex
+
+plan-review also runs in [OpenAI Codex](https://developers.openai.com/codex) through the `$ship` skill. Install the `plan-review` command from the newest release's wheel (the link is in the [root README](../../README.md#codex)), then run `plan-review install codex`: it writes the skill to `~/.agents/skills/ship/` and four agents to `~/.codex/agents/` (or `$CODEX_HOME/agents/`). It never replaces a file it did not write. Run `$ship <issue number, link or prompt>` in Codex. Codex waits for you with `plan-review wait`, which wakes the model about every 4 minutes while you are away, so a long absence uses some of your quota. To override an agent for one project, put `.codex/agents/<name>.toml` in it. `plan-review upgrade` installs the newest wheel and writes the files again.
+
 ### Upgrade
 
 ```bash
@@ -40,6 +44,10 @@ plan-review schema               # print the plan.json JSON Schema
 plan-review validate plan.json   # check a plan; exit 0 = valid, 1 = invalid, 2 = file not found
 plan-review serve 42             # open the viewer for .plan-review/work/42/plan.json
 plan-review serve 42 --open none # only print the URL (e.g. over SSH)
+plan-review serve 42 --detach    # run the viewer as its own process and return (Codex); finds one already running
+plan-review stop 42              # stop that detached viewer
+plan-review wait 42 --timeout 240   # the next thing the owner did, as one JSON line, or {"type":"timeout"}
+plan-review install codex        # write the Codex ship skill and agents into your home folders
 plan-review config               # this project's pipeline settings, defaults filled in
 plan-review prefs grill          # the grill mode in force (page or chat); exit 3 if none is chosen
 plan-review prefs grill page     # record the owner's choice (page or chat) in .plan-review/work/preferences.json
@@ -91,9 +99,15 @@ While it runs:
 | `POST /api/resend` | send the kept event to `/events` again: `{"sent": true}`; `{"sent": false, "status": ...}` and nothing sent if the agent already answered; 409 if nothing was sent yet |
 | `WS /events` | the owner's actions, for the agent (below) |
 
-Errors come back as `{"errors": [...]}`: 404 for an unknown thread or draft, 422 for blank text.
+Errors come back as `{"errors": [...]}`: 404 for an unknown thread or draft, 422 for blank text, 409 for **Resolve** on a thread where the owner spoke last (the agent has not answered yet).
 
 A run file that is there but broken (`plan.json`, `grill.json`, `comments.json`, `drafts.json`, `grill_drafts.json`, `status.json`, `last_event.json`, `approved.json`) answers 422 on the routes that read it, with lines that start with its path, such as `.plan-review/work/42/comments.json: Invalid JSON: key must be a string at line 1 column 2`. The viewer shows them in a red banner and keeps the rest on screen. A command that reads such a file prints the same lines on stderr and exits 1. plan-review never deletes or overwrites a broken file. The one exception is `status.json`, which holds only the status line: when the agent sets or clears a status over a broken one, the old file is renamed to `status.json.broken` (replacing an older copy), the command says so on stderr, and the new status is written.
+
+### Waiting without a socket (`wait`, `events.json`, `viewer.json`)
+
+Every owner action is also written to `.plan-review/work/<id>/events.json`, a log that only grows (each event has a `seq`). `plan-review wait <id> [--timeout 240]` prints the oldest event the agent has not handled as one JSON line, or `{"type":"timeout"}` when nothing came. It needs no running viewer. An event is offered again until the agent sets any status with `plan-review status` (`--clear` does not count), so a crash between the two loses nothing. If a review and an approval are both waiting, the approval is withdrawn (`approved.json` is removed, pages hear `approval_changed`) and the review comes back with `"approval_withdrawn": true`.
+
+`plan-review serve <id> --detach` starts the viewer as a process of its own (its pid, port and stop token are in `viewer.json`; its output in `viewer.log`) and returns, or finds the one already running. It stops itself 2 hours after its last page closes (or after starting with no page). `plan-review stop <id>` ends it. `GET /api/viewer` says which run a viewer is; `POST /api/stop` needs the token and exists only on a detached viewer.
 
 ### Events for the agent (`WS /events`)
 
@@ -133,7 +147,7 @@ The page has a theme switch (top right): **Auto** follows your OS, or pick **Lig
 
 ### Comment threads
 
-Threads live in `.plan-review/work/<id>/comments.json`, next to the plan; unsent drafts in `drafts.json` beside it (the CLI and the agent never read them). Every read-modify-write of these files holds an OS file lock (a `<file>.lock` sibling), so the server and `plan-review reply` never lose each other's updates. Each thread is anchored to a plan element id (such as `class:HintPolicy`), to the plan's header (`header:title`, `header:summary`) or to a whole tab (`tab:criteria`, `tab:classes`, `tab:flows`, `tab:architecture`, `tab:files`, `tab:tests`, `tab:risks`), and holds ordered messages from `owner` or `agent` (files from older versions may hold `claude`) plus a `resolved` flag. The page writes as the owner; the agent answers with `plan-review reply`, never by editing the file. A thread whose element disappears from a revised plan is **orphaned**: kept, and shown separately. Header and tab threads never orphan.
+Threads live in `.plan-review/work/<id>/comments.json`, next to the plan; unsent drafts in `drafts.json` beside it (the CLI and the agent never read them). Every read-modify-write of these files holds an OS file lock (a `<file>.lock` sibling), so the server and `plan-review reply` never lose each other's updates. Each thread is anchored to a plan element id (such as `class:HintPolicy`), to the plan's header (`header:title`, `header:summary`) or to a whole tab (`tab:criteria`, `tab:classes`, `tab:flows`, `tab:architecture`, `tab:files`, `tab:tests`, `tab:risks`), and holds ordered messages from `owner` or `agent` (files from older versions may hold `claude`) plus a `resolved` flag. **Resolve** is offered only once the agent has the last word in the thread, and a follow-up from the owner reopens a resolved thread. The page writes as the owner; the agent answers with `plan-review reply`, never by editing the file. A thread whose element disappears from a revised plan is **orphaned**: kept, and shown separately. Header and tab threads never orphan.
 
 `validate` prints one line per problem, as `location: message`:
 

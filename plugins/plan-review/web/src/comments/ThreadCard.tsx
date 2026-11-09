@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { discardDraft, draftReply, setResolved } from '../api'
-import { authorLabel, type Draft, type Thread } from '../threads'
+import { authorLabel, canResolve, type Draft, type Thread } from '../threads'
 
 interface Props {
   thread: Thread
@@ -92,9 +92,11 @@ export function ThreadCard({ thread, drafts, onChanged, onEditDraft, onClose, re
             >
               Add reply to review
             </button>
-            <button onClick={() => act(() => setResolved(thread.id, !thread.resolved))}>
-              {thread.resolved ? 'Reopen' : 'Resolve'}
-            </button>
+            {(thread.resolved || canResolve(thread)) && (
+              <button onClick={() => act(() => setResolved(thread.id, !thread.resolved))}>
+                {thread.resolved ? 'Reopen' : 'Resolve'}
+              </button>
+            )}
           </div>
         </>
       )}

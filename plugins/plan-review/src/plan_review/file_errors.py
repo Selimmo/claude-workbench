@@ -21,7 +21,7 @@ def named_errors(path: Path, error: ValidationError) -> list[str]:
 
 
 class BrokenFile(Exception):
-    """A run file that is there but can't be read, one named line per problem."""
+    """A run file that can't be read or written, one named line per problem."""
 
     def __init__(self, errors: list[str]) -> None:
         super().__init__("\n".join(errors))
