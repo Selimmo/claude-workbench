@@ -1,4 +1,4 @@
-// Comment threads as the server returns them (see plan_review/threads.py).
+// Comment threads as the server returns them (see plan_review/review/threads.py).
 
 /** Files saved before the agent was neutral hold the old value: this is the one place it is named. */
 export type Author = 'owner' | 'agent' | 'claude'
@@ -25,7 +25,7 @@ export interface Thread {
 export const canResolve = (thread: Thread): boolean =>
   thread.messages[thread.messages.length - 1]?.author !== 'owner'
 
-/** What the agent is doing with the review, set with `plan-review status` (status.py). */
+/** What the agent is doing with the review, set with `plan-review status` (events/status.py). */
 export interface AgentStatus {
   text: string
   /** False while the agent is still working on it. */
@@ -33,7 +33,7 @@ export interface AgentStatus {
   at: string
 }
 
-/** An unsent review comment (see plan_review/drafts.py): only the owner sees it. */
+/** An unsent review comment (see plan_review/review/drafts.py): only the owner sees it. */
 export interface Draft {
   id: string
   anchor: string
@@ -43,7 +43,7 @@ export interface Draft {
   at: string
 }
 
-/** The last event sent to the agent (see plan_review/last_event.py and resend.py). */
+/** The last event sent to the agent (see plan_review/events/last_event.py and events/resend.py). */
 export interface LastEvent {
   type: string
   sent_at: string
