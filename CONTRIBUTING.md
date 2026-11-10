@@ -75,14 +75,23 @@ claude-workbench/
         ├── agents/                     # GENERATED from workflow/: architect, implementer, test-reviewer, code-reviewer
         ├── skills/ship/SKILL.md        # GENERATED from workflow/: /plan-review:ship, the orchestrator
         ├── examples/                   # plan.json, config.json, grill samples, and demo/ (the README GIFs' inputs)
-        ├── src/plan_review/            # CLI, plan schema, server, comment threads, review drafts, /ship helpers, init, upgrade
-        │   ├── adapters/               # one adapter per CLI (Claude Code): upgrade steps, generated files, its words
-        │   ├── generate.py             # writes agents/ and skills/ from workflow/; `--check` fails on a stale copy
+        ├── src/plan_review/            # cli.py is the entry point; every other module lives in a folder
+        │   ├── utils/                  # generic helpers: safe file saving, JSON files, text checks (imports no other folder)
+        │   ├── paths/                  # run ids, the work folder, and RunPaths (every file a run keeps)
+        │   ├── settings/               # preferences, pipeline config, migration of old files
+        │   ├── plan/                   # the plan.json schema
+        │   ├── review/                 # comment threads, review drafts, approval and their routes
+        │   ├── grill/                  # the grilling before the plan: state, drafts, turns, routes
+        │   ├── events/                 # what the agent is told and doing: events, status, last event
+        │   ├── pipeline/               # /ship helpers: branch name, tree hash, review verdict
+        │   ├── viewer/                 # the web server (app.py) and the detached viewer
+        │   ├── harness/                # workflow, generate.py (writes agents/ and skills/ from workflow/; `--check` fails on a stale copy), upgrade
+        │   │   └── adapters/           # one adapter per CLI (Claude Code): upgrade steps, generated files, its words
         │   └── static/                 # built viewer page (generated, gitignored)
-        ├── tests/                      # pytest
+        ├── tests/                      # pytest; the folders mirror src/plan_review/
         └── web/                        # viewer page: React + TypeScript + Vite
             └── src/
-                ├── plan.ts             # plan.json types (mirror plan.py)
+                ├── plan.ts             # plan.json types (mirror plan/plan.py)
                 ├── viewModels.ts       # pure plan → view functions (tested)
                 ├── diagram.ts          # plan → boxes-and-arrows model (classes, architecture, flowcharts)
                 ├── sequence.ts         # sequence-diagram geometry
@@ -108,8 +117,8 @@ claude-workbench/
 Edit the text in `plugins/plan-review/workflow/`, never `skills/ship/SKILL.md` or `agents/*.md`: those are generated. Then run, from `plugins/plan-review/`:
 
 ```bash
-uv run python -m plan_review.generate           # rewrite the generated files
-uv run python -m plan_review.generate --check   # what check.sh runs: fails if a copy is stale
+uv run python -m plan_review.harness.generate           # rewrite the generated files
+uv run python -m plan_review.harness.generate --check   # what check.sh runs: fails if a copy is stale
 ```
 
-Wording that belongs to one CLI (its tool names, its model nicknames, its override folder) lives in that CLI's adapter under `src/plan_review/adapters/`; the workflow holds a `{{slot}}` there instead.
+Wording that belongs to one CLI (its tool names, its model nicknames, its override folder) lives in that CLI's adapter under `src/plan_review/harness/adapters/`; the workflow holds a `{{slot}}` there instead.

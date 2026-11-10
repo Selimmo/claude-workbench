@@ -44,7 +44,7 @@ FAKE_UV = """#!/bin/sh
 echo "uv $* HOME=$HOME CODEX_HOME=$CODEX_HOME TOOLS=$UV_TOOL_DIR BIN=$UV_TOOL_BIN_DIR" >> "$FAKES/calls.log"
 [ "$1 $2 $3" = "tool install --force" ] || exit 1
 version="$(basename "$4" | sed 's/^plan_review-//; s/-py3.*//')"
-pkg="$UV_TOOL_DIR/plan-review/lib/site-packages/plan_review/adapters/codex_files"
+pkg="$UV_TOOL_DIR/plan-review/lib/site-packages/plan_review/harness/adapters/codex_files"
 mkdir -p "$pkg/skills/ship/agents" "$pkg/agents"
 echo "skill $version" > "$pkg/skills/ship/SKILL.md"
 echo "policy $version" > "$pkg/skills/ship/agents/openai.yaml"
