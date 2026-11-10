@@ -8,12 +8,14 @@ from plan_review.viewer.detach import (
     start_viewer,
     stop_viewer,
 )
+from plan_review.viewer.start_page import start_page
 
 __all__ = [
     "DetachedViewer",
     "ViewerFailed",
     "create_app",
     "record_file",
+    "start_page",
     "start_viewer",
     "stop_viewer",
 ]

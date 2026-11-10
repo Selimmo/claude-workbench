@@ -1,12 +1,14 @@
 """The grill: rounds of questions, the owner's answers, and the agent's turns."""
 
 import json
+import threading
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from plan_review.grill.drafts import AnswerDraft, GrillDraftStore
 from plan_review.grill.grill import (
     MAX_REPLIES,
     GrillError,
@@ -15,6 +17,7 @@ from plan_review.grill.grill import (
     Question,
     SubmittedAnswer,
     load_grill,
+    post_turn,
 )
 from plan_review.grill.turn import Turn
 from plan_review.review.threads import Message
@@ -759,3 +762,101 @@ def test_grill_refusals_say_the_agent(store: GrillStore) -> None:
 
     assert out_of_turn.value.errors == ["waiting for the agent to handle your last action"]
     assert too_early.value.errors == ["The agent has not said the grill is done yet"]
+
+
+def turn_json(**fields: Any) -> bytes:
+    return json.dumps(fields).encode()
+
+
+@pytest.fixture
+def drafts(tmp_path: Path) -> GrillDraftStore:
+    return GrillDraftStore(tmp_path / "grill_drafts.json")
+
+
+def test_posting_a_turn_drops_the_drafts_of_questions_it_closes(
+    store: GrillStore, drafts: GrillDraftStore
+) -> None:
+    store.post(turn(title="T", round=[question("q1"), question("q2")]))
+    store.submit(
+        [
+            SubmittedAnswer(question_id="q1", kind="other", text="why?"),
+            SubmittedAnswer(question_id="q2", kind="other", text="and this?"),
+        ]
+    )
+    drafts.put("q1", AnswerDraft(kind="other", text="draft 1"))
+    drafts.put("q2", AnswerDraft(kind="other", text="draft 2"))
+    settle_q1 = {
+        "id": "d1",
+        "topic": "Cost",
+        "decision": "Free",
+        "choice": "a",
+        "question_id": "q1",
+    }
+
+    posted = post_turn(
+        store,
+        drafts,
+        turn_json(decisions=[settle_q1], replies=[{"question_id": "q2", "text": "because"}]),
+    )
+
+    assert set(drafts.all()) == {"q2"}
+    assert [q.id for q in posted.state.open_questions()] == ["q2"]
+    assert posted.drafts_problem is None
+
+
+def wait_until_blocked(worker: threading.Thread) -> None:
+    worker.join(timeout=0.3)
+    assert worker.is_alive()
+
+
+def test_posting_a_turn_waits_for_the_drafts_lock_before_grill_json(
+    store: GrillStore, drafts: GrillDraftStore, tmp_path: Path
+) -> None:
+    worker = threading.Thread(
+        target=post_turn, args=(store, drafts, turn_json(title="T", round=[question()]))
+    )
+
+    with drafts.held():
+        worker.start()
+        wait_until_blocked(worker)
+        assert not (tmp_path / "grill.json").exists()
+
+    worker.join(timeout=5)
+    assert (tmp_path / "grill.json").exists()
+
+
+def test_a_bad_turn_waits_for_the_drafts_lock_and_writes_nothing(
+    store: GrillStore, drafts: GrillDraftStore, tmp_path: Path
+) -> None:
+    failures: list[GrillError] = []
+
+    def post_bad() -> None:
+        try:
+            post_turn(store, drafts, turn_json(titel="T"))
+        except GrillError as error:
+            failures.append(error)
+
+    worker = threading.Thread(target=post_bad)
+
+    with drafts.held():
+        worker.start()
+        wait_until_blocked(worker)
+        assert failures == []
+
+    worker.join(timeout=5)
+    assert len(failures) == 1
+    assert not (tmp_path / "grill.json").exists()
+
+
+def test_a_broken_drafts_file_does_not_stop_a_turn(
+    store: GrillStore, drafts: GrillDraftStore, tmp_path: Path
+) -> None:
+    broken = tmp_path / "grill_drafts.json"
+    broken.write_text("{bad")
+
+    posted = post_turn(store, drafts, turn_json(title="T", round=[question()]))
+
+    assert [q.id for q in posted.state.open_questions()] == ["q1"]
+    assert posted.drafts_problem is not None
+    assert posted.drafts_problem.startswith(broken.as_posix())
+    assert broken.read_text() == "{bad"

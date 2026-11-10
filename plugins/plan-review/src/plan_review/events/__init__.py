@@ -4,7 +4,7 @@ from plan_review.events.event_log import EventLog, wait_for_event
 from plan_review.events.events import AgentEvents, Subscribers
 from plan_review.events.last_event import LastEvent, LastEventStore, answered
 from plan_review.events.resend import resend_routes
-from plan_review.events.status import Status, StatusStore, status_routes
+from plan_review.events.status import Status, StatusStore, set_status, status_routes
 
 __all__ = [
     "AgentEvents",
@@ -16,6 +16,7 @@ __all__ = [
     "Subscribers",
     "answered",
     "resend_routes",
+    "set_status",
     "status_routes",
     "wait_for_event",
 ]

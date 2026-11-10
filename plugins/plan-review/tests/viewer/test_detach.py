@@ -13,8 +13,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from plan_review import cli
 from plan_review.cli import main
+from plan_review.cli.runtime import Runtime
 from plan_review.utils import file_lock
 from plan_review.viewer import detach
 from plan_review.viewer.app import create_app
@@ -223,7 +223,9 @@ class FakeProcess:
 class FakeViewers:
     """Stands in for spawning a process and asking it who it is."""
 
-    def __init__(self) -> None:
+    def __init__(self, static_dir: Path) -> None:
+        self.opened: list[str] = []
+        self.runtime = Runtime(static_dir=static_dir, open_browser=self.opened.append)
         self.spawned: list[tuple[str, int, str]] = []
         self.last: FakeProcess | None = None
         self.alive: dict[int, str] = {}  # port -> the run it answers as
@@ -235,7 +237,6 @@ class FakeViewers:
         self.replaced_on_stop: Path | None = None  # a new viewer takes this record over
         self.crash_log = b"Traceback: could not start\n"
         self.stopped: list[tuple[int, str]] = []
-        self.opened: list[str] = []
         self.records: list[Path] = []
 
     def spawn(self, root: Path, run_id: str, port: int, token: str, log: Path) -> FakeProcess:
@@ -267,13 +268,12 @@ class FakeViewers:
 
 
 @pytest.fixture
-def viewers(monkeypatch: pytest.MonkeyPatch) -> FakeViewers:
-    fake = FakeViewers()
+def viewers(project: Path, monkeypatch: pytest.MonkeyPatch) -> FakeViewers:
+    fake = FakeViewers(project / "static")
     monkeypatch.setattr(detach, "spawn_viewer", fake.spawn)
     monkeypatch.setattr(detach, "answers_as", fake.probe)
     monkeypatch.setattr(detach, "post_stop", fake.post_stop)
     monkeypatch.setattr(detach, "READY_POLL", 0.01)
-    monkeypatch.setattr(cli.webbrowser, "open", lambda url: fake.opened.append(url) or True)
     return fake
 
 
@@ -287,7 +287,6 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     static = tmp_path / "static"
     static.mkdir()
     (static / "index.html").write_text("<h1>plan-review</h1>")
-    monkeypatch.setattr(cli, "STATIC_DIR", static)
     return tmp_path
 
 
@@ -302,7 +301,7 @@ def first_line(capsys: pytest.CaptureFixture[str]) -> str:
 def test_serve_detach_starts_one_viewer_and_prints_its_url(
     project: Path, viewers: FakeViewers, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    exit_code = main(["serve", "7", "--detach"])
+    exit_code = main(["serve", "7", "--detach"], runtime=viewers.runtime)
 
     port = record_of(project)["port"]
     assert exit_code == 0
@@ -318,7 +317,7 @@ def test_serve_detach_hints_on_stderr_after_the_url(
     old.parent.mkdir()
     old.write_text(json.dumps({"max_review_rounds": 4}))
 
-    assert main(["serve", "7", "--detach"]) == 0
+    assert main(["serve", "7", "--detach"], runtime=viewers.runtime) == 0
 
     out, err = capsys.readouterr()
     assert out.splitlines()[0].startswith("plan-review: #7 at http://")
@@ -329,11 +328,11 @@ def test_serve_detach_hints_on_stderr_after_the_url(
 def test_serve_detach_reuses_a_viewer_already_running(
     project: Path, viewers: FakeViewers, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    main(["serve", "7", "--detach"])
+    main(["serve", "7", "--detach"], runtime=viewers.runtime)
     first = first_line(capsys)
     viewers.opened.clear()
 
-    exit_code = main(["serve", "7", "--detach"])
+    exit_code = main(["serve", "7", "--detach"], runtime=viewers.runtime)
 
     assert exit_code == 0
     assert first_line(capsys) == first
@@ -348,19 +347,19 @@ def test_serve_detach_of_a_grill_only_run_prints_the_grill_page(
     run.mkdir()
     (run / "grill.json").write_text("{}")
 
-    assert main(["serve", "9", "--detach", "--open", "none"]) == 0
+    assert main(["serve", "9", "--detach", "--open", "none"], runtime=viewers.runtime) == 0
 
     url = first_line(capsys).split(" at ")[1].split(" ")[0]
     assert url == f"http://127.0.0.1:{record_of(project, '9')['port']}/grill"
 
 
 def test_serve_detach_replaces_a_stale_record(project: Path, viewers: FakeViewers) -> None:
-    main(["serve", "7", "--detach"])
+    main(["serve", "7", "--detach"], runtime=viewers.runtime)
     viewers.alive.clear()  # the process is gone
 
     viewers.opened.clear()
 
-    assert main(["serve", "7", "--detach", "--open", "none"]) == 0
+    assert main(["serve", "7", "--detach", "--open", "none"], runtime=viewers.runtime) == 0
 
     assert len(viewers.spawned) == 2
     assert viewers.opened == []
@@ -428,7 +427,7 @@ def test_a_timeout_says_why_ahead_of_the_viewers_log(
     viewers.silent_log = b"WARNING: slow disk\n"
     monkeypatch.setattr(detach, "READY_TIMEOUT", 0.05)
 
-    assert main(["serve", "7", "--detach"]) == 1
+    assert main(["serve", "7", "--detach"], runtime=viewers.runtime) == 1
 
     lines = capsys.readouterr().err.splitlines()
     assert "did not answer within" in lines[0]
@@ -459,7 +458,7 @@ def test_a_viewer_that_fails_to_start_is_reported(
 ) -> None:
     viewers.crash_with = 3
 
-    exit_code = main(["serve", "7", "--detach"])
+    exit_code = main(["serve", "7", "--detach"], runtime=viewers.runtime)
 
     assert exit_code == 3
     assert capsys.readouterr().err == "Traceback: could not start\n"
@@ -467,15 +466,15 @@ def test_a_viewer_that_fails_to_start_is_reported(
 
 
 def test_each_run_gets_its_own_viewer(project: Path, viewers: FakeViewers) -> None:
-    main(["serve", "7", "--detach"])
-    main(["serve", "8", "--detach"])
+    main(["serve", "7", "--detach"], runtime=viewers.runtime)
+    main(["serve", "8", "--detach"], runtime=viewers.runtime)
 
     assert record_of(project, "7")["port"] != record_of(project, "8")["port"]
     assert len(viewers.spawned) == 2
 
 
 def test_stop_ends_the_viewer_and_clears_the_record(project: Path, viewers: FakeViewers) -> None:
-    main(["serve", "7", "--detach"])
+    main(["serve", "7", "--detach"], runtime=viewers.runtime)
     token = record_of(project)["token"]
 
     exit_code = main(["stop", "7"])
@@ -488,7 +487,7 @@ def test_stop_ends_the_viewer_and_clears_the_record(project: Path, viewers: Fake
 def test_stop_gives_up_on_a_viewer_that_will_not_stop(
     project: Path, viewers: FakeViewers, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    main(["serve", "7", "--detach"])
+    main(["serve", "7", "--detach"], runtime=viewers.runtime)
     viewers.ignores_stop = True
     monkeypatch.setattr(detach, "READY_TIMEOUT", 0.05)
 
@@ -509,7 +508,7 @@ def test_stop_with_no_viewer_says_so(
 
 
 def test_stop_with_a_stale_record_clears_it(project: Path, viewers: FakeViewers) -> None:
-    main(["serve", "7", "--detach"])
+    main(["serve", "7", "--detach"], runtime=viewers.runtime)
     viewers.alive.clear()
 
     assert main(["stop", "7"]) == 0
@@ -519,7 +518,7 @@ def test_stop_with_a_stale_record_clears_it(project: Path, viewers: FakeViewers)
 
 
 def test_stop_leaves_a_newer_viewers_record_alone(project: Path, viewers: FakeViewers) -> None:
-    main(["serve", "7", "--detach"])
+    main(["serve", "7", "--detach"], runtime=viewers.runtime)
     record = project / ".plan-review" / "work" / "7" / "viewer.json"
     viewers.replaced_on_stop = record
 
@@ -571,7 +570,7 @@ def test_a_real_detached_viewer_outlives_its_command_and_stops(tmp_path: Path) -
 def test_stop_copes_with_the_viewer_removing_its_own_record(
     project: Path, viewers: FakeViewers
 ) -> None:
-    main(["serve", "7", "--detach"])
+    main(["serve", "7", "--detach"], runtime=viewers.runtime)
     viewers.records.append(project / ".plan-review" / "work" / "7" / "viewer.json")
     viewers.removes_record_on_stop = True
 
@@ -589,7 +588,7 @@ def test_post_stop_does_not_raise_when_nothing_listens() -> None:
 def test_a_viewer_that_already_crashed_is_not_killed(project: Path, viewers: FakeViewers) -> None:
     viewers.crash_with = 3
 
-    assert main(["serve", "7", "--detach"]) == 3
+    assert main(["serve", "7", "--detach"], runtime=viewers.runtime) == 3
 
     assert viewers.last is not None
     assert viewers.last.killed_with_record is None
@@ -601,6 +600,6 @@ def test_a_crash_log_that_is_not_text_is_still_reported(
     viewers.crash_with = 3
     viewers.crash_log = b"bad \xff byte"
 
-    assert main(["serve", "7", "--detach"]) == 3
+    assert main(["serve", "7", "--detach"], runtime=viewers.runtime) == 3
 
     assert capsys.readouterr().err == "bad \ufffd byte\n"

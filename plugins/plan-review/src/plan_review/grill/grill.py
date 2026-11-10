@@ -5,14 +5,16 @@ The state lives in the run's grill.json. It has two writers in two processes: th
 Every read-modify-write therefore holds the file lock and writes the file whole.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from plan_review.grill.drafts import GrillDraftStore
 from plan_review.review.threads import Message
-from plan_review.utils.json_files import named_errors
+from plan_review.utils.json_files import BrokenFile, named_errors
 from plan_review.utils.safe_files import file_lock, write_atomically
 
 if TYPE_CHECKING:
@@ -266,6 +268,29 @@ def _answer_problems(state: GrillState, answers: list[SubmittedAnswer]) -> list[
             problems.append(f"{where}.text: needed for Other")
     problems.extend(f"{qid}: needs a response" for qid in open_by_id if qid not in seen)
     return problems
+
+
+@dataclass(frozen=True)
+class PostedTurn:
+    state: GrillState
+    drafts_problem: str | None  # the unreadable drafts file, by name; the turn is posted anyway
+
+
+def post_turn(store: GrillStore, drafts: GrillDraftStore, turn_json: bytes) -> PostedTurn:
+    """Post the agent's turn, then drop the drafts of the questions it closed.
+
+    The drafts lock comes first, then grill.json (the store takes its own lock): the order the
+    owner's submit uses. The turn is parsed inside the lock, so a bad turn waits for a running
+    submit like a good one. GrillError (a bad turn too) propagates."""
+    from plan_review.grill.turn import Turn  # turn.py imports this module
+
+    with drafts.held():
+        state = store.post(Turn.parse(turn_json))
+        try:
+            drafts.keep_only({q.id for q in state.open_questions()})
+        except BrokenFile as error:
+            return PostedTurn(state, str(error))
+    return PostedTurn(state, None)
 
 
 def load_grill(path: Path) -> GrillState:

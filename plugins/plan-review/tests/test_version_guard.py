@@ -25,17 +25,17 @@ def commit_change(plugin: Path, path: str) -> None:
 
 
 def test_fails_when_a_shipped_file_changed_since_its_versions_release(repo: Path) -> None:
-    commit_change(repo, "src/plan_review/cli.py")
+    commit_change(repo, "src/plan_review/cli/__init__.py")
 
     result = guard(repo)
 
     assert result.returncode == 1
-    assert "src/plan_review/cli.py" in result.stderr
+    assert "src/plan_review/cli/__init__.py" in result.stderr
     assert "0.1.0" in result.stderr
 
 
 def test_passes_once_the_version_is_bumped_past_the_release(repo: Path) -> None:
-    commit_change(repo, "src/plan_review/cli.py")
+    commit_change(repo, "src/plan_review/cli/__init__.py")
     subprocess.run(["scripts/set-version.sh", "0.1.1"], cwd=repo, check=True)
     git(repo, "commit", "--quiet", "-am", "Bump")
 

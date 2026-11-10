@@ -39,7 +39,7 @@ def test_zips_the_plugin_with_its_root_at_the_top(built: Path, tmp_path: Path) -
         "bin/plan-review",
         "agents/architect.md",
         "skills/ship/SKILL.md",
-        "src/plan_review/cli.py",
+        "src/plan_review/cli/__init__.py",
         "src/plan_review/static/index.html",
         "pyproject.toml",
         "uv.lock",
