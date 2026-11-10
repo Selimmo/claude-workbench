@@ -91,7 +91,7 @@ While it runs:
 | `GET /api/drafts` | the owner's unsent review comments |
 | `POST /api/drafts` | `{"anchor", "text"}` for a new comment, or `{"thread_id", "text"}` for a reply: adds a draft (201). Not announced |
 | `PUT /api/drafts/<id>`, `DELETE /api/drafts/<id>` | edit (`{"text"}`) or discard a draft |
-| `POST /api/review` | submit the review: every draft becomes a thread or a reply, the drafts are cleared, and one `review_submitted` event goes to `/events`; 422 if there are no drafts |
+| `POST /api/review` | submit the review: every draft becomes a thread or a reply, the drafts are cleared, and one `review_submitted` event goes to `/events`; 422 if there are no drafts, 409 once the plan is approved |
 
 | `GET /api/approve` | `{"approved": false}`, or `true` with the approval record |
 | `POST /api/approve` | approve the plan: 409 while any draft is unsent or any thread is unresolved, 422 if the plan is invalid; otherwise writes `approved.json` (`approved_at`, `plan_sha256`) |
@@ -105,7 +105,7 @@ A run file that is there but broken (`plan.json`, `grill.json`, `comments.json`,
 
 ### Waiting without a socket (`wait`, `events.json`, `viewer.json`)
 
-Every owner action is also written to `.plan-review/work/<id>/events.json`, a log that only grows (each event has a `seq`). `plan-review wait <id> [--timeout 240]` prints the oldest event the agent has not handled as one JSON line, or `{"type":"timeout"}` when nothing came. It needs no running viewer. An event is offered again until the agent sets any status with `plan-review status` (`--clear` does not count), so a crash between the two loses nothing. If a review and an approval are both waiting, the approval is withdrawn (`approved.json` is removed, pages hear `approval_changed`) and the review comes back with `"approval_withdrawn": true`.
+Every owner action is also written to `.plan-review/work/<id>/events.json`, a log that only grows (each event has a `seq`). `plan-review wait <id> [--timeout 240]` prints the oldest event the agent has not handled as one JSON line, or `{"type":"timeout"}` when nothing came. It needs no running viewer. An event is offered again until the agent sets any status with `plan-review status` (`--clear` does not count), so a crash between the two loses nothing.
 
 `plan-review serve <id> --detach` starts the viewer as a process of its own (its pid, port and stop token are in `viewer.json`; its output in `viewer.log`) and returns, or finds the one already running. It stops itself 2 hours after its last page closes (or after starting with no page). `plan-review stop <id>` ends it. `GET /api/viewer` says which run a viewer is; `POST /api/stop` needs the token and exists only on a detached viewer.
 

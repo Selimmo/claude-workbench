@@ -4,6 +4,11 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
+### Unreleased
+
+- A review can't be sent once the plan is approved: the viewer answers 409 and keeps your drafts.
+- A review no longer withdraws an approval. If an approval and a review are both waiting, the agent gets them in the order they came.
+
 ### 0.3.0
 
 - plan-review runs in OpenAI Codex. `plan-review install codex` writes the `$ship` skill and four agents into your home folders; `plan-review upgrade` installs the newest release wheel and writes them again. Each release now also carries a wheel.

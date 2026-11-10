@@ -10,7 +10,7 @@ from fastapi import APIRouter, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from plan_review.events.events import AgentEvents
+from plan_review.events.agent_events import AgentEvents
 from plan_review.grill.drafts import AnswerDraft, GrillDraftStore
 from plan_review.grill.grill import MAX_REPLIES, GrillError, GrillStore, SubmittedAnswer
 

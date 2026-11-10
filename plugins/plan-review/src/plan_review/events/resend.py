@@ -7,7 +7,7 @@ to send the kept event again, unless the agent has already answered it.
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from plan_review.events.events import AgentEvents
+from plan_review.events.agent_events import AgentEvents
 from plan_review.events.last_event import LastEventStore, answered
 from plan_review.events.status import StatusStore
 

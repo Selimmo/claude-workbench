@@ -6,9 +6,10 @@ from typing import Any
 import pytest
 from fastapi import WebSocket
 
+from plan_review.events.agent_events import AgentEvents
 from plan_review.events.event_log import EventLog
-from plan_review.events.events import AgentEvents, Subscribers
 from plan_review.events.last_event import LastEventStore
+from plan_review.events.subscribers import Subscribers
 from plan_review.utils.json_files import BrokenFile
 
 
@@ -104,3 +105,16 @@ def test_subscribers_count_open_sockets() -> None:
     assert subscribers.count == 2
     subscribers.remove(one)
     assert subscribers.count == 1
+
+
+def test_agent_events_holds_its_sockets_rather_than_being_them(tmp_path: Path) -> None:
+    events, _ = events_in(tmp_path)
+    socket = FakeSocket()
+
+    events.add(socket)  # pyright: ignore[reportArgumentType]
+    asyncio.run(events.push({"type": "a"}))
+    events.remove(socket)  # pyright: ignore[reportArgumentType]
+    asyncio.run(events.push({"type": "b"}))
+
+    assert not issubclass(AgentEvents, Subscribers)
+    assert socket.sent == [{"type": "a"}]

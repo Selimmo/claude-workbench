@@ -6,26 +6,23 @@ event is offered again until it is confirmed, so a crash between delivery and ha
 nothing. The log only grows, so a `seq` is never reused.
 """
 
-import time
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, TypeAdapter
 
-from plan_review.paths.run_paths import RunPaths
 from plan_review.utils.json_files import BrokenFile, read_file
 from plan_review.utils.safe_files import file_lock, write_atomically
 
-State = Literal["waiting", "delivered", "handled", "withdrawn"]
+State = Literal["waiting", "delivered", "handled", "withdrawn"]  # withdrawn: old files only
 
 
 class Entry(BaseModel):
     seq: int
     event: dict[str, Any]
     state: State = "waiting"
-    approval_withdrawn: bool = False  # delivering this review took an approval back
 
     @property
     def unhandled(self) -> bool:
@@ -44,7 +41,6 @@ class EventLog:
 
     def __init__(self, path: Path) -> None:
         self._path = path
-        self._approval = RunPaths(path.parent).approved
 
     def record(self, event: dict[str, Any]) -> None:
         with self._updating() as log:
@@ -63,17 +59,12 @@ class EventLog:
         with file_lock(self._path):
             log = self._read()
             waiting = [e for e in log.events if e.unhandled]
-            self._withdraw_approval(waiting)
-            standing = [e for e in waiting if e.state != "withdrawn"]
-            if not standing:
+            if not waiting:
                 return None
-            first = standing[0]
+            first = waiting[0]
             first.state = "delivered"
             self._save(log)
-        offered = {**first.event, "seq": first.seq}
-        if first.approval_withdrawn:
-            offered["approval_withdrawn"] = True
-        return offered
+        return {**first.event, "seq": first.seq}
 
     def confirm(self) -> None:
         """Mark what has been delivered as handled; events that arrived since stay waiting."""
@@ -85,17 +76,6 @@ class EventLog:
             for entry in delivered:
                 entry.state = "handled"
             self._save(log)
-
-    def _withdraw_approval(self, waiting: list[Entry]) -> None:
-        """A review and an approval both waiting: the approval no longer stands."""
-        approvals = [e for e in waiting if e.event.get("type") == "approved"]
-        reviews = [e for e in waiting if e.event.get("type") == "review_submitted"]
-        if not (approvals and reviews):
-            return
-        for entry in approvals:
-            entry.state = "withdrawn"
-        reviews[0].approval_withdrawn = True
-        self._approval.unlink(missing_ok=True)
 
     @contextmanager
     def _updating(self) -> Generator[Log]:
@@ -113,22 +93,3 @@ class EventLog:
 
     def _save(self, log: Log) -> None:
         write_atomically(self._path, _Log.dump_json(log, indent=2))
-
-
-def wait_for_event(
-    log: EventLog,
-    timeout: float,
-    *,
-    now: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
-    interval: float = 0.5,
-) -> dict[str, Any]:
-    """The next event, as soon as there is one; `{"type": "timeout"}` after `timeout` seconds."""
-    deadline = now() + timeout
-    while True:
-        event = log.offer()
-        if event is not None:
-            return event
-        if now() >= deadline:
-            return {"type": "timeout"}
-        sleep(interval)

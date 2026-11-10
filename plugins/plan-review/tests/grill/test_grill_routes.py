@@ -8,8 +8,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from plan_review.events.agent_events import AgentEvents
 from plan_review.events.event_log import EventLog
-from plan_review.events.events import AgentEvents
 from plan_review.events.last_event import LastEventStore
 from plan_review.grill.drafts import AnswerDraft, GrillDraftStore
 from plan_review.grill.grill import GrillStore, SubmittedAnswer

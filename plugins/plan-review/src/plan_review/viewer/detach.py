@@ -26,7 +26,7 @@ from fastapi.responses import JSONResponse
 from filelock import Timeout
 from pydantic import BaseModel, TypeAdapter
 
-from plan_review.events.events import Subscribers
+from plan_review.events.subscribers import Subscribers
 from plan_review.paths.run_paths import RunPaths
 from plan_review.utils.json_files import read_file
 from plan_review.utils.safe_files import file_lock, write_atomically
