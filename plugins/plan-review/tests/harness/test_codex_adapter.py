@@ -13,7 +13,8 @@ from conftest import PLUGIN
 from plan_review.cli import main
 from plan_review.harness import generate, upgrade
 from plan_review.harness.adapters import codex
-from plan_review.harness.adapters.codex import Codex, toml_multiline
+from plan_review.harness.agent_files import toml_multiline
+from plan_review.harness.distribution import releases, wheel
 from plan_review.harness.workflow import load_workflow
 
 FILES = PLUGIN / "src" / "plan_review" / "harness" / "adapters" / "codex_files"
@@ -21,7 +22,7 @@ ROLES = ["architect", "implementer", "test-reviewer", "code-reviewer"]
 
 
 def generated() -> dict[PurePosixPath, str]:
-    return Codex().files(load_workflow(PLUGIN / "workflow"))
+    return codex.HARNESS.files(load_workflow(PLUGIN / "workflow"))
 
 
 def skill() -> str:
@@ -259,7 +260,7 @@ def test_install_with_no_files_in_the_copy_says_so(
 ) -> None:
     empty = tmp_path / "empty"
     empty.mkdir()
-    monkeypatch.setattr(codex, "FILES", empty)
+    monkeypatch.setattr(codex.HARNESS.distribution, "files", empty)
 
     assert main(["install", "codex"]) == 1
 
@@ -309,10 +310,10 @@ RELEASES = [
 
 
 def test_upgrade_picks_the_newest_plan_review_wheel() -> None:
-    assert codex.newest_wheel(RELEASES) == (
+    assert releases.newest_wheel(RELEASES) == (
         "https://example.com/plan-review--v0.10.0/plan_review-0.10.0-py3-none-any.whl"
     )
-    assert codex.newest_wheel(RELEASES[:2]) is None
+    assert releases.newest_wheel(RELEASES[:2]) is None
 
 
 class Runs:
@@ -331,9 +332,9 @@ class Runs:
 @pytest.fixture
 def online(monkeypatch: pytest.MonkeyPatch) -> Runs:
     runs = Runs()
-    monkeypatch.setattr(codex, "fetch_releases", lambda: RELEASES)
-    monkeypatch.setattr(codex.shutil, "which", lambda name: f"/bin/{name}")
-    monkeypatch.setattr(codex.subprocess, "run", runs)
+    monkeypatch.setattr(releases, "fetch_releases", lambda: RELEASES)
+    monkeypatch.setattr(wheel.shutil, "which", lambda name: f"/bin/{name}")
+    monkeypatch.setattr(wheel.subprocess, "run", runs)
     return runs
 
 
@@ -341,7 +342,7 @@ WHEEL = "https://example.com/plan-review--v0.10.0/plan_review-0.10.0-py3-none-an
 
 
 def test_upgrade_installs_then_runs_the_new_binary(online: Runs) -> None:
-    assert Codex().upgrade() == 0
+    assert codex.HARNESS.distribution.upgrade() == 0
 
     assert online.calls == [
         ["/bin/uv", "tool", "install", "--force", WHEEL],
@@ -353,12 +354,12 @@ def test_upgrade_installs_then_runs_the_new_binary(online: Runs) -> None:
 def test_upgrade_runs_the_binary_from_uvs_tool_bin_folder_when_path_lacks_it(
     online: Runs, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(codex.shutil, "which", lambda name: "/bin/uv" if name == "uv" else None)
-    binary = tmp_path / ("plan-review.exe" if codex.sys.platform == "win32" else "plan-review")
+    monkeypatch.setattr(wheel.shutil, "which", lambda name: "/bin/uv" if name == "uv" else None)
+    binary = tmp_path / ("plan-review.exe" if wheel.sys.platform == "win32" else "plan-review")
     binary.write_text("")
     online.bin_dir = f"{tmp_path}\n"
 
-    assert Codex().upgrade() == 0
+    assert codex.HARNESS.distribution.upgrade() == 0
 
     assert online.calls[-1] == [str(binary), "install", "codex"]
 
@@ -366,9 +367,9 @@ def test_upgrade_runs_the_binary_from_uvs_tool_bin_folder_when_path_lacks_it(
 def test_upgrade_prints_what_to_run_when_the_new_binary_is_not_on_path(
     online: Runs, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(codex.shutil, "which", lambda name: "/bin/uv" if name == "uv" else None)
+    monkeypatch.setattr(wheel.shutil, "which", lambda name: "/bin/uv" if name == "uv" else None)
 
-    assert Codex().upgrade() == 1
+    assert codex.HARNESS.distribution.upgrade() == 1
 
     assert len(online.calls) == 2  # uv ran, and said its bin folder; no binary there or on PATH
     assert "plan-review install codex" in capsys.readouterr().err
@@ -377,22 +378,22 @@ def test_upgrade_prints_what_to_run_when_the_new_binary_is_not_on_path(
 def test_upgrade_stops_at_a_failed_step(online: Runs) -> None:
     online.fail_on = 1
 
-    assert Codex().upgrade() == 7
+    assert codex.HARNESS.distribution.upgrade() == 7
     assert len(online.calls) == 1
 
 
 def test_upgrade_fails_when_writing_the_files_fails(online: Runs) -> None:
     online.fail_on = 3  # calls 1 and 2: uv installing, uv naming its bin folder
 
-    assert Codex().upgrade() == 7
+    assert codex.HARNESS.distribution.upgrade() == 7
 
 
 def test_upgrade_with_no_wheel_in_any_release_prints_what_to_run(
     online: Runs, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(codex, "fetch_releases", lambda: RELEASES[:2])
+    monkeypatch.setattr(releases, "fetch_releases", lambda: RELEASES[:2])
 
-    assert Codex().upgrade() == 1
+    assert codex.HARNESS.distribution.upgrade() == 1
     assert "no plan-review release with a wheel" in capsys.readouterr().err
     assert online.calls == []
 
@@ -403,9 +404,9 @@ def test_upgrade_with_an_unreadable_release_list_prints_what_to_run(
     def garbled() -> list[dict[str, Any]]:
         raise ValueError("not JSON")
 
-    monkeypatch.setattr(codex, "fetch_releases", garbled)
+    monkeypatch.setattr(releases, "fetch_releases", garbled)
 
-    assert Codex().upgrade() == 1
+    assert codex.HARNESS.distribution.upgrade() == 1
     assert "can't reach GitHub (not JSON)" in capsys.readouterr().err
     assert online.calls == []
 
@@ -416,9 +417,9 @@ def test_upgrade_with_no_network_prints_what_to_run(
     def offline() -> list[dict[str, Any]]:
         raise OSError("no network")
 
-    monkeypatch.setattr(codex, "fetch_releases", offline)
+    monkeypatch.setattr(releases, "fetch_releases", offline)
 
-    assert Codex().upgrade() == 1
+    assert codex.HARNESS.distribution.upgrade() == 1
     err = capsys.readouterr().err
     assert "uv tool install --force" in err
     assert "plan-review install codex" in err
@@ -432,7 +433,7 @@ def test_upgrade_without_uv_says_so(
     (tool / "lib").mkdir(parents=True)
     (tool / "uv-receipt.toml").write_text("[tool]\n")
     monkeypatch.setattr(upgrade, "PACKAGE_ROOT", tool / "lib")
-    monkeypatch.setattr(codex.shutil, "which", lambda name: None)
+    monkeypatch.setattr(wheel.shutil, "which", lambda name: None)
 
     assert main(["upgrade"]) == 1
 
@@ -448,8 +449,8 @@ def test_a_uv_tool_copy_is_codex(tmp_path: Path) -> None:
     root.mkdir(parents=True)
     (tool / "uv-receipt.toml").write_text("[tool]\n")
 
-    assert Codex().installed_at(root)
-    assert not Codex().installed_at(tmp_path / "elsewhere")
+    assert codex.HARNESS.distribution.installed_at(root)
+    assert not codex.HARNESS.distribution.installed_at(tmp_path / "elsewhere")
 
 
 def test_codex_ship_takes_waiting_events_before_the_grill_catch_up() -> None:
