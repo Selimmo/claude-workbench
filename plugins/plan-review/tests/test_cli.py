@@ -16,12 +16,12 @@ from conftest import PACKAGE_VERSION, PLUGIN, WindowsStylePath, version_of
 
 from plan_review import cli
 from plan_review.cli import main
-from plan_review.grill import GrillStore, SubmittedAnswer
-from plan_review.grill_drafts import GrillDraftStore
-from plan_review.pipeline import PipelineConfigError, load_pipeline
-from plan_review.plan import PlanFileError, load_plan
-from plan_review.status import StatusStore
-from plan_review.threads import ThreadStore
+from plan_review.events.status import StatusStore
+from plan_review.grill.drafts import GrillDraftStore
+from plan_review.grill.grill import GrillStore, SubmittedAnswer
+from plan_review.plan.plan import PlanFileError, load_plan
+from plan_review.review.threads import ThreadStore
+from plan_review.settings.pipeline_config import PipelineConfigError, load_pipeline
 
 
 @pytest.fixture

@@ -15,35 +15,37 @@ import uvicorn
 from fastapi import FastAPI
 from pydantic import ValidationError
 
-from plan_review.adapters import ADAPTERS, adapter_by_key
-from plan_review.decisions_md import decisions_markdown
-from plan_review.detach import (
+from plan_review.events.event_log import EventLog, wait_for_event
+from plan_review.events.status import StatusStore
+from plan_review.grill.decisions_md import decisions_markdown
+from plan_review.grill.drafts import GrillDraftStore
+from plan_review.grill.grill import GrillError, GrillStore
+from plan_review.grill.turn import Turn
+from plan_review.harness.adapters import ADAPTERS, adapter_by_key
+from plan_review.harness.upgrade import upgrade
+from plan_review.paths.run_id import InvalidRunId, check_run_id, label
+from plan_review.paths.run_paths import RunPaths
+from plan_review.paths.workdir import (
+    ensure_work_dir,
+    new_prompt_work_dir,
+    preferences_file,
+    work_dir,
+)
+from plan_review.pipeline.orchestration import MalformedReview, branch_name, tree_hash, verdict
+from plan_review.plan.plan import Plan, PlanFileError, load_plan, record_branch, shape_problems
+from plan_review.review.threads import ThreadNotFound, ThreadStore
+from plan_review.settings.migration import config_source, preferences_source
+from plan_review.settings.pipeline_config import PipelineConfig, PipelineConfigError, load_pipeline
+from plan_review.settings.prefs import GrillMode, grill_mode, load_preferences, record
+from plan_review.utils.json_files import BrokenFile, named_errors
+from plan_review.utils.text import BlankComment
+from plan_review.viewer.app import create_app
+from plan_review.viewer.detach import (
     DetachedViewer,
     ViewerFailed,
     record_file,
     start_viewer,
     stop_viewer,
-)
-from plan_review.event_log import EventLog, wait_for_event
-from plan_review.file_errors import BrokenFile, named_errors
-from plan_review.grill import GrillError, GrillStore
-from plan_review.grill_drafts import GrillDraftStore
-from plan_review.grill_turn import Turn
-from plan_review.migration import config_source, preferences_source
-from plan_review.orchestration import MalformedReview, branch_name, tree_hash, verdict
-from plan_review.pipeline import PipelineConfig, PipelineConfigError, load_pipeline
-from plan_review.plan import Plan, PlanFileError, load_plan, record_branch, shape_problems
-from plan_review.prefs import GrillMode, grill_mode, load_preferences, record
-from plan_review.run_id import InvalidRunId, check_run_id, label
-from plan_review.server import create_app
-from plan_review.status import StatusStore
-from plan_review.threads import BlankComment, ThreadNotFound, ThreadStore
-from plan_review.upgrade import upgrade
-from plan_review.workdir import (
-    ensure_work_dir,
-    new_prompt_work_dir,
-    preferences_file,
-    work_dir,
 )
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -295,8 +297,9 @@ def _grill_post(run_id: str, file: Path) -> int:
         print(f"{file.as_posix()}: file not found", file=sys.stderr)
         return 2
     work = ensure_work_dir(Path(), run_id)
-    store = GrillStore(work / "grill.json")
-    drafts = GrillDraftStore(work / "grill_drafts.json")
+    paths = RunPaths(work)
+    store = GrillStore(paths.grill)
+    drafts = GrillDraftStore(paths.grill_drafts)
     try:
         with drafts.held():
             state = store.post(Turn.parse(file.read_bytes()))
@@ -313,7 +316,7 @@ def _grill_post(run_id: str, file: Path) -> int:
 
 
 def _grill_pending(run_id: str) -> int:
-    store = GrillStore(_work_dir(run_id) / "grill.json")
+    store = GrillStore(RunPaths(_work_dir(run_id)).grill)
     try:
         state = store.get()
     except GrillError as error:
@@ -326,16 +329,17 @@ def _grill_pending(run_id: str) -> int:
 
 def _grill_decisions(run_id: str) -> int:
     work = _work_dir(run_id)
+    paths = RunPaths(work)
     try:
-        state = GrillStore(work / "grill.json").get()
+        state = GrillStore(paths.grill).get()
     except GrillError as error:
         print("\n".join(error.errors), file=sys.stderr)
         return 1
     if state.confirmed_at is None:
         print(f"the grill for {label(run_id)} is not confirmed yet", file=sys.stderr)
         return 1
-    (work / "decisions.md").write_text(decisions_markdown(state, label(run_id)), encoding="utf-8")
-    print((work / "decisions.md").as_posix())
+    paths.decisions.write_text(decisions_markdown(state, label(run_id)), encoding="utf-8")
+    print(paths.decisions.as_posix())
     return 0
 
 
@@ -396,12 +400,12 @@ def _serve(run_id: str, open_flag: str | None, *, detach: bool = False) -> int:
             file=sys.stderr,
         )
         return 2
-    plan_file = _work_dir(run_id) / "plan.json"
+    plan_file = RunPaths(_work_dir(run_id)).plan
     page = ""  # the plan page is "/"; before there is a plan, the grill page is shown
     try:
         load_plan(plan_file)
     except PlanFileError as error:
-        if not (error.missing and (_work_dir(run_id) / "grill.json").is_file()):
+        if not (error.missing and RunPaths(_work_dir(run_id)).grill.is_file()):
             print("\n".join(error.errors), file=sys.stderr)
             return 2 if error.missing else 1
         page = "grill"
@@ -467,7 +471,7 @@ def _viewer_process(args: argparse.Namespace) -> int:
     detached = DetachedViewer(
         run_id=run_id, token=args.token, request_stop=request_stop, record=record_file(work)
     )
-    app = create_app(work / "plan.json", STATIC_DIR, detached=detached)
+    app = create_app(RunPaths(work).plan, STATIC_DIR, detached=detached)
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", args.port))
         sock.listen()
@@ -478,7 +482,7 @@ def _viewer_process(args: argparse.Namespace) -> int:
 
 def _threads(run_id: str) -> int:
     open_threads = [
-        t for t in ThreadStore(_work_dir(run_id) / "comments.json").all() if not t.resolved
+        t for t in ThreadStore(RunPaths(_work_dir(run_id)).comments).all() if not t.resolved
     ]
     print(json.dumps([t.model_dump(mode="json") for t in open_threads], indent=2))
     return 0
@@ -510,7 +514,7 @@ def _wait(run_id: str, timeout: str) -> int:
     work = _existing_work_dir(run_id)
     if work is None:
         return 1
-    event = wait_for_event(EventLog(work / "events.json"), seconds)
+    event = wait_for_event(EventLog(RunPaths(work).events), seconds)
     print(json.dumps(event, separators=(",", ":")), flush=True)
     return 0
 
@@ -522,7 +526,7 @@ def _status(run_id: str, text: str, *, done: bool, clear: bool) -> int:
     if not clear and not text.strip():
         print("status text is empty", file=sys.stderr)  # before anything is moved aside
         return 1
-    store = StatusStore(work / "status.json")
+    store = StatusStore(RunPaths(work).status)
     try:
         moved = store.set_aside()
         if moved:
@@ -544,14 +548,14 @@ def _status(run_id: str, text: str, *, done: bool, clear: bool) -> int:
 def _confirm_delivered(work: Path) -> None:
     """A status says the agent has handled what `wait` last handed it."""
     try:
-        EventLog(work / "events.json").confirm()
+        EventLog(RunPaths(work).events).confirm()
     except BrokenFile as error:
         print("\n".join(error.errors), file=sys.stderr)  # the status is written all the same
 
 
 def _reply(run_id: str, thread_id: str, text: str) -> int:
     try:
-        ThreadStore(_work_dir(run_id) / "comments.json").reply(thread_id, text, author="agent")
+        ThreadStore(RunPaths(_work_dir(run_id)).comments).reply(thread_id, text, author="agent")
     except ThreadNotFound:
         print(f"no thread '{thread_id}' for {label(run_id)}", file=sys.stderr)
         return 1
@@ -577,7 +581,7 @@ def _verdict(file: Path) -> int:
 
 
 def _branch(run_id: str) -> int:
-    plan_file = _work_dir(run_id) / "plan.json"
+    plan_file = RunPaths(_work_dir(run_id)).plan
     try:
         plan = load_plan(plan_file)
         if plan.branch:  # already named (and maybe created): never name it again

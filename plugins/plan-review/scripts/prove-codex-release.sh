@@ -62,7 +62,7 @@ check() { # <version>: the installed copy is that version, and the files in the 
   # The files must be the ones this wheel carries, whoever wrote them: an upgrade that left
   # the old skill and agents behind fails here.
   local pkg
-  pkg="$(find "$UV_TOOL_DIR" -type d -path '*/plan_review/adapters/codex_files' | head -n 1)"
+  pkg="$(find "$UV_TOOL_DIR" -type d -path '*/plan_review/harness/adapters/codex_files' | head -n 1)"
   [[ -n "$pkg" ]] || {
     echo "FAIL: the installed wheel holds no codex_files" >&2
     exit 1

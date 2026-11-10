@@ -48,3 +48,4 @@ include = ["src", "tests"]
 strict = ["src"]
 venvPath = "."
 venv = ".venv"
+extraPaths = ["src", "tests"]
