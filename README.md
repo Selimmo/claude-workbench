@@ -1,96 +1,94 @@
 # claude-workbench
 
-**See your coding agent's plan as diagrams before it writes any code.** plan-review is a Claude Code plugin: an agent plans an issue from your tracker (or a plain prompt), and the plan opens in your browser as interactive diagrams of classes, flows, architecture, files, tests and risks. Click anything to comment (a class opens its details first, with a Comment button). Claude answers or revises the plan and the page updates live. When you approve, agents implement it with TDD and review the result.
+**plan-review: settle the design with your coding agent before it writes any code.** A plugin for Claude Code and OpenAI Codex.
 
-![Opening a class's details and commenting on it: Claude replies, revises the plan and the new member appears in the diagram](docs/img/demo.gif)
+## The problem
 
-> Status: v0.1, public and installable. Built and dogfooded by one developer, so expect rough edges; [issues](https://github.com/Selimmo/claude-workbench/issues) welcome.
+Give a coding agent a medium-sized change, and it decides the design on its own and hands you a large diff. By then the questions that mattered have already been answered for you: how something is scored, where a class lives, what gets removed. Reviewing a finished diff is the most expensive moment to disagree.
 
-## Who it's for
+plan-review moves that conversation to the start. The agent asks you about the open decisions first, then shows its plan as diagrams you can comment on, and it answers or revises the plan live. Only once you approve do agents build it, test-first, and two reviewers check the result before anything is committed.
 
-Developers who use Claude Code for multi-file changes and want to steer the design before the code exists, rather than review a large diff afterwards. The full pipeline takes a GitHub issue, a Jira or Linear issue, or a plain prompt; the viewer on its own needs nothing but a `plan.json`.
+<table>
+<tr>
+<th width="50%">1. Settle the decisions</th>
+<th width="50%">2. Review the plan</th>
+</tr>
+<tr>
+<td><a href="docs/img/grill.gif"><img src="docs/img/grill.gif" alt="The grill page: two rounds of questions, each with several choices. One answer adds a note, one gives the owner's own answer and the agent replies with new choices, then the summary of decisions is confirmed"></a></td>
+<td><a href="docs/img/plan-review.gif"><img src="docs/img/plan-review.gif" alt="The plan page: a tour of every tab (front-end and back-end classes, three flows, architecture, files, tests, risks), then a comment on a class member, the agent's reply and revised plan with the changes outlined, and approval"></a></td>
+</tr>
+</table>
 
-## Prerequisites
+Click a GIF to see it full size.
 
-- macOS, Linux, or Windows with [Git for Windows](https://gitforwindows.org/) (Claude Code's Bash tool on Windows)
-- [Claude Code](https://claude.com/claude-code) v2.1.292 or later
-- `git`: Claude Code clones the marketplace from GitHub
-- [uv](https://docs.astral.sh/uv/) 0.13.0 or later (Python 3.15 is downloaded automatically)
-- For GitHub issues in the pipeline: [`gh`](https://cli.github.com/), logged in with `gh auth login`, to read the issue
+## Features
 
-## Try it
+- **One command** runs the whole pipeline: `/plan-review:ship <issue or prompt>`. It takes a GitHub, Jira or Linear issue (Jira and Linear through your connector for them), or a plain prompt.
+- **Grill**: questions in rounds, on a page or in the chat. Each has several choices, plus a note or your own answer. The agent replies to your own answers until they are settled, and you confirm a summary of the decisions.
+- **A plan as diagrams**, in tabs: classes (front end and back end), sequence diagrams and flowcharts, architecture, files, tests, and risks and open questions. Every element shows whether it is added, changed or removed.
+- **Comment on anything**. Comments are drafts until you submit the review. The agent answers in the thread or revises the plan, and the page updates live and outlines what changed.
+- **You approve**, once every thread is resolved. Nothing is built before that.
+- **Test-first build**: the implementer follows the planned tests in order, and records each failing run as evidence.
+- **Two reviewers**: one for the tests, one for the code. They run your checks and your project's rules, and loop with the implementer until they pass. A review that changes any file is thrown away, and pass or fail is decided by `plan-review`, not by the agent.
+- **You stay in charge of git**: it commits only after your OK, and never pushes, merges or writes to your tracker unless you ask.
+- **Your plans and decisions stay with you**: every run is saved locally in `.plan-review/work/<id>/`, including the plan, the decisions and the comment threads. Git ignores that folder by default. To keep runs in your history, edit `.plan-review/work/.gitignore`; plan-review never overwrites it.
+- **Not a replacement for human review**: the agents' reviews catch a lot, but a person should still review the final change before it merges.
+- **Per-project settings** in `.plan-review/config.json`: your checks, review rules, branch pattern and more. You can also use your own copy of any agent.
 
-Install the plugin, then run `/reload-plugins` in any open Claude Code session (or start a new one):
+Every command and setting is in [plan-review's README](plugins/plan-review/README.md).
+
+## Install and upgrade
+
+You need macOS, Linux or Windows (with [Git for Windows](https://gitforwindows.org/)), `git`, [uv](https://docs.astral.sh/uv/) 0.13.0 or later (it fetches Python itself), and [`gh`](https://cli.github.com/) logged in for GitHub issues.
+
+### Claude Code
+
+Version 2.1.292 or later:
 
 ```bash
 claude plugin install plan-review --marketplace Selimmo/claude-workbench
 ```
 
-**Without an issue: just the viewer.** The plugin puts `plan-review` on Claude Code's PATH. In a Claude Code session in any folder, load the sample plan in bash mode (start each line with `!`):
+Then run `/reload-plugins`, and in a project:
+
+```
+/plan-review:ship <issue_id | issue_URL | "prompt"> [--grill]
+```
+
+For example:
 
 ```bash
-plan-review init 42
-curl -fsSL https://raw.githubusercontent.com/Selimmo/claude-workbench/main/plugins/plan-review/examples/plan.json -o .plan-review/work/42/plan.json
+/plan-review:ship 42 --grill                                           # a GitHub issue
+/plan-review:ship https://acme.atlassian.net/browse/SHOP-128 --grill   # a Jira issue link
+/plan-review:ship "Let users export their orders as CSV" --grill       # a plain prompt
 ```
 
-Then ask Claude to *run `plan-review serve 42` in the background*; it keeps running and opens the viewer in your browser. Comment on anything and submit the review; `plan-review threads 42` shows what Claude would read. Any valid `plan.json` works, whoever wrote it ([format](plugins/plan-review/README.md#the-plan-format-planjson)).
-
-**With an issue or a prompt: the whole pipeline.** In a project, run `/plan-review:ship` with a GitHub issue number or link, a Jira or Linear link or key (through your Claude Code connector for it), or a plain prompt. Only GitHub issues and prompts are proven end to end. For example:
-
-```
-/plan-review:ship 42
-```
-
-The architect plans issue #42 and the plan opens as diagrams. Comment, submit your review, and Claude answers or revises. Approve it, and agents implement it with TDD and review the result. Nothing is committed without your OK.
+`--grill` settles the open decisions with you before the plan is written. Leave it out to go straight to the plan.
 
 ### Codex
 
-plan-review also runs in OpenAI Codex. You need [Codex](https://developers.openai.com/codex), `git` and [uv](https://docs.astral.sh/uv/) 0.13.0 or later. Install the command from the newest release's wheel, then put the skill and agents where Codex reads them:
+In OpenAI Codex:
 
 ```bash
 uv tool install https://github.com/Selimmo/claude-workbench/releases/download/plan-review--v0.3.0/plan_review-0.3.0-py3-none-any.whl
 plan-review install codex
 ```
 
-(Each public release updates the version in that link.) Then run `$ship <issue number, link or prompt>` in Codex; `plan-review upgrade` updates both parts. What differs from Claude Code: Codex has no background watcher, so the agent runs `plan-review serve <id> --detach` (the viewer is its own process, and stops 2 hours after its page closes) and waits with `plan-review wait`, about every 4 minutes while you are away. Codex's sandbox must allow network access, or `gh` and `uv` fail and the viewer can't listen on `127.0.0.1`: in `~/.codex/config.toml` set `network_access = true` under `[sandbox_workspace_write]` (or use a sandbox mode that has it). The agents read `AGENTS.md`; if your project keeps its rules in `CLAUDE.md` only, set `project_doc_fallback_filenames = ["CLAUDE.md"]` in the same file so Codex reads them. To override an agent for one project, put `.codex/agents/<name>.toml` in it. Not tested in Codex's own sandbox yet: run `$ship` once and report what you see.
+Then run `$ship` in Codex, with the same arguments as above: `$ship 42 --grill`. Codex needs network access in its sandbox; see [plan-review in Codex](docs/codex.md).
 
-Upgrade with `plan-review upgrade`, or turn on marketplace auto-update. See [plan-review's README](plugins/plan-review/README.md) for every command, the `plan.json` format, the agents and the project settings.
+### Upgrade
 
-## What a plan looks like
+Run `plan-review upgrade`. It works for either tool.
 
-Every tab of the [sample plan](plugins/plan-review/examples/plan.json). Elements are coloured by whether the plan adds, modifies or removes them, and each one can be commented on.
+## When to use it
 
-**Classes**: the types the change touches, one side (front end or back end) at a time. A box lists member names with a mark on what changes, its title shows what it extends (`Car: AutoMobile`), and a click opens the full signatures and Comment buttons.
+**Use it for medium and large changes**: several files, or a design worth agreeing on before code exists. For example, "let candidates request hints during an interview" touches the client, the agent, scoring and storage. Deciding how hints are scored, and reviewing the classes first, beats reviewing a 1,500-line diff afterwards.
 
-![Classes tab, back end: boxes list member names with a coloured dot on what the plan adds, modifies or removes](docs/img/plan.png)
-
-| | |
-|---|---|
-| **Flows**: sequence diagrams… ![Flows tab: a sequence diagram](docs/img/flows-sequence.jpg) | …and flowcharts. ![Flows tab: a flowchart](docs/img/flows-flowchart.jpg) |
-| **Architecture**: the components and how they talk. ![Architecture tab](docs/img/architecture.jpg) | **Files**: what is added, modified or removed, and why. ![Files tab](docs/img/files.jpg) |
-| **Tests**: the planned tests, in TDD order, each tied to what it covers. ![Tests tab](docs/img/tests.jpg) | **Risks & open questions**, with mitigations. ![Risks tab](docs/img/risks.jpg) |
-
-## What it can touch
-
-From 0.2.0 the project files live in `.plan-review/`: `config.json` for settings and `work/<id>/` for each run. Files that 0.1.x left under `.claude/` are still read when they are the only ones, and are never changed (see the plugin README).
-
-plan-review runs inside your Claude Code session, under your permission settings: anything an agent does through Bash or file edits goes through the same approval prompts as the rest of your session.
-
-- **The viewer** is a local server bound to `127.0.0.1` on a random port. It reads and writes only `.plan-review/work/<id>/` in your project (the plan, comment threads, drafts, approval, and the grill's `grill.json` and `grill_drafts.json`), plus a `.plan-review/work/.gitignore` that keeps it all out of git. It has no authentication, and cross-site requests to it are not blocked yet ([#36](https://github.com/Selimmo/claude-workbench/issues/36)).
-- **Your tracker**, read once at the start: `/ship` reads the issue through your logged-in `gh` (GitHub) or the Jira or Linear connector you set up in Claude Code. Nothing is written to the tracker: no comments, no status changes.
-- **Git**: `/ship` creates a branch and commits only after your explicit OK. It never pushes, opens a PR or merges unless you ask.
-- **Agents**: all four can read your project and run shell commands, so your permission prompts are the real limit. The architect is told to write only `plan.json`, but has a Write tool. The implementer edits files and runs your configured checks. The two reviewers have no edit tools, and `/ship` discards any review that changed a file.
-
-## Roadmap
-
-plan-review is the first plugin here; the aim is a set of tools that take an issue to a reviewed commit with agents. Next for plan-review: see the [open issues](https://github.com/Selimmo/claude-workbench/issues).
+**Skip it for small changes**: a one-line fix, a typo, a rename. There, the questions, the plan and two reviews cost more than they save. Just ask your agent.
 
 ## More
 
-- [CHANGELOG.md](CHANGELOG.md): what changed in each release
-- [CONTRIBUTING.md](CONTRIBUTING.md): build, test and change the plugins
-- [RELEASING.md](RELEASING.md): cutting a release (maintainers)
-
-## License
-
-[MIT](LICENSE)
+- [plan-review's README](plugins/plan-review/README.md): every command, the plan format, the agents and the settings
+- [What it can touch](docs/what-it-can-touch.md): files, git, your tracker and permissions
+- [CHANGELOG.md](CHANGELOG.md), [CONTRIBUTING.md](CONTRIBUTING.md), [RELEASING.md](RELEASING.md)
+- License: [MIT](LICENSE)

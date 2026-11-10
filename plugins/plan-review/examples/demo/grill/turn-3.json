@@ -1,0 +1,38 @@
+{
+  "decisions": [
+    {
+      "id": "d-depth",
+      "topic": "Hints",
+      "decision": "Hint depth",
+      "choice": "Escalates; the interviewer can switch the walkthrough off per interview",
+      "question_id": "q-depth"
+    },
+    {
+      "id": "d-limit",
+      "topic": "Hints",
+      "decision": "Hints per interview",
+      "choice": "Set in each interview's config",
+      "question_id": "q-limit"
+    },
+    {
+      "id": "d-place",
+      "topic": "Screen",
+      "decision": "Where hints appear",
+      "choice": "In a side panel",
+      "question_id": "q-place"
+    },
+    {
+      "id": "d-visible",
+      "topic": "Scoring",
+      "decision": "Interviewer sees hints",
+      "choice": "In the final report",
+      "why": "Useful for grading, without distracting during the interview.",
+      "question_id": "q-visible"
+    }
+  ],
+  "out_of_scope": [
+    "Hints in practice mode",
+    "Translating hints into other languages"
+  ],
+  "done": true
+}

@@ -1,0 +1,858 @@
+{
+  "issue": {
+    "id": "42",
+    "kind": "issue",
+    "title": "Let candidates request a hint during an interview",
+    "url": "https://github.com/example/interview-app/issues/42"
+  },
+  "summary": "Add a Hint button and a hint panel to the interview screen. The agent receives a request_hint event, asks a HintPolicy for the next level (nudge, approach, walkthrough), streams the hint back and saves it. Each hint lowers the final score by a set penalty. The old free-text '/hint' command is removed.",
+  "classes": [
+    {
+      "id": "class:InterviewScreen",
+      "name": "InterviewScreen",
+      "kind": "component",
+      "side": "front",
+      "status": "modified",
+      "members": [
+        {
+          "id": "class:InterviewScreen.render",
+          "name": "render",
+          "kind": "method",
+          "signature": "render() -> JSX.Element",
+          "status": "modified",
+          "note": "Shows the hint panel beside the editor."
+        },
+        {
+          "id": "class:InterviewScreen.hintsLeft",
+          "name": "hintsLeft",
+          "kind": "property",
+          "signature": "hintsLeft: number",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:HintButton",
+      "name": "HintButton",
+      "kind": "component",
+      "side": "front",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:HintButton.disabled",
+          "name": "disabled",
+          "kind": "property",
+          "signature": "disabled: boolean",
+          "status": "added"
+        },
+        {
+          "id": "class:HintButton.onClick",
+          "name": "onClick",
+          "kind": "method",
+          "signature": "onClick() -> void",
+          "status": "added",
+          "note": "Sends a RequestHint event."
+        }
+      ]
+    },
+    {
+      "id": "class:HintPanel",
+      "name": "HintPanel",
+      "kind": "component",
+      "side": "front",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:HintPanel.hints",
+          "name": "hints",
+          "kind": "property",
+          "signature": "hints: Hint[]",
+          "status": "added"
+        },
+        {
+          "id": "class:HintPanel.render",
+          "name": "render",
+          "kind": "method",
+          "signature": "render() -> JSX.Element",
+          "status": "added",
+          "note": "Streams each hint in as it arrives."
+        }
+      ]
+    },
+    {
+      "id": "class:useHints",
+      "name": "useHints.ts",
+      "kind": "module",
+      "side": "front",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:useHints.useHints",
+          "name": "useHints",
+          "kind": "method",
+          "signature": "useHints() -> { request, streaming }",
+          "status": "added",
+          "note": "Sends RequestHint and tracks streaming."
+        }
+      ]
+    },
+    {
+      "id": "class:Orchestrator",
+      "name": "Orchestrator",
+      "kind": "class",
+      "side": "back",
+      "status": "modified",
+      "members": [
+        {
+          "id": "class:Orchestrator.on_event",
+          "name": "on_event",
+          "kind": "method",
+          "signature": "on_event(event: ClientEvent) -> None",
+          "status": "modified",
+          "note": "Handles RequestHint by asking the policy for the next level."
+        },
+        {
+          "id": "class:Orchestrator.give_hint",
+          "name": "give_hint",
+          "kind": "method",
+          "signature": "give_hint() -> AsyncIterator[str]",
+          "status": "added"
+        },
+        {
+          "id": "class:Orchestrator.hints_given",
+          "name": "hints_given",
+          "kind": "property",
+          "signature": "hints_given: int",
+          "status": "added"
+        },
+        {
+          "id": "class:Orchestrator.parse_command",
+          "name": "parse_command",
+          "kind": "method",
+          "signature": "parse_command(text: str) -> Command | None",
+          "status": "removed"
+        }
+      ],
+      "note": "Asks the HintPolicy for the next level; free-text commands go."
+    },
+    {
+      "id": "class:HintPolicy",
+      "name": "HintPolicy",
+      "kind": "class",
+      "side": "back",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:HintPolicy.max_hints",
+          "name": "max_hints",
+          "kind": "property",
+          "signature": "max_hints: int = 3",
+          "status": "added"
+        },
+        {
+          "id": "class:HintPolicy.next_level",
+          "name": "next_level",
+          "kind": "method",
+          "signature": "next_level(given: int) -> HintLevel | None",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "class:HintLevel",
+      "name": "HintLevel",
+      "kind": "enum",
+      "side": "back",
+      "status": "added",
+      "members": [
+        {
+          "id": "class:HintLevel.NUDGE",
+          "name": "NUDGE",
+          "kind": "property",
+          "signature": "NUDGE",
+          "status": "added"
+        },
+        {
+          "id": "class:HintLevel.APPROACH",
+          "name": "APPROACH",
+          "kind": "property",
+          "signature": "APPROACH",
+          "status": "added"
+        },
+        {
+          "id": "class:HintLevel.WALKTHROUGH",
+          "name": "WALKTHROUGH",
+          "kind": "property",
+          "signature": "WALKTHROUGH",
+          "status": "added"
+        }
+      ],
+      "bases": [
+        "Enum"
+      ]
+    },
+    {
+      "id": "class:ClientEvent",
+      "name": "ClientEvent",
+      "kind": "type",
+      "side": "back",
+      "status": "modified",
+      "members": [
+        {
+          "id": "class:ClientEvent.RequestHint",
+          "name": "RequestHint",
+          "kind": "property",
+          "signature": "RequestHint",
+          "status": "added"
+        },
+        {
+          "id": "class:ClientEvent.ChatMessage",
+          "name": "ChatMessage",
+          "kind": "property",
+          "signature": "ChatMessage",
+          "status": "unchanged"
+        }
+      ]
+    },
+    {
+      "id": "class:ScoreCard",
+      "name": "ScoreCard",
+      "kind": "class",
+      "side": "back",
+      "status": "modified",
+      "members": [
+        {
+          "id": "class:ScoreCard.hint_penalty",
+          "name": "hint_penalty",
+          "kind": "property",
+          "signature": "hint_penalty: float",
+          "status": "added"
+        },
+        {
+          "id": "class:ScoreCard.total",
+          "name": "total",
+          "kind": "method",
+          "signature": "total() -> float",
+          "status": "modified",
+          "note": "Subtracts the hint penalty."
+        }
+      ]
+    },
+    {
+      "id": "class:SessionStore",
+      "name": "SessionStore",
+      "kind": "class",
+      "side": "back",
+      "status": "modified",
+      "members": [
+        {
+          "id": "class:SessionStore.save_hint",
+          "name": "save_hint",
+          "kind": "method",
+          "signature": "save_hint(session_id: str, level: HintLevel) -> None",
+          "status": "added"
+        },
+        {
+          "id": "class:SessionStore.load",
+          "name": "load",
+          "kind": "method",
+          "signature": "load(session_id: str) -> Session",
+          "status": "unchanged"
+        }
+      ]
+    },
+    {
+      "id": "class:LLMClient",
+      "name": "LLMClient",
+      "kind": "protocol",
+      "side": "back",
+      "status": "unchanged",
+      "members": [
+        {
+          "id": "class:LLMClient.stream",
+          "name": "stream",
+          "kind": "method",
+          "signature": "stream(messages: list[Message]) -> AsyncIterator[str]",
+          "status": "unchanged"
+        }
+      ],
+      "bases": [
+        "Protocol"
+      ]
+    },
+    {
+      "id": "class:CommandParser",
+      "name": "CommandParser",
+      "kind": "class",
+      "side": "back",
+      "status": "removed",
+      "members": [
+        {
+          "id": "class:CommandParser.parse",
+          "name": "parse",
+          "kind": "method",
+          "signature": "parse(text: str) -> Command | None",
+          "status": "removed"
+        }
+      ],
+      "note": "Free-text commands are replaced by client events."
+    }
+  ],
+  "relations": [
+    {
+      "id": "rel:screen-button",
+      "from": "class:InterviewScreen",
+      "to": "class:HintButton",
+      "kind": "contains",
+      "status": "added"
+    },
+    {
+      "id": "rel:screen-panel",
+      "from": "class:InterviewScreen",
+      "to": "class:HintPanel",
+      "kind": "contains",
+      "status": "added"
+    },
+    {
+      "id": "rel:panel-hook",
+      "from": "class:HintPanel",
+      "to": "class:useHints",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:button-hook",
+      "from": "class:HintButton",
+      "to": "class:useHints",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:orch-policy",
+      "from": "class:Orchestrator",
+      "to": "class:HintPolicy",
+      "kind": "uses",
+      "status": "added"
+    },
+    {
+      "id": "rel:policy-level",
+      "from": "class:HintPolicy",
+      "to": "class:HintLevel",
+      "kind": "creates",
+      "status": "added"
+    },
+    {
+      "id": "rel:orch-event",
+      "from": "class:Orchestrator",
+      "to": "class:ClientEvent",
+      "kind": "depends_on",
+      "status": "unchanged"
+    },
+    {
+      "id": "rel:orch-llm",
+      "from": "class:Orchestrator",
+      "to": "class:LLMClient",
+      "kind": "uses",
+      "status": "unchanged"
+    },
+    {
+      "id": "rel:orch-score",
+      "from": "class:Orchestrator",
+      "to": "class:ScoreCard",
+      "kind": "uses",
+      "status": "modified"
+    },
+    {
+      "id": "rel:orch-store",
+      "from": "class:Orchestrator",
+      "to": "class:SessionStore",
+      "kind": "uses",
+      "status": "modified"
+    },
+    {
+      "id": "rel:orch-parser",
+      "from": "class:Orchestrator",
+      "to": "class:CommandParser",
+      "kind": "uses",
+      "status": "removed"
+    }
+  ],
+  "flows": [
+    {
+      "id": "flow:hint",
+      "title": "Candidate requests a hint",
+      "kind": "sequence",
+      "participants": [
+        {
+          "id": "flow:hint/client",
+          "name": "Web client",
+          "status": "modified"
+        },
+        {
+          "id": "flow:hint/agent",
+          "name": "Agent worker",
+          "status": "unchanged"
+        },
+        {
+          "id": "flow:hint/orch",
+          "name": "Orchestrator",
+          "status": "modified"
+        },
+        {
+          "id": "flow:hint/store",
+          "name": "SessionStore",
+          "status": "modified"
+        },
+        {
+          "id": "flow:hint/llm",
+          "name": "LLM",
+          "status": "unchanged"
+        }
+      ],
+      "steps": [
+        {
+          "id": "flow:hint/1",
+          "from": "flow:hint/client",
+          "to": "flow:hint/agent",
+          "label": "request_hint",
+          "status": "added"
+        },
+        {
+          "id": "flow:hint/2",
+          "from": "flow:hint/agent",
+          "to": "flow:hint/orch",
+          "label": "on_event(RequestHint)",
+          "status": "added"
+        },
+        {
+          "id": "flow:hint/3",
+          "from": "flow:hint/orch",
+          "to": "flow:hint/store",
+          "label": "save_hint(level)",
+          "status": "added"
+        },
+        {
+          "id": "flow:hint/4",
+          "from": "flow:hint/orch",
+          "to": "flow:hint/llm",
+          "label": "stream(hint prompt at level)",
+          "status": "added"
+        },
+        {
+          "id": "flow:hint/5",
+          "from": "flow:hint/orch",
+          "to": "flow:hint/client",
+          "label": "hint text (streamed)",
+          "status": "added"
+        },
+        {
+          "id": "flow:hint/6",
+          "from": "flow:hint/client",
+          "to": "flow:hint/agent",
+          "label": "chat '/hint'",
+          "status": "removed"
+        }
+      ]
+    },
+    {
+      "id": "flow:level",
+      "title": "Choosing the hint level",
+      "kind": "flowchart",
+      "nodes": [
+        {
+          "id": "flow:level/start",
+          "name": "Hint requested",
+          "status": "added"
+        },
+        {
+          "id": "flow:level/check",
+          "name": "hints_given < max_hints?",
+          "status": "added"
+        },
+        {
+          "id": "flow:level/give",
+          "name": "Give the next level",
+          "status": "added"
+        },
+        {
+          "id": "flow:level/penalty",
+          "name": "Add to hint_penalty",
+          "status": "added"
+        },
+        {
+          "id": "flow:level/refuse",
+          "name": "Say no hints are left",
+          "status": "added"
+        }
+      ],
+      "edges": [
+        {
+          "id": "flow:level/e1",
+          "from": "flow:level/start",
+          "to": "flow:level/check",
+          "status": "added"
+        },
+        {
+          "id": "flow:level/e2",
+          "from": "flow:level/check",
+          "to": "flow:level/give",
+          "label": "yes",
+          "status": "added"
+        },
+        {
+          "id": "flow:level/e3",
+          "from": "flow:level/give",
+          "to": "flow:level/penalty",
+          "status": "added"
+        },
+        {
+          "id": "flow:level/e4",
+          "from": "flow:level/check",
+          "to": "flow:level/refuse",
+          "label": "no",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "id": "flow:score",
+      "title": "Scoring at the end of the interview",
+      "kind": "sequence",
+      "participants": [
+        {
+          "id": "flow:score/orch",
+          "name": "Orchestrator",
+          "status": "unchanged"
+        },
+        {
+          "id": "flow:score/card",
+          "name": "ScoreCard",
+          "status": "modified"
+        },
+        {
+          "id": "flow:score/store",
+          "name": "SessionStore",
+          "status": "unchanged"
+        }
+      ],
+      "steps": [
+        {
+          "id": "flow:score/1",
+          "from": "flow:score/orch",
+          "to": "flow:score/store",
+          "label": "load(session_id)",
+          "status": "unchanged"
+        },
+        {
+          "id": "flow:score/2",
+          "from": "flow:score/orch",
+          "to": "flow:score/card",
+          "label": "total()",
+          "status": "modified"
+        },
+        {
+          "id": "flow:score/3",
+          "from": "flow:score/card",
+          "to": "flow:score/orch",
+          "label": "score minus hint_penalty",
+          "status": "added"
+        }
+      ]
+    }
+  ],
+  "architecture": {
+    "nodes": [
+      {
+        "id": "arch:web",
+        "name": "Web client",
+        "kind": "client",
+        "status": "modified"
+      },
+      {
+        "id": "arch:livekit",
+        "name": "LiveKit server",
+        "kind": "external",
+        "status": "unchanged"
+      },
+      {
+        "id": "arch:agent",
+        "name": "Agent worker",
+        "kind": "worker",
+        "status": "modified"
+      },
+      {
+        "id": "arch:ollama",
+        "name": "Ollama",
+        "kind": "service",
+        "status": "unchanged"
+      },
+      {
+        "id": "arch:db",
+        "name": "SQLite sessions",
+        "kind": "database",
+        "status": "modified"
+      },
+      {
+        "id": "arch:grader",
+        "name": "Grader job",
+        "kind": "worker",
+        "status": "modified"
+      }
+    ],
+    "edges": [
+      {
+        "id": "arch:web-livekit",
+        "from": "arch:web",
+        "to": "arch:livekit",
+        "status": "unchanged",
+        "label": "WebRTC + data"
+      },
+      {
+        "id": "arch:livekit-agent",
+        "from": "arch:livekit",
+        "to": "arch:agent",
+        "status": "unchanged",
+        "label": "events"
+      },
+      {
+        "id": "arch:agent-ollama",
+        "from": "arch:agent",
+        "to": "arch:ollama",
+        "status": "unchanged",
+        "label": "HTTP"
+      },
+      {
+        "id": "arch:agent-db",
+        "from": "arch:agent",
+        "to": "arch:db",
+        "status": "modified",
+        "label": "hints used"
+      },
+      {
+        "id": "arch:grader-db",
+        "from": "arch:grader",
+        "to": "arch:db",
+        "status": "modified",
+        "label": "reads scores"
+      }
+    ]
+  },
+  "files": [
+    {
+      "id": "file:hints",
+      "path": "backend/src/app/core/hints.py",
+      "kind": "code",
+      "change": "added",
+      "reason": "HintPolicy and HintLevel"
+    },
+    {
+      "id": "file:orchestrator",
+      "path": "backend/src/app/core/orchestrator.py",
+      "kind": "code",
+      "change": "modified",
+      "reason": "give_hint(); drop parse_command()"
+    },
+    {
+      "id": "file:events",
+      "path": "backend/src/app/core/events.py",
+      "kind": "code",
+      "change": "modified",
+      "reason": "RequestHint client event"
+    },
+    {
+      "id": "file:score",
+      "path": "backend/src/app/core/score.py",
+      "kind": "code",
+      "change": "modified",
+      "reason": "hint_penalty in the total"
+    },
+    {
+      "id": "file:store",
+      "path": "backend/src/app/store/sessions.py",
+      "kind": "code",
+      "change": "modified",
+      "reason": "save_hint()"
+    },
+    {
+      "id": "file:commands",
+      "path": "backend/src/app/core/commands.py",
+      "kind": "code",
+      "change": "removed",
+      "reason": "Free-text commands replaced by events"
+    },
+    {
+      "id": "file:migration",
+      "path": "backend/migrations/0007_hints.sql",
+      "kind": "code",
+      "change": "added",
+      "reason": "hints table"
+    },
+    {
+      "id": "file:button",
+      "path": "frontend/src/interview/HintButton.tsx",
+      "kind": "code",
+      "change": "added",
+      "reason": "The Hint button"
+    },
+    {
+      "id": "file:panel",
+      "path": "frontend/src/interview/HintPanel.tsx",
+      "kind": "code",
+      "change": "added",
+      "reason": "Streams hints in"
+    },
+    {
+      "id": "file:hook",
+      "path": "frontend/src/interview/useHints.ts",
+      "kind": "code",
+      "change": "added",
+      "reason": "Sends RequestHint, tracks streaming"
+    },
+    {
+      "id": "file:screen",
+      "path": "frontend/src/interview/InterviewScreen.tsx",
+      "kind": "code",
+      "change": "modified",
+      "reason": "Places the button and panel"
+    },
+    {
+      "id": "file:test-hints",
+      "path": "backend/tests/core/test_hints.py",
+      "kind": "test",
+      "change": "added",
+      "reason": "HintPolicy behaviour"
+    },
+    {
+      "id": "file:test-orch",
+      "path": "backend/tests/core/test_orchestrator.py",
+      "kind": "test",
+      "change": "modified",
+      "reason": "Hint request handling"
+    },
+    {
+      "id": "file:test-score",
+      "path": "backend/tests/core/test_score.py",
+      "kind": "test",
+      "change": "modified",
+      "reason": "Penalty in the total"
+    },
+    {
+      "id": "file:test-button",
+      "path": "frontend/src/interview/HintButton.test.tsx",
+      "kind": "test",
+      "change": "added",
+      "reason": "Disabled when no hints are left"
+    },
+    {
+      "id": "file:config",
+      "path": "backend/config/interview.toml",
+      "kind": "config",
+      "change": "modified",
+      "reason": "max_hints and hint_penalty"
+    },
+    {
+      "id": "file:readme",
+      "path": "README.md",
+      "kind": "doc",
+      "change": "modified",
+      "reason": "Document hints"
+    }
+  ],
+  "tests": [
+    {
+      "id": "test:1",
+      "name": "test_first_hint_is_a_nudge",
+      "target": "class:HintPolicy.next_level",
+      "behaviour": "With no hints given, the next level is NUDGE"
+    },
+    {
+      "id": "test:2",
+      "name": "test_levels_escalate_then_stop",
+      "target": "class:HintPolicy.next_level",
+      "behaviour": "Levels go NUDGE, APPROACH, WALKTHROUGH, then None"
+    },
+    {
+      "id": "test:3",
+      "name": "test_max_hints_caps_the_sequence",
+      "target": "class:HintPolicy.max_hints",
+      "behaviour": "max_hints=1 gives one NUDGE, then None"
+    },
+    {
+      "id": "test:4",
+      "name": "test_request_hint_event_streams_a_hint",
+      "target": "class:Orchestrator.give_hint",
+      "behaviour": "A RequestHint event streams the LLM's hint to the client and counts it"
+    },
+    {
+      "id": "test:5",
+      "name": "test_no_hints_left_is_said_without_calling_the_llm",
+      "target": "flow:level/refuse",
+      "behaviour": "Past the cap, the agent says so and the LLM is not called"
+    },
+    {
+      "id": "test:6",
+      "name": "test_each_hint_is_saved_with_its_level",
+      "target": "class:SessionStore.save_hint",
+      "behaviour": "A given hint is stored with its session and level"
+    },
+    {
+      "id": "test:7",
+      "name": "test_hints_lower_the_total",
+      "target": "class:ScoreCard.total",
+      "behaviour": "Two hints lower the total by twice the penalty"
+    },
+    {
+      "id": "test:8",
+      "name": "test_free_text_hint_command_is_gone",
+      "target": "class:Orchestrator.parse_command",
+      "behaviour": "Typing '/hint' is treated as a normal chat message"
+    },
+    {
+      "id": "test:9",
+      "name": "hint button is disabled when no hints are left",
+      "target": "class:HintButton.disabled",
+      "behaviour": "With hintsLeft 0 the button is disabled"
+    },
+    {
+      "id": "test:10",
+      "name": "hint panel streams text in",
+      "target": "class:HintPanel.render",
+      "behaviour": "Chunks appear in order while streaming is true"
+    }
+  ],
+  "risks": [
+    {
+      "id": "risk:1",
+      "kind": "risk",
+      "text": "Small local models may give away the full solution even at NUDGE level.",
+      "severity": "high",
+      "mitigation": "A prompt per level with an explicit 'do not reveal code' rule; probe it by hand with the interviewer model."
+    },
+    {
+      "id": "risk:2",
+      "kind": "risk",
+      "text": "Removing '/hint' breaks anyone used to typing it.",
+      "severity": "low",
+      "mitigation": "Mention the Hint button in the agent's greeting."
+    },
+    {
+      "id": "risk:3",
+      "kind": "risk",
+      "text": "The migration runs on live session databases.",
+      "severity": "medium",
+      "mitigation": "Additive table only; tested on a copy of a real database first."
+    },
+    {
+      "id": "risk:4",
+      "kind": "question",
+      "text": "Should hints count against the candidate's score?",
+      "severity": "medium"
+    },
+    {
+      "id": "risk:5",
+      "kind": "question",
+      "text": "Should the interviewer see which hints were given?",
+      "severity": "low"
+    }
+  ]
+}

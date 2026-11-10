@@ -1,0 +1,113 @@
+{
+  "decisions": [
+    {
+      "id": "d-cost",
+      "topic": "Scoring",
+      "decision": "Hint cost",
+      "choice": "Lowers the final score, never below zero",
+      "why": "A hint helps, so it should count, but not wipe out the score.",
+      "question_id": "q-cost"
+    },
+    {
+      "id": "d-source",
+      "topic": "Hints",
+      "decision": "Hint source",
+      "choice": "Generated on request",
+      "question_id": "q-source"
+    }
+  ],
+  "replies": [
+    {
+      "question_id": "q-depth",
+      "text": "Good point. Should the interviewer turn the walkthrough off for a whole interview, or per question?",
+      "revised": {
+        "explanation": "Hints escalate from a nudge to a walkthrough, and the interviewer can switch the walkthrough off.",
+        "choices": [
+          {
+            "id": "per-interview",
+            "label": "Per interview",
+            "description": "One switch in the interview's settings."
+          },
+          {
+            "id": "per-question",
+            "label": "Per question",
+            "description": "A switch on each question."
+          },
+          {
+            "id": "both",
+            "label": "Both",
+            "description": "An interview default that a question can override."
+          }
+        ]
+      }
+    }
+  ],
+  "round": [
+    {
+      "id": "q-limit",
+      "title": "How many hints per interview?",
+      "explanation": "The number of hints decides how much help a candidate can get in total.",
+      "choices": [
+        {
+          "id": "config",
+          "label": "Set in each interview's config",
+          "description": "Each interview type chooses its own number."
+        },
+        {
+          "id": "three",
+          "label": "Always 3",
+          "description": "One fixed number for every interview."
+        },
+        {
+          "id": "unlimited",
+          "label": "No limit",
+          "description": "The penalty alone keeps hints in check."
+        }
+      ]
+    },
+    {
+      "id": "q-place",
+      "title": "Where does a hint appear?",
+      "explanation": "The hint should be easy to read without hiding the code.",
+      "choices": [
+        {
+          "id": "panel",
+          "label": "In a side panel",
+          "description": "Next to the editor, kept for the whole interview."
+        },
+        {
+          "id": "chat",
+          "label": "In the chat",
+          "description": "As a message from the interviewer."
+        },
+        {
+          "id": "popup",
+          "label": "In a popup",
+          "description": "Shown over the editor until closed."
+        }
+      ]
+    },
+    {
+      "id": "q-visible",
+      "title": "Does the interviewer see the hints given?",
+      "explanation": "Interviewers may want to know how much help was needed.",
+      "choices": [
+        {
+          "id": "report",
+          "label": "In the final report",
+          "description": "Each hint and its level, after the interview."
+        },
+        {
+          "id": "live",
+          "label": "Live",
+          "description": "Hints show up for the interviewer as they happen."
+        },
+        {
+          "id": "hidden",
+          "label": "No",
+          "description": "Hints are private to the candidate."
+        }
+      ]
+    }
+  ]
+}
