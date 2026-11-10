@@ -97,7 +97,7 @@ def repo(tmp_path: Path) -> Path:
     for shipped in [
         "agents/architect.md",
         "skills/ship/SKILL.md",
-        "src/plan_review/cli.py",
+        "src/plan_review/cli/__init__.py",
         "web/src/App.tsx",  # built into the shipped page
         "web/src/App.test.tsx",
         *VIEWER_BUILD_FILES,

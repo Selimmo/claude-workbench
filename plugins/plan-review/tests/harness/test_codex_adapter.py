@@ -269,7 +269,7 @@ def test_install_with_no_files_in_the_copy_says_so(
 
 
 def test_install_choices_come_from_the_adapters(home: Path) -> None:
-    source = (PLUGIN / "src" / "plan_review" / "cli.py").read_text("utf-8")
+    source = (PLUGIN / "src" / "plan_review" / "cli" / "__init__.py").read_text("utf-8")
 
     assert "codex" not in source.lower()
     assert main(["install", "codex"]) == 0

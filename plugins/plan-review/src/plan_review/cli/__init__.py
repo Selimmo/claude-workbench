@@ -48,7 +48,7 @@ from plan_review.viewer.detach import (
     stop_viewer,
 )
 
-STATIC_DIR = Path(__file__).parent / "static"
+STATIC_DIR = Path(__file__).parent.parent / "static"
 
 
 def _schema() -> int:
