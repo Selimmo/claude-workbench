@@ -21,7 +21,7 @@ from plan_review.grill.decisions_md import decisions_markdown
 from plan_review.grill.drafts import GrillDraftStore
 from plan_review.grill.grill import GrillError, GrillStore
 from plan_review.grill.turn import Turn
-from plan_review.harness.adapters import ADAPTERS, adapter_by_key
+from plan_review.harness.adapters import adapter_by_key, all_adapters
 from plan_review.harness.upgrade import upgrade
 from plan_review.paths.run_id import InvalidRunId, check_run_id, label
 from plan_review.paths.run_paths import RunPaths
@@ -109,7 +109,7 @@ def _parser() -> argparse.ArgumentParser:
         "put plan-review's skill and agents where a CLI reads them",
         lambda a: _install(a.cli),
     )
-    install.add_argument("cli", choices=[a.key for a in ADAPTERS])
+    install.add_argument("cli", choices=[a.key for a in all_adapters()])
     command("stop", "stop a run's detached viewer", lambda a: _stop(a.run_id)).add_argument(
         "run_id"
     )
@@ -445,9 +445,9 @@ def _serve_detached(run_id: str, work: Path, page: str, open_mode: str, hint: st
 
 
 def _install(key: str) -> int:
-    adapter = adapter_by_key(key)
-    assert adapter is not None  # argparse limited the choices to the adapters
-    return adapter.install()
+    harness = adapter_by_key(key)
+    assert harness is not None  # argparse limited the choices to the adapters
+    return harness.install()
 
 
 def _stop(run_id: str) -> int:

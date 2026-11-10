@@ -9,7 +9,7 @@ import pytest
 from conftest import PLUGIN
 
 from plan_review.harness import generate
-from plan_review.harness.adapters.claude_code import ClaudeCode
+from plan_review.harness.adapters import claude_code
 from plan_review.harness.workflow import fill, load_workflow
 
 AGENTS = ["architect", "implementer", "test-reviewer", "code-reviewer"]
@@ -55,7 +55,7 @@ def test_load_workflow_reads_ship_and_the_four_agents(tmp_path: Path) -> None:
 def test_claude_code_files_go_where_the_plugin_ships_them(tmp_path: Path) -> None:
     write_sample(tmp_path)
 
-    files = ClaudeCode().files(load_workflow(tmp_path / "workflow"))
+    files = claude_code.HARNESS.files(load_workflow(tmp_path / "workflow"))
 
     assert sorted(files) == sorted(
         [PurePosixPath("skills/ship/SKILL.md"), *(PurePosixPath(f"agents/{a}.md") for a in AGENTS)]
