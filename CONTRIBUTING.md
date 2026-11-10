@@ -6,7 +6,7 @@ Work is tracked in GitHub issues, one branch per issue (`<issue#>-short-slug`), 
 
 ## Prerequisites
 
-Everything the [README](README.md#prerequisites) lists for using the plugins, plus:
+Everything the [README](README.md#install-and-upgrade) lists for using the plugins, plus:
 
 - Node.js 24 LTS (see `plugins/plan-review/web/.nvmrc`), to build the viewer page
 - `jq` and `zip` (preinstalled on macOS and GitHub's runners), for the release scripts
@@ -54,7 +54,7 @@ claude-workbench/
 ├── README.md, CHANGELOG.md             # for users
 ├── CONTRIBUTING.md, RELEASING.md       # for maintainers
 ├── .gitattributes                      # LF line endings everywhere (the launcher is a sh script)
-├── docs/img/                           # README screenshots and demo
+├── docs/img/                           # the two README demo GIFs (grill and plan review)
 ├── .claude-plugin/marketplace.json     # lists the plugins in this repo
 ├── .github/workflows/
 │   ├── plan-review.yml                 # CI for plan-review: version guard, check.sh, backend tests on Windows
@@ -74,7 +74,7 @@ claude-workbench/
         ├── workflow/                   # the /ship workflow and the four agents, written once (edit these)
         ├── agents/                     # GENERATED from workflow/: architect, implementer, test-reviewer, code-reviewer
         ├── skills/ship/SKILL.md        # GENERATED from workflow/: /plan-review:ship, the orchestrator
-        ├── examples/                   # plan.json, config.json and grill demo samples
+        ├── examples/                   # plan.json, config.json, grill samples, and demo/ (the README GIFs' inputs)
         ├── src/plan_review/            # CLI, plan schema, server, comment threads, review drafts, /ship helpers, init, upgrade
         │   ├── adapters/               # one adapter per CLI (Claude Code): upgrade steps, generated files, its words
         │   ├── generate.py             # writes agents/ and skills/ from workflow/; `--check` fails on a stale copy

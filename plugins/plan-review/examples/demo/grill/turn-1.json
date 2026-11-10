@@ -1,0 +1,76 @@
+{
+  "title": "Let candidates request a hint during an interview",
+  "round": [
+    {
+      "id": "q-cost",
+      "title": "What does a hint cost the candidate?",
+      "explanation": "A hint helps, so it should probably cost something. This decides how the final score is worked out.",
+      "choices": [
+        {
+          "id": "penalty",
+          "label": "Lowers the final score",
+          "description": "Each hint takes a set penalty off the total."
+        },
+        {
+          "id": "free",
+          "label": "Free",
+          "description": "Hints never change the score."
+        },
+        {
+          "id": "capped",
+          "label": "Free, but capped",
+          "description": "No penalty, but only a few hints per interview."
+        },
+        {
+          "id": "time",
+          "label": "Costs time",
+          "description": "Each hint takes two minutes off the clock."
+        }
+      ]
+    },
+    {
+      "id": "q-depth",
+      "title": "How much does a hint give away?",
+      "explanation": "A first hint could be a gentle nudge or a full answer. This shapes the prompt the model gets.",
+      "choices": [
+        {
+          "id": "escalate",
+          "label": "Escalates",
+          "description": "Nudge first, then the approach, then a walkthrough."
+        },
+        {
+          "id": "fixed",
+          "label": "Always the same depth",
+          "description": "Every hint is a nudge."
+        },
+        {
+          "id": "pick",
+          "label": "Candidate picks",
+          "description": "The candidate chooses how deep the hint goes."
+        }
+      ]
+    },
+    {
+      "id": "q-source",
+      "title": "Where do hints come from?",
+      "explanation": "Hints can be written ahead of time or generated when asked for.",
+      "choices": [
+        {
+          "id": "generated",
+          "label": "Generated on request",
+          "description": "The model writes the hint from the conversation so far."
+        },
+        {
+          "id": "written",
+          "label": "Written per question",
+          "description": "Authors add hints when they write a question."
+        },
+        {
+          "id": "mixed",
+          "label": "Written first, generated after",
+          "description": "Use the written hint, then generate more."
+        }
+      ]
+    }
+  ]
+}
