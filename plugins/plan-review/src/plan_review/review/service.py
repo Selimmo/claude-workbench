@@ -11,7 +11,8 @@ from fastapi import APIRouter, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from plan_review.events.events import AgentEvents
+from plan_review.events.agent_events import AgentEvents
+from plan_review.review.approval_file import ApprovalFile
 from plan_review.review.drafts import Draft, DraftStore
 from plan_review.review.threads import ThreadStore
 
@@ -45,7 +46,9 @@ def submit(pending: list[Draft], threads: ThreadStore) -> list[dict[str, str]]:
     return comments
 
 
-def review_routes(threads: ThreadStore, drafts: DraftStore, events: AgentEvents) -> APIRouter:
+def review_routes(
+    threads: ThreadStore, drafts: DraftStore, events: AgentEvents, approval: ApprovalFile
+) -> APIRouter:
     router = APIRouter()
 
     @router.get("/api/drafts")
@@ -81,6 +84,9 @@ def review_routes(threads: ThreadStore, drafts: DraftStore, events: AgentEvents)
             pending = drafts.all()
             if not pending:
                 return JSONResponse({"errors": ["no drafts to submit"]}, status_code=422)
+            if approval.read() is not None:
+                message = "the plan is approved: a review can't be sent any more"
+                return JSONResponse({"errors": [message]}, status_code=409)
             # Before any thread: once written they can't be taken back, and the drafts stay
             # on a failure, so a second submit would post every comment twice.
             events.check_log()

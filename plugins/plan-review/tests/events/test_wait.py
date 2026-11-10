@@ -6,8 +6,9 @@ import pytest
 
 from plan_review.cli import main
 from plan_review.cli.runtime import Runtime
-from plan_review.events.event_log import EventLog, wait_for_event
+from plan_review.events.event_log import EventLog
 from plan_review.events.status import StatusStore
+from plan_review.events.waiter import wait_for_event
 
 
 @pytest.fixture

@@ -88,11 +88,9 @@ def test_codex_ship_restarts_the_viewer_after_a_timeout() -> None:
     assert "new link" in waiting
 
 
-def test_codex_ship_asks_for_approval_again_after_a_withdrawal() -> None:
-    waiting = skill().split("## 3. Review in the viewer", 1)[1]
-
-    assert "approval_withdrawn" in waiting
-    assert "approve again" in waiting
+def test_codex_ship_never_mentions_a_withdrawal() -> None:
+    assert "approval_withdrawn" not in skill()
+    assert "withdrawn" not in skill()
 
 
 def test_codex_ship_catches_up_when_resuming() -> None:

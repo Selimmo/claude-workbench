@@ -149,79 +149,30 @@ def approve(tmp_path: Path) -> None:
     (tmp_path / "approved.json").write_text("{}")
 
 
-def test_an_approval_ahead_of_a_review_is_withdrawn(log: EventLog, tmp_path: Path) -> None:
-    approve(tmp_path)
-    log.record(APPROVED)
-    log.record(REVIEW)
-    event = log.offer()
-
-    assert event is not None
-    assert event["type"] == "review_submitted"
-    assert event["approval_withdrawn"] is True
-    assert not (tmp_path / "approved.json").exists()
-    log.confirm()
-    assert log.offer() is None
-
-
-def test_a_review_ahead_of_an_approval_withdraws_it_too(log: EventLog, tmp_path: Path) -> None:
-    log.record(REVIEW)
-    approve(tmp_path)
-    log.record(APPROVED)
-
-    event = log.offer()
-
-    assert event is not None
-    assert (event["type"], event["approval_withdrawn"]) == ("review_submitted", True)
-    assert not (tmp_path / "approved.json").exists()
-    log.confirm()
-    assert log.offer() is None
-
-
-def test_a_withdrawal_is_offered_again_until_it_is_confirmed(log: EventLog, tmp_path: Path) -> None:
+def test_an_approval_and_a_review_both_waiting_are_offered_in_order(
+    log: EventLog, tmp_path: Path
+) -> None:
     approve(tmp_path)
     log.record(APPROVED)
     log.record(REVIEW)
 
-    first, second = log.offer(), log.offer()  # the agent crashed before its status
-
-    assert first is not None and second is not None
-    assert first["approval_withdrawn"] is True
-    assert second["approval_withdrawn"] is True
+    assert log.offer() == {"type": "approved", "seq": 1}
+    assert (tmp_path / "approved.json").exists()
     log.confirm()
-    assert log.offer() is None
+    assert log.offer() == {**REVIEW, "seq": 2}
 
 
-def test_a_new_approval_after_a_withdrawal_is_offered(log: EventLog, tmp_path: Path) -> None:
-    approve(tmp_path)
-    log.record(APPROVED)
-    log.record(REVIEW)
-    log.offer()
+def test_an_old_log_with_a_withdrawn_entry_still_loads(log: EventLog, tmp_path: Path) -> None:
+    entries = [
+        {"seq": 1, "event": APPROVED, "state": "withdrawn"},
+        {"seq": 2, "event": REVIEW, "state": "delivered", "approval_withdrawn": True},
+        {"seq": 3, "event": {"type": "a"}, "state": "waiting"},
+    ]
+    (tmp_path / "events.json").write_text(json.dumps({"events": entries}))
+
+    assert log.offer() == {**REVIEW, "seq": 2}
     log.confirm()
-
-    log.record(APPROVED)
-
-    assert log.offer() == {"type": "approved", "seq": 3}
-
-
-def test_a_withdrawal_copes_with_the_approval_file_already_gone(log: EventLog) -> None:
-    log.record(APPROVED)  # no approved.json: lost to a crash and a retry
-    log.record(REVIEW)
-
-    event = log.offer()
-
-    assert event is not None
-    assert event["approval_withdrawn"] is True
-
-
-def test_the_first_of_two_waiting_reviews_carries_the_withdrawal(log: EventLog) -> None:
-    log.record(REVIEW)
-    log.record(REVIEW)
-    log.record(APPROVED)
-
-    event = log.offer()
-
-    assert event is not None
-    assert (event["seq"], event["approval_withdrawn"]) == (1, True)
+    assert log.offer() == {"type": "a", "seq": 3}
 
 
 def test_a_review_alone_does_not_withdraw_an_approval_already_handled(

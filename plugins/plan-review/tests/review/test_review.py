@@ -5,9 +5,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from plan_review.events.agent_events import AgentEvents
 from plan_review.events.event_log import EventLog
-from plan_review.events.events import AgentEvents
 from plan_review.events.last_event import LastEventStore
+from plan_review.review.approval_file import ApprovalFile, ApprovalRecord
 from plan_review.review.drafts import DraftNotFound, DraftStore
 from plan_review.review.service import review_routes
 from plan_review.review.threads import Thread, ThreadStore
@@ -41,6 +42,7 @@ def test_a_draft_added_while_a_review_is_submitted_stays_for_the_next_review(
             AgentEvents(
                 LastEventStore(tmp_path / "last_event.json"), EventLog(tmp_path / "events.json")
             ),
+            ApprovalFile(tmp_path / "approved.json"),
         )
     )
     drafts.add("risk:1", "early")
@@ -89,6 +91,7 @@ def test_an_edit_during_a_submit_is_not_silently_lost(tmp_path: Path) -> None:
             AgentEvents(
                 LastEventStore(tmp_path / "last_event.json"), EventLog(tmp_path / "events.json")
             ),
+            ApprovalFile(tmp_path / "approved.json"),
         )
     )
 
@@ -104,12 +107,16 @@ def test_an_edit_during_a_submit_is_not_silently_lost(tmp_path: Path) -> None:
     ]
 
 
-def review_app(tmp_path: Path, threads: ThreadStore, drafts: DraftStore) -> TestClient:
+def review_app(
+    tmp_path: Path, threads: ThreadStore, drafts: DraftStore, approved: Path | None = None
+) -> TestClient:
     app = FastAPI()
     events = AgentEvents(
         LastEventStore(tmp_path / "last_event.json"), EventLog(tmp_path / "events.json")
     )
-    app.include_router(review_routes(threads, drafts, events))
+    app.include_router(
+        review_routes(threads, drafts, events, ApprovalFile(approved or tmp_path / "approved.json"))
+    )
     return TestClient(app)
 
 
@@ -200,3 +207,22 @@ def test_a_log_that_cannot_be_written_refuses_the_review_too(tmp_path: Path) -> 
     assert "events.json" in refused.json()["errors"][0]
     assert ThreadStore(tmp_path / "comments.json").all() == []
     assert [d.text for d in drafts.all()] == ["first comment"]
+
+
+def test_review_routes_refuse_a_review_when_the_approval_file_holds_a_record(
+    tmp_path: Path,
+) -> None:
+    threads = ThreadStore(tmp_path / "comments.json")
+    drafts = DraftStore(tmp_path / "drafts.json")
+    drafts.add("risk:1", "Agree?")
+    elsewhere = tmp_path / "approval-record.json"
+    ApprovalFile(elsewhere).write(
+        ApprovalRecord(approved_at="2026-01-01T00:00:00+00:00", plan_sha256="abc")
+    )
+
+    response = review_app(tmp_path, threads, drafts, elsewhere).post("/api/review")
+
+    assert response.status_code == 409
+    assert response.json() == {"errors": ["the plan is approved: a review can't be sent any more"]}
+    assert threads.all() == []
+    assert EventLog(tmp_path / "events.json").offer() is None

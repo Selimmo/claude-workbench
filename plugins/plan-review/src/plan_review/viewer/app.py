@@ -9,11 +9,12 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from plan_review.events.agent_events import AgentEvents
 from plan_review.events.event_log import EventLog
-from plan_review.events.events import AgentEvents, Subscribers
 from plan_review.events.last_event import LastEventStore
 from plan_review.events.resend import resend_routes
 from plan_review.events.status import StatusStore, status_routes
+from plan_review.events.subscribers import Listeners, Subscribers
 from plan_review.grill.drafts import GrillDraftStore
 from plan_review.grill.grill import GrillError, GrillStore
 from plan_review.grill.routes import grill_routes
@@ -21,6 +22,7 @@ from plan_review.paths.run_id import label
 from plan_review.paths.run_paths import RunPaths
 from plan_review.plan.plan import PlanFileError, load_plan
 from plan_review.review.approval import approval_routes
+from plan_review.review.approval_file import ApprovalFile
 from plan_review.review.drafts import DraftNotFound, DraftStore
 from plan_review.review.routes import thread_routes
 from plan_review.review.service import review_routes
@@ -54,7 +56,7 @@ async def _watch(files: dict[Path, str], interval: float, subscribers: Subscribe
                 await subscribers.send({"type": event})
 
 
-async def _listen(socket: WebSocket, subscribers: Subscribers) -> None:
+async def _listen(socket: WebSocket, subscribers: Listeners) -> None:
     """Hold a push-only socket open until the other side disconnects."""
     await socket.accept()
     subscribers.add(socket)
@@ -131,7 +133,7 @@ def create_app(
             comments_file: "threads_changed",
             drafts_file: "drafts_changed",  # e.g. a second tab of the viewer
             status_file: "status_changed",
-            run.approved: "approval_changed",  # the agent withdrew it
+            run.approved: "approval_changed",  # approving, from this server or by hand
             grill_file: "grill_changed",
             grill_drafts_file: "grill_drafts_changed",
         }
@@ -164,9 +166,10 @@ def create_app(
     _error_handlers(app)
 
     store = ThreadStore(comments_file)
+    approval = ApprovalFile(run.approved)
     drafts = DraftStore(drafts_file)
     app.include_router(thread_routes(store, plan_file))
-    app.include_router(review_routes(store, drafts, events))
+    app.include_router(review_routes(store, drafts, events, approval))
     statuses = StatusStore(status_file)
     app.include_router(status_routes(statuses))
     app.include_router(resend_routes(kept, statuses, events))
@@ -178,7 +181,7 @@ def create_app(
             label=label(plan_file.parent.name),
         )
     )
-    app.include_router(approval_routes(store, drafts, plan_file, events))
+    app.include_router(approval_routes(store, drafts, plan_file, events, approval))
 
     if detached:
         app.include_router(detached.routes())

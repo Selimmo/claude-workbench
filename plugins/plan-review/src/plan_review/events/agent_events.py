@@ -1,47 +1,30 @@
-"""Push-only WebSocket audiences: viewer pages and the agent."""
+"""What goes to the agent: logged, kept for a Resend, and pushed to connected sockets."""
 
 from contextlib import suppress
 from typing import Any
 
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket
 
 from plan_review.events.event_log import EventLog
 from plan_review.events.last_event import LastEventStore
+from plan_review.events.subscribers import Subscribers
 from plan_review.utils.json_files import BrokenFile
 
 
-class Subscribers:
-    """The sockets listening on one push-only endpoint."""
-
-    def __init__(self) -> None:
-        self._sockets: set[WebSocket] = set()
-
-    @property
-    def count(self) -> int:
-        return len(self._sockets)
-
-    def add(self, socket: WebSocket) -> None:
-        self._sockets.add(socket)
-
-    def remove(self, socket: WebSocket) -> None:
-        self._sockets.discard(socket)
-
-    async def send(self, message: dict[str, Any]) -> None:
-        for socket in list(self._sockets):
-            try:
-                await socket.send_json(message)
-            except WebSocketDisconnect, RuntimeError:
-                self.remove(socket)
-
-
-class AgentEvents(Subscribers):
+class AgentEvents:
     """What goes to the agent. Each event is first written to the run's log (for `plan-review
     wait`) and kept (for a Resend), then pushed to any connected socket."""
 
     def __init__(self, kept: LastEventStore, log: EventLog) -> None:
-        super().__init__()
+        self._subscribers = Subscribers()
         self._kept = kept
         self._log = log
+
+    def add(self, socket: WebSocket) -> None:
+        self._subscribers.add(socket)
+
+    def remove(self, socket: WebSocket) -> None:
+        self._subscribers.remove(socket)
 
     def check_log(self) -> None:
         """Raise BrokenFile now if `record` could not reach the log."""
@@ -55,7 +38,7 @@ class AgentEvents(Subscribers):
             self._kept.keep(message)
 
     async def push(self, message: dict[str, Any]) -> None:
-        await super().send(message)
+        await self._subscribers.send(message)
 
     async def send(self, message: dict[str, Any]) -> None:
         self.record(message)

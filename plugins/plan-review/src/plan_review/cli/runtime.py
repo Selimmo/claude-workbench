@@ -11,7 +11,7 @@ from typing import Any
 import uvicorn
 from fastapi import FastAPI
 
-from plan_review.events import event_log
+from plan_review.events import waiter
 from plan_review.events.event_log import EventLog
 from plan_review.paths import workdir
 
@@ -32,4 +32,4 @@ class Runtime:
     static_dir: Path = STATIC_DIR
     run_server: Callable[[FastAPI, socket.socket], None] = run_server
     open_browser: Callable[[str], object] = webbrowser.open
-    wait_for_event: Callable[[EventLog, float], dict[str, Any]] = event_log.wait_for_event
+    wait_for_event: Callable[[EventLog, float], dict[str, Any]] = waiter.wait_for_event

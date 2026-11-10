@@ -58,15 +58,13 @@ class PollingWaiting:
             f'`{{"type":"timeout"}}` after {self.wait_seconds} seconds with nothing new. '
             f'{LISTEN_RULES} After `{{"type":"timeout"}}`, run `plan-review serve ID --detach` '
             "again: it does nothing while the viewer is up, and when it started a new one (the "
-            "owner left the page closed for 2 hours), pass on the new link. Then wait again. A "
-            '`review_submitted` event with `"approval_withdrawn": true` means the owner had '
-            "approved the plan and then sent a review: handle the comments first, as below, then "
-            "tell the owner the approval was withdrawn and ask them to approve again. When you "
-            "resume a run, catch up before you wait: run `plan-review wait ID --timeout 0` and "
-            "handle each event it prints, with a status each, until it prints a timeout (events "
-            "the owner sent while no session was waiting are offered there, and the status "
-            "confirms them). Then run `plan-review threads ID` and treat every thread whose last "
-            "message is the owner's (no reply from you yet) as part of a review, and handle it as "
+            "owner left the page closed for 2 hours), pass on the new link. Then wait again. "
+            "When you resume a run, catch up before you wait: run "
+            "`plan-review wait ID --timeout 0` and handle each event it prints, with a status "
+            "each, until it prints a timeout (events the owner sent while no session was waiting "
+            "are offered there, and the status confirms them). Then run `plan-review threads ID` "
+            "and treat every thread whose last message is the owner's (no reply from you yet) as "
+            "part of a review, and handle it as "
             "below; if `W/approved.json` exists, the plan was approved: handle it as `approved` "
             "below."
         )

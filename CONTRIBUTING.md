@@ -90,8 +90,21 @@ claude-workbench/
         │   ├── settings/               # preferences, pipeline config, migration of old files
         │   ├── plan/                   # the plan.json schema
         │   ├── review/                 # comment threads, review drafts, approval and their routes
+        │   │   ├── approval.py         # the approve routes
+        │   │   ├── approval_file.py    # ApprovalFile: the only code that reads or writes approved.json
+        │   │   ├── drafts.py           # the owner's unsent review comments (drafts.json)
+        │   │   ├── routes.py           # the comment-thread routes
+        │   │   ├── service.py          # the review: drafts, then one submit that sends them all
+        │   │   └── threads.py          # comment threads on plan elements (comments.json)
         │   ├── grill/                  # the grilling before the plan: state, drafts, turns, routes
         │   ├── events/                 # what the agent is told and doing: events, status, last event
+        │   │   ├── subscribers.py      # Subscribers (the sockets on one endpoint) and Listeners
+        │   │   ├── agent_events.py     # AgentEvents: log, keep for a Resend, push
+        │   │   ├── event_log.py        # events.json: record, offer, confirm
+        │   │   ├── waiter.py           # wait_for_event, behind `plan-review wait`
+        │   │   ├── last_event.py       # the event kept for a Resend
+        │   │   ├── resend.py           # the Resend route
+        │   │   └── status.py           # what the agent says it is doing
         │   ├── pipeline/               # /ship helpers: branch name, tree hash, review verdict
         │   ├── viewer/                 # the web server (app.py) and the detached viewer
         │   ├── harness/                # workflow, generate.py (writes agents/ and skills/ from workflow/; `--check` fails on a stale copy), upgrade

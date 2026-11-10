@@ -573,6 +573,8 @@ def test_resend_sends_nothing_once_claude_set_a_status(plan_file: Path, static_d
         assert response.json()["status"]["text"] == "Approved, implementing"
         assert kept_file.read_text() == kept_before
         # Sentinel: a socket only blocks on silence, so prove the next event is the next send.
+        # (A review is refused while the plan is approved, so the approval goes first.)
+        (plan_file.parent / "approved.json").unlink()
         client.post("/api/drafts", json={"anchor": "class:HintPolicy", "text": "Why?"})
         client.post("/api/review")
         assert events.receive_json()["type"] == "review_submitted"
@@ -684,6 +686,54 @@ def test_a_broken_status_or_last_event_json_is_422_naming_it(
         assert response.json() == _named(last_event)
 
 
+def test_a_review_on_an_approved_plan_is_refused(plan_file: Path, static_dir: Path) -> None:
+    run = plan_file.parent
+    client = TestClient(create_app(plan_file, static_dir))
+    assert client.post("/api/approve").status_code == 200
+    client.post("/api/drafts", json={"anchor": "class:HintPolicy", "text": "Why?"})
+
+    response = client.post("/api/review")
+
+    assert response.status_code == 409
+    assert response.json() == {"errors": ["the plan is approved: a review can't be sent any more"]}
+    assert client.get("/api/threads").json() == {"threads": []}
+    assert len(client.get("/api/drafts").json()["drafts"]) == 1
+    log = EventLog(run / "events.json")
+    assert log.offer() == {"type": "approved", "seq": 1}
+    log.confirm()
+    assert log.offer() is None
+
+
+def test_a_review_with_a_broken_approved_json_is_422_naming_it(
+    plan_file: Path, static_dir: Path
+) -> None:
+    approved = plan_file.parent / "approved.json"
+    approved.write_bytes(b"{bad")
+    client = TestClient(create_app(plan_file, static_dir))
+    client.post("/api/drafts", json={"anchor": "class:HintPolicy", "text": "Why?"})
+
+    response = client.post("/api/review")
+
+    assert response.status_code == 422
+    assert response.json() == _named(approved)
+    assert client.get("/api/threads").json() == {"threads": []}
+    assert len(client.get("/api/drafts").json()["drafts"]) == 1
+    assert EventLog(plan_file.parent / "events.json").offer() is None
+    assert approved.read_bytes() == b"{bad"
+
+
+def test_a_review_with_no_drafts_on_an_approved_plan_still_says_no_drafts(
+    plan_file: Path, static_dir: Path
+) -> None:
+    client = TestClient(create_app(plan_file, static_dir))
+    assert client.post("/api/approve").status_code == 200
+
+    response = client.post("/api/review")
+
+    assert response.status_code == 422
+    assert response.json() == {"errors": ["no drafts to submit"]}
+
+
 @pytest.mark.parametrize(
     ("content", "line"),
     [
@@ -788,3 +838,18 @@ def test_pages_hear_when_the_approval_changes(plan_file: Path, static_dir: Path)
         approved.unlink()
 
         assert updates.receive_json() == {"type": "approval_changed"}
+
+
+def test_a_broken_approved_json_is_reported_before_the_unsent_drafts(
+    plan_file: Path, static_dir: Path
+) -> None:
+    approved = plan_file.parent / "approved.json"
+    approved.write_bytes(b"{bad")
+    client = TestClient(create_app(plan_file, static_dir))
+    client.post("/api/drafts", json={"anchor": "tab:plan", "text": "hi"})
+
+    response = client.post("/api/approve")
+
+    assert response.status_code == 422
+    assert response.json() == _named(approved)
+    assert approved.read_bytes() == b"{bad"
