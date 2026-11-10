@@ -75,7 +75,16 @@ claude-workbench/
         ├── agents/                     # GENERATED from workflow/: architect, implementer, test-reviewer, code-reviewer
         ├── skills/ship/SKILL.md        # GENERATED from workflow/: /plan-review:ship, the orchestrator
         ├── examples/                   # plan.json, config.json, grill samples, and demo/ (the README GIFs' inputs)
-        ├── src/plan_review/            # cli.py is the entry point; every other module lives in a folder
+        ├── src/plan_review/            # only __init__.py at the root; every module lives in a folder (cli/ holds the entry point)
+        │   ├── cli/                    # the command line: __init__.py has the parser and main(), one file per command group
+        │   │   ├── __main__.py         # python -m plan_review.cli: how the detached viewer starts
+        │   │   ├── runtime.py          # Runtime: what a command takes from outside (work folder, date, server, browser), so tests hand in fakes
+        │   │   ├── viewer.py           # serve, stop, viewer-process
+        │   │   ├── agent.py            # wait, status, reply, threads
+        │   │   ├── grill.py            # grill post, pending, decisions, schema
+        │   │   ├── pipeline.py         # init, schema, validate, branch, verdict, tree-hash
+        │   │   ├── settings.py         # config, prefs
+        │   │   └── setup.py            # install, upgrade
         │   ├── utils/                  # generic helpers: safe file saving, JSON files, text checks (imports no other folder)
         │   ├── paths/                  # run ids, the work folder, and RunPaths (every file a run keeps)
         │   ├── settings/               # preferences, pipeline config, migration of old files

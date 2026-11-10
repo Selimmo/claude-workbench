@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from plan_review import cli
 from plan_review.cli import main
+from plan_review.cli.runtime import Runtime
 from plan_review.events.event_log import EventLog, wait_for_event
 from plan_review.events.status import StatusStore
 
@@ -144,17 +144,13 @@ def test_status_still_works_with_a_broken_log(
     assert "events.json" in err[0]
 
 
-def test_wait_defaults_to_240_seconds(
-    work: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_wait_defaults_to_240_seconds(work: Path, capsys: pytest.CaptureFixture[str]) -> None:
     waited: list[float] = []
 
     def fake_wait(log: EventLog, timeout: float) -> dict[str, object]:
         waited.append(timeout)
         return {"type": "timeout"}
 
-    monkeypatch.setattr(cli, "wait_for_event", fake_wait)
-
-    assert main(["wait", "7"]) == 0
+    assert main(["wait", "7"], runtime=Runtime(wait_for_event=fake_wait)) == 0
 
     assert waited == [240.0]

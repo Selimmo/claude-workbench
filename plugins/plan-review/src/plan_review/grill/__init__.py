@@ -8,9 +8,11 @@ from plan_review.grill.grill import (
     GrillError,
     GrillState,
     GrillStore,
+    PostedTurn,
     Question,
     SubmittedAnswer,
     load_grill,
+    post_turn,
 )
 from plan_review.grill.routes import grill_routes
 from plan_review.grill.turn import Turn
@@ -23,10 +25,12 @@ __all__ = [
     "GrillState",
     "GrillStore",
     "MAX_REPLIES",
+    "PostedTurn",
     "Question",
     "SubmittedAnswer",
     "Turn",
     "decisions_markdown",
     "grill_routes",
     "load_grill",
+    "post_turn",
 ]

@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel, Field, TypeAdapter
 
+from plan_review.events.event_log import EventLog
 from plan_review.utils.json_files import BrokenFile, read_file
 from plan_review.utils.safe_files import write_atomically
 
@@ -58,6 +59,20 @@ class StatusStore:
             self._path.replace(aside)
             return aside
         return None
+
+
+def set_status(store: StatusStore, log: EventLog, text: str, *, done: bool) -> list[str]:
+    """Set the status, which says the agent has handled what `wait` last handed it.
+
+    Returns the problem lines of an unreadable events.json (the status is written all the
+    same), or [] when the delivered events were confirmed. A blank text raises ValueError
+    before anything is confirmed."""
+    store.set(text, done=done)
+    try:
+        log.confirm()
+    except BrokenFile as error:
+        return error.errors
+    return []
 
 
 def status_routes(store: StatusStore) -> APIRouter:

@@ -2,7 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from plan_review.events.status import StatusStore
+from plan_review.events.event_log import EventLog
+from plan_review.events.status import StatusStore, set_status
 from plan_review.utils.json_files import BrokenFile
 
 
@@ -104,3 +105,44 @@ def test_clearing_a_broken_status_json_moves_it_aside_replacing_an_older_copy(
 
     path.write_bytes(b"{bad")
     assert store.set_aside() == tmp_path / "status.json.broken"
+
+
+def test_a_status_confirms_the_events_wait_delivered(tmp_path: Path, store: StatusStore) -> None:
+    log = EventLog(tmp_path / "events.json")
+    log.record({"type": "first"})
+    log.record({"type": "second"})
+    assert log.offer() == {"type": "first", "seq": 1}
+
+    problems = set_status(store, log, "Working on it", done=False)
+
+    assert problems == []
+    assert log.offer() == {"type": "second", "seq": 2}
+    status = store.get()
+    assert status is not None
+    assert status.text == "Working on it"
+
+
+def test_a_status_is_written_even_when_events_json_is_broken(
+    tmp_path: Path, store: StatusStore
+) -> None:
+    events = tmp_path / "events.json"
+    events.write_text("{bad")
+
+    problems = set_status(store, EventLog(events), "Working on it", done=False)
+
+    assert len(problems) == 1
+    assert problems[0].startswith(events.as_posix())
+    status = store.get()
+    assert status is not None
+    assert status.text == "Working on it"
+
+
+def test_a_blank_status_confirms_nothing(tmp_path: Path, store: StatusStore) -> None:
+    log = EventLog(tmp_path / "events.json")
+    log.record({"type": "first"})
+    log.offer()
+
+    with pytest.raises(ValueError, match="status text is empty"):
+        set_status(store, log, "  ", done=False)
+
+    assert log.offer() == {"type": "first", "seq": 1}
