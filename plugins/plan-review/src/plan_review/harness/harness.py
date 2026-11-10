@@ -1,37 +1,37 @@
-"""What the core knows about a CLI that runs the agents: this protocol, and nothing else."""
+"""What the core knows about a CLI that runs the agents: which pieces it uses."""
 
-from pathlib import Path, PurePosixPath
-from typing import Protocol
+from dataclasses import asdict, dataclass
+from pathlib import PurePosixPath
 
+from plan_review.harness.agent_files import AgentFiles
+from plan_review.harness.distribution import SelfInstall, ToolInstall
+from plan_review.harness.waiting import WAITING_TEXTS, WaitingStyle
+from plan_review.harness.wording import Wording
 from plan_review.harness.workflow import Workflow
 
 
-class Adapter(Protocol):
-    """Everything specific to one CLI that runs the agents."""
+@dataclass(frozen=True)
+class Harness:
+    """Which pieces a tool uses, and nothing else of its own."""
 
     key: str
     name: str
+    wording: Wording
+    agent_files: AgentFiles
+    distribution: SelfInstall | ToolInstall
+    waiting: WaitingStyle
 
-    def installed_at(self, package_root: Path) -> bool:
-        """Is this copy of plan-review installed through this CLI?"""
-        ...
-
-    def available(self) -> bool:
-        """Is the CLI itself on this machine?"""
-        ...
-
-    def upgrade(self) -> int:
-        """Update the installed plugin through the CLI; the exit code."""
-        ...
-
-    def upgrade_commands(self) -> list[str]:
-        """What a person would run, for when plan-review can't do it itself."""
-        ...
-
-    def install(self) -> int:
-        """Put the skill and agents where this CLI reads them; the exit code."""
-        ...
+    def slots(self) -> dict[str, str]:
+        """The Wording fields plus the waiting texts: the `{{slot}}` values the workflow needs."""
+        waiting = {name: getattr(self.waiting, name) for name in WAITING_TEXTS}
+        return {**asdict(self.wording), **waiting}
 
     def files(self, workflow: Workflow) -> dict[PurePosixPath, str]:
-        """Which files this CLI needs, where, and what they hold."""
-        ...
+        return self.agent_files.files(workflow, self.slots())
+
+    def install(self) -> int:
+        """A tool plan-review installs itself is installed; any other prints how, and exits 2."""
+        if isinstance(self.distribution, SelfInstall):
+            return self.distribution.install()
+        print(self.distribution.install_hint())
+        return 2

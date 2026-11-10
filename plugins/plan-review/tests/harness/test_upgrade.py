@@ -10,7 +10,7 @@ from conftest import PLUGIN
 from plan_review.cli import main
 from plan_review.harness import upgrade
 from plan_review.harness.adapters import claude_code
-from plan_review.harness.adapters.claude_code import ClaudeCode
+from plan_review.harness.distribution import marketplace
 
 
 @pytest.fixture
@@ -73,7 +73,7 @@ def test_the_adapter_itself_says_so_without_claude_on_path(
 ) -> None:
     monkeypatch.setenv("PATH", str(tmp_path))
 
-    assert ClaudeCode().upgrade() == 1
+    assert claude_code.HARNESS.distribution.upgrade() == 1
     assert "`claude` not found on PATH" in capsys.readouterr().err
 
 
@@ -93,8 +93,8 @@ def test_runs_the_claude_that_path_lookup_finds(monkeypatch: pytest.MonkeyPatch)
         calls.append(argv)
         return subprocess.CompletedProcess(argv, 0)
 
-    monkeypatch.setattr(claude_code.shutil, "which", lambda _: "C:/npm/claude.cmd")
-    monkeypatch.setattr(claude_code.subprocess, "run", run)
+    monkeypatch.setattr(marketplace.shutil, "which", lambda _: "C:/npm/claude.cmd")
+    monkeypatch.setattr(marketplace.subprocess, "run", run)
 
     assert main(["upgrade"]) == 0
     assert calls == [
@@ -104,10 +104,10 @@ def test_runs_the_claude_that_path_lookup_finds(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_the_commands_it_prints_are_the_steps_upgrade_runs(claude: Path) -> None:
-    ClaudeCode().upgrade()
+    claude_code.HARNESS.distribution.upgrade()
 
     ran = [f"claude {line}" for line in claude.read_text().splitlines()]
-    assert ClaudeCode().upgrade_commands() == ran
+    assert claude_code.HARNESS.distribution.upgrade_commands() == ran
 
 
 def test_upgrade_that_cannot_tell_prints_what_to_run_and_changes_nothing(

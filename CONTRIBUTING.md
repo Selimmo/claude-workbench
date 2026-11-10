@@ -86,7 +86,11 @@ claude-workbench/
         │   ├── pipeline/               # /ship helpers: branch name, tree hash, review verdict
         │   ├── viewer/                 # the web server (app.py) and the detached viewer
         │   ├── harness/                # workflow, generate.py (writes agents/ and skills/ from workflow/; `--check` fails on a stale copy), upgrade
-        │   │   └── adapters/           # one adapter per CLI (Claude Code): upgrade steps, generated files, its words
+        │   │   ├── wording.py          # Wording: a tool's 7 names for things
+        │   │   ├── adapters/           # one small file per tool (found automatically): its Wording and the pieces it picks
+        │   │   ├── agent_files/        # file formats: MarkdownAgents, TomlAgents
+        │   │   ├── distribution/       # install and upgrade: MarketplacePlugin, WheelInstall, releases.py
+        │   │   └── waiting/            # how an agent waits for the owner: SocketWaiting, PollingWaiting
         │   └── static/                 # built viewer page (generated, gitignored)
         ├── tests/                      # pytest; the folders mirror src/plan_review/
         └── web/                        # viewer page: React + TypeScript + Vite
@@ -121,4 +125,6 @@ uv run python -m plan_review.harness.generate           # rewrite the generated 
 uv run python -m plan_review.harness.generate --check   # what check.sh runs: fails if a copy is stale
 ```
 
-Wording that belongs to one CLI (its tool names, its model nicknames, its override folder) lives in that CLI's adapter under `src/plan_review/harness/adapters/`; the workflow holds a `{{slot}}` there instead.
+Wording that belongs to one CLI (its tool names, its model nicknames, its override folder) lives in that CLI's file under `src/plan_review/harness/adapters/` (its `Wording` and the pieces it picks); the workflow holds a `{{slot}}` there instead.
+
+To add a tool, add one file to `adapters/` with one `HARNESS` value built from the existing pieces. Every module in that folder is a tool, found in file-name order (the first tool that recognises a plugin folder wins), so keep only tool files there.

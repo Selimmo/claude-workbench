@@ -9,7 +9,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from plan_review.harness.adapters import ADAPTERS
+from plan_review.harness.adapters import all_adapters
 from plan_review.harness.workflow import load_workflow
 
 PACKAGE_ROOT = Path(__file__).parents[3]
@@ -21,8 +21,8 @@ def expected_files(root: Path) -> dict[Path, bytes]:
     workflow = load_workflow(root / "workflow")
     return {
         root / path: text.encode("utf-8")
-        for adapter in ADAPTERS
-        for path, text in adapter.files(workflow).items()
+        for harness in all_adapters()
+        for path, text in harness.files(workflow).items()
     }
 
 
