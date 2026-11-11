@@ -1,219 +1,47 @@
 import json
 import os
 import shutil
-import socket
 import subprocess
 import sys
 import threading
-import time
 import urllib.request
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
 
 from plan_review.cli import main
 from plan_review.cli.runtime import Runtime
 from plan_review.utils import file_lock
-from plan_review.viewer import detach
-from plan_review.viewer.app import create_app
-from plan_review.viewer.detach import DetachedViewer, IdleWatch, ViewerFailed
+from plan_review.viewer import launcher
+from plan_review.viewer.client import ViewerClient
+from plan_review.viewer.launcher import ProcessSpawner, ViewerFailed, ViewerLauncher
+from plan_review.viewer.record import ViewerInfo, ViewerRecord
 
 EXAMPLE = Path(__file__).parents[2] / "examples" / "plan.json"
-HOUR = 3600.0
 NEWER_RECORD = {"run_id": "7", "pid": 9, "port": 1, "token": "newer"}
 
 
-def test_viewer_never_opened_stops_two_hours_after_starting() -> None:
-    watch = IdleWatch(started=0.0)
-
-    assert not watch.expired(0, now=2 * HOUR - 60)
-    assert watch.expired(0, now=2 * HOUR)
-
-
-def test_an_open_page_keeps_the_viewer_running_however_long() -> None:
-    watch = IdleWatch(started=0.0)
-
-    assert not watch.expired(1, now=1.0)
-    assert not watch.expired(1, now=100 * HOUR)
-
-
-def test_viewer_stops_two_hours_after_the_page_closes() -> None:
-    watch = IdleWatch(started=0.0)
-    watch.expired(1, now=10 * HOUR)
-
-    assert not watch.expired(0, now=10 * HOUR)  # closed just now
-    assert not watch.expired(0, now=12 * HOUR - 60)
-    assert watch.expired(0, now=12 * HOUR)
-
-
-def test_coming_back_resets_the_two_hours() -> None:
-    watch = IdleWatch(started=0.0)
-    watch.expired(1, now=0.0)
-    watch.expired(0, now=HOUR)  # closed at 1h
-    watch.expired(1, now=2 * HOUR)  # back at 2h
-    watch.expired(0, now=3 * HOUR)  # closed again at 3h
-
-    assert not watch.expired(0, now=5 * HOUR - 60)
-    assert watch.expired(0, now=5 * HOUR)
-
-
-@pytest.fixture
-def plan_file(tmp_path: Path) -> Path:
-    path = tmp_path / ".plan-review" / "work" / "42" / "plan.json"
-    path.parent.mkdir(parents=True)
-    shutil.copy(EXAMPLE, path)
-    return path
-
-
-@pytest.fixture
-def static_dir(tmp_path: Path) -> Path:
-    static = tmp_path / "static"
-    static.mkdir()
-    (static / "index.html").write_text("<h1>plan-review</h1>")
-    return static
-
-
-class Stops:
-    def __init__(self) -> None:
-        self.asked = threading.Event()
-        self.count = 0
-
-    def __call__(self) -> None:
-        self.count += 1
-        self.asked.set()
-
-
-def viewer(plan_file: Path, stops: Stops, **options: float) -> DetachedViewer:
-    return DetachedViewer(
-        run_id=plan_file.parent.name,
-        token="secret",
-        request_stop=stops,
-        record=plan_file.parent / "viewer.json",
-        **options,
-    )
-
-
-def test_an_idle_detached_app_stops_itself(plan_file: Path, static_dir: Path) -> None:
-    stops = Stops()
-    detached = viewer(plan_file, stops, idle_limit=0.05, check_every=0.01)
-
-    with TestClient(create_app(plan_file, static_dir, detached=detached)):
-        assert stops.asked.wait(timeout=5)
-        time.sleep(0.1)  # many checks later
-    assert stops.count == 1
-
-
-def test_viewer_route_says_which_run_it_is(plan_file: Path, static_dir: Path) -> None:
-    app = create_app(plan_file, static_dir, detached=viewer(plan_file, Stops()))
-
-    reply = TestClient(app).get("/api/viewer").json()
-
-    assert reply["run_id"] == "42"
-    assert isinstance(reply["pid"], int)
-
-
-def test_stop_route_refuses_a_wrong_token(plan_file: Path, static_dir: Path) -> None:
-    stops = Stops()
-    client = TestClient(create_app(plan_file, static_dir, detached=viewer(plan_file, stops)))
-
-    response = client.post("/api/stop", headers={"x-plan-review-token": "wrong"})
-
-    assert response.status_code == 403
-    assert not stops.asked.is_set()
-
-
-def test_stop_route_with_the_token_stops_the_viewer(plan_file: Path, static_dir: Path) -> None:
-    stops = Stops()
-    client = TestClient(create_app(plan_file, static_dir, detached=viewer(plan_file, stops)))
-
-    response = client.post("/api/stop", headers={"x-plan-review-token": "secret"})
-
-    assert response.status_code == 200
-    assert stops.asked.is_set()
-
-
-def test_a_normal_serve_has_no_stop_route(plan_file: Path, static_dir: Path) -> None:
-    client = TestClient(create_app(plan_file, static_dir))
-
-    response = client.post("/api/stop", headers={"x-plan-review-token": "secret"})
-
-    assert response.status_code == 405
-    assert client.get("/api/viewer").status_code == 404
-
-
-def test_a_viewer_removes_its_record_when_it_stops_itself(
-    plan_file: Path, static_dir: Path
-) -> None:
-    record = plan_file.parent / "viewer.json"
-    record.write_text(json.dumps({"token": "secret"}))
-    detached = viewer(plan_file, Stops())
-
-    with TestClient(create_app(plan_file, static_dir, detached=detached)):
-        assert record.exists()
-
-    assert not record.exists()
-
-
-def test_a_viewer_leaves_a_newer_viewers_record_alone(plan_file: Path, static_dir: Path) -> None:
-    record = plan_file.parent / "viewer.json"
-    record.write_text(json.dumps({"token": "someone else"}))
-
-    with TestClient(create_app(plan_file, static_dir, detached=viewer(plan_file, Stops()))):
-        pass
-
-    assert json.loads(record.read_text()) == {"token": "someone else"}
-
-
-def test_a_viewer_ending_during_a_start_or_stop_leaves_the_record_to_it(
-    plan_file: Path, static_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(detach, "RECORD_LOCK_WAIT", 0.05)
-    record = plan_file.parent / "viewer.json"
-    record.write_text(json.dumps({"token": "secret"}))
-
-    with file_lock(record):  # a start or a stop is under way
-        with TestClient(create_app(plan_file, static_dir, detached=viewer(plan_file, Stops()))):
-            pass
-        assert record.exists(), "the record was removed while another process held its lock"
-
-
-@pytest.mark.parametrize("content", ["{ not json", "[]"])
-def test_a_viewer_removes_a_record_it_cannot_read(
-    plan_file: Path, static_dir: Path, content: str
-) -> None:
-    record = plan_file.parent / "viewer.json"
-    record.write_text(content)
-
-    with TestClient(create_app(plan_file, static_dir, detached=viewer(plan_file, Stops()))):
-        pass
-
-    assert not record.exists()
-
-
-def test_an_open_page_keeps_the_detached_viewer_running(plan_file: Path, static_dir: Path) -> None:
-    stops = Stops()
-    detached = viewer(plan_file, stops, idle_limit=0.05, check_every=0.01)
-
-    with TestClient(create_app(plan_file, static_dir, detached=detached)) as client:
-        with client.websocket_connect("/api/updates"):
-            time.sleep(0.3)  # many times the limit
-            assert not stops.asked.is_set()
-        assert stops.asked.wait(timeout=5)  # the page closed: the limit runs from now
-
-
-# --- starting and stopping the detached viewer -------------------------------------------
-
-
 class FakeProcess:
-    def __init__(self, pid: int, code: int | None = None, record: Path | None = None) -> None:
+    def __init__(
+        self,
+        pid: int,
+        code: int | None = None,
+        record: Path | None = None,
+        writes_on_poll: tuple[int, str, Path] | None = None,
+    ) -> None:
         self.pid = pid
+        self.writes_on_poll = writes_on_poll
         self.code = code
         self.record = record
         self.killed_with_record: bool | None = None
 
     def poll(self) -> int | None:
+        if self.writes_on_poll is not None:
+            port, token, log = self.writes_on_poll
+            self.writes_on_poll = None
+            ViewerRecord(log.parent).write(
+                ViewerInfo(run_id="7", pid=self.pid, port=port, token=token)
+            )
         return self.code
 
     def kill(self) -> None:
@@ -226,11 +54,12 @@ class FakeViewers:
     def __init__(self, static_dir: Path) -> None:
         self.opened: list[str] = []
         self.runtime = Runtime(static_dir=static_dir, open_browser=self.opened.append)
-        self.spawned: list[tuple[str, int, str]] = []
+        self.spawned: list[tuple[str, str]] = []
         self.last: FakeProcess | None = None
         self.alive: dict[int, str] = {}  # port -> the run it answers as
         self.crash_with: int | None = None
         self.never_answers = False
+        self.late_viewer_first = False  # an older viewer's record shows up before our own
         self.silent_log = b""  # what a viewer that never answers writes to its log
         self.ignores_stop = False
         self.removes_record_on_stop = False
@@ -239,16 +68,26 @@ class FakeViewers:
         self.stopped: list[tuple[int, str]] = []
         self.records: list[Path] = []
 
-    def spawn(self, root: Path, run_id: str, port: int, token: str, log: Path) -> FakeProcess:
-        self.spawned.append((run_id, port, token))
+    def spawn(self, root: Path, run_id: str, token: str, log: Path) -> FakeProcess:
+        self.spawned.append((run_id, token))
         if self.crash_with is not None:
             log.write_bytes(self.crash_log)
             self.last = FakeProcess(7000, self.crash_with)
             return self.last
+        chosen = 54320 + len(self.spawned)  # the viewer picks its own port, and says so
+        if self.late_viewer_first:
+            self.alive[1] = run_id  # a port that answers as this run, but is not ours
+            ViewerRecord(log.parent).write(ViewerInfo(run_id=run_id, pid=9, port=1, token="older"))
+            self.alive[chosen] = run_id
+            self.last = FakeProcess(7000 + len(self.spawned), writes_on_poll=(chosen, token, log))
+            return self.last
+        ViewerRecord(log.parent).write(
+            ViewerInfo(run_id=run_id, pid=7000 + len(self.spawned), port=chosen, token=token)
+        )
         if self.never_answers:
             log.write_bytes(self.silent_log)
         else:
-            self.alive[port] = run_id
+            self.alive[chosen] = run_id
         self.last = FakeProcess(7000 + len(self.spawned), record=log.with_name("viewer.json"))
         return self.last
 
@@ -263,17 +102,17 @@ class FakeViewers:
             for record in self.records:
                 record.unlink(missing_ok=True)
         if self.replaced_on_stop is not None:
-            with file_lock(self.replaced_on_stop):  # as start_viewer writes it
+            with file_lock(self.replaced_on_stop):  # as ViewerLauncher.start writes it
                 self.replaced_on_stop.write_text(json.dumps(NEWER_RECORD))
 
 
 @pytest.fixture
 def viewers(project: Path, monkeypatch: pytest.MonkeyPatch) -> FakeViewers:
     fake = FakeViewers(project / "static")
-    monkeypatch.setattr(detach, "spawn_viewer", fake.spawn)
-    monkeypatch.setattr(detach, "answers_as", fake.probe)
-    monkeypatch.setattr(detach, "post_stop", fake.post_stop)
-    monkeypatch.setattr(detach, "READY_POLL", 0.01)
+    monkeypatch.setattr(ProcessSpawner, "spawn", fake.spawn)
+    monkeypatch.setattr(ViewerClient, "answers_as", fake.probe)
+    monkeypatch.setattr(ViewerClient, "post_stop", fake.post_stop)
+    monkeypatch.setattr(launcher, "READY_POLL", 0.01)
     return fake
 
 
@@ -308,6 +147,32 @@ def test_serve_detach_starts_one_viewer_and_prints_its_url(
     assert first_line(capsys).startswith(f"plan-review: #7 at http://127.0.0.1:{port}/")
     assert len(viewers.spawned) == 1
     assert viewers.opened == [f"http://127.0.0.1:{port}/"]
+
+
+def test_serve_detach_prints_the_port_the_viewer_chose(
+    project: Path, viewers: FakeViewers, capsys: pytest.CaptureFixture[str]
+) -> None:
+    exit_code = main(["serve", "7", "--detach", "--open", "none"], runtime=viewers.runtime)
+
+    assert exit_code == 0
+    assert first_line(capsys) == (
+        "plan-review: #7 at http://127.0.0.1:54321/ (stop it with `plan-review stop 7`)"
+    )
+    assert record_of(project)["port"] == 54321
+
+
+def test_the_viewer_is_started_with_port_0() -> None:
+    assert ProcessSpawner().command("7", "t") == [
+        sys.executable,
+        "-m",
+        "plan_review.cli",
+        "viewer-process",
+        "7",
+        "--port",
+        "0",
+        "--token",
+        "t",
+    ]
 
 
 def test_serve_detach_hints_on_stderr_after_the_url(
@@ -365,51 +230,38 @@ def test_serve_detach_replaces_a_stale_record(project: Path, viewers: FakeViewer
     assert viewers.opened == []
 
 
-def serve_body(body: bytes) -> tuple[HTTPServer, int]:
-    class Answer(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:  # noqa: N802
-            self.send_response(200)
-            self.send_header("content-length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+def test_a_failed_start_clears_an_old_record_too(project: Path, viewers: FakeViewers) -> None:
+    main(["serve", "7", "--detach"], runtime=viewers.runtime)
+    viewers.alive.clear()  # the old viewer is gone, its record is left
+    viewers.crash_with = 3
 
-        def log_message(self, format: str, *args: object) -> None:
-            pass
+    assert main(["serve", "7", "--detach"], runtime=viewers.runtime) == 3
 
-    server = HTTPServer(("127.0.0.1", 0), Answer)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server, server.server_address[1]
+    assert not (project / ".plan-review" / "work" / "7" / "viewer.json").exists()
 
 
-def test_a_port_answering_as_another_run_counts_as_stale() -> None:
-    server, port = serve_body(json.dumps({"run_id": "other", "pid": 1}).encode())
-    try:
-        assert detach.answers_as(port, "other")
-        assert not detach.answers_as(port, "7")
-    finally:
-        server.shutdown()
-        server.server_close()
+def test_start_waits_for_a_record_carrying_its_own_token(
+    project: Path, viewers: FakeViewers
+) -> None:
+    viewers.late_viewer_first = True
+    work = project / ".plan-review" / "work" / "7"
 
+    info, started = ViewerLauncher(work, "7").start(project)
 
-@pytest.mark.parametrize("body", [b"<h1>some other server</h1>", b"[1, 2]", b'"text"'])
-def test_a_port_answering_with_something_else_counts_as_stale(body: bytes) -> None:
-    server, port = serve_body(body)
-    try:
-        assert not detach.answers_as(port, "7")
-    finally:
-        server.shutdown()
-        server.server_close()
+    assert started is True
+    assert info.token == viewers.spawned[0][1]
+    assert info.port != 1
 
 
 def test_a_viewer_that_never_answers_is_given_up_on(
     project: Path, viewers: FakeViewers, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     viewers.never_answers = True  # alive, but silent
-    monkeypatch.setattr(detach, "READY_TIMEOUT", 0.05)
+    monkeypatch.setattr(launcher, "READY_TIMEOUT", 0.05)
     work = project / ".plan-review" / "work" / "7"
 
     with pytest.raises(ViewerFailed) as error:
-        detach.start_viewer(project, work, "7")
+        ViewerLauncher(work, "7").start(project)
 
     assert error.value.code == 1
     assert not (work / "viewer.json").exists()
@@ -425,7 +277,7 @@ def test_a_timeout_says_why_ahead_of_the_viewers_log(
 ) -> None:
     viewers.never_answers = True
     viewers.silent_log = b"WARNING: slow disk\n"
-    monkeypatch.setattr(detach, "READY_TIMEOUT", 0.05)
+    monkeypatch.setattr(launcher, "READY_TIMEOUT", 0.05)
 
     assert main(["serve", "7", "--detach"], runtime=viewers.runtime) == 1
 
@@ -439,7 +291,7 @@ def test_two_starts_at_once_make_one_viewer(project: Path, viewers: FakeViewers)
     results: list[tuple[int, bool]] = []
 
     def start() -> None:
-        record, started = detach.start_viewer(project, work, "7")
+        record, started = ViewerLauncher(work, "7").start(project)
         results.append((record.port, started))
 
     threads = [threading.Thread(target=start) for _ in range(2)]
@@ -489,7 +341,7 @@ def test_stop_gives_up_on_a_viewer_that_will_not_stop(
 ) -> None:
     main(["serve", "7", "--detach"], runtime=viewers.runtime)
     viewers.ignores_stop = True
-    monkeypatch.setattr(detach, "READY_TIMEOUT", 0.05)
+    monkeypatch.setattr(launcher, "READY_TIMEOUT", 0.05)
 
     assert main(["stop", "7"]) == 0
 
@@ -564,7 +416,7 @@ def test_a_real_detached_viewer_outlives_its_command_and_stops(tmp_path: Path) -
         with pytest.raises(OSError):
             urllib.request.urlopen(f"{url}api/plan", timeout=2)
     finally:
-        detach.stop_viewer(work, "7")  # never leave a viewer running after a failure
+        ViewerLauncher(work, "7").stop()  # never leave a viewer running after a failure
 
 
 def test_stop_copes_with_the_viewer_removing_its_own_record(
@@ -575,14 +427,6 @@ def test_stop_copes_with_the_viewer_removing_its_own_record(
     viewers.removes_record_on_stop = True
 
     assert main(["stop", "7"]) == 0
-
-
-def test_post_stop_does_not_raise_when_nothing_listens() -> None:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-
-    detach.post_stop(port, "token")  # nothing listens now
 
 
 def test_a_viewer_that_already_crashed_is_not_killed(project: Path, viewers: FakeViewers) -> None:

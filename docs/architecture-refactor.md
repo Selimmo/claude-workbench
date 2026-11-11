@@ -356,7 +356,7 @@ classDiagram
     running()
   }
   class ViewerRecord {
-    why - what viewer.json holds
+    why - the one owner of viewer.json
   }
   class ProcessSpawner {
     why - starting a process on each OS
@@ -370,7 +370,6 @@ classDiagram
   create_app --> FileWatcher
   create_app --> error_handlers
   create_app --> page_routes
-  create_app --> ViewerLifetime
   ViewerLifetime --> IdleWatch
   ViewerLifetime --> ViewerRecord
   ViewerLauncher --> ViewerRecord
@@ -546,9 +545,12 @@ src/plan_review/
 │
 ├── viewer/                     the local web server and its process
 │   ├── app.py                  create_app                       ← server.py
-│   ├── + file_watcher.py                                         ← server.py
-│   ├── + error_handlers.py                                      ← server.py
+│   ├── + file_watcher.py        FileWatcher                      ← app.py
+│   ├── + error_handlers.py      add_error_handlers               ← app.py
+│   ├── + page_routes.py         serve_page: the page, /api/plan  ← app.py
+│   ├── start_page.py           which page to open               ← start_page.py
 │   ├── + lifetime.py            IdleWatch, ViewerLifetime        ← detach.py
+│   ├── + record.py              ViewerRecord, ViewerInfo         ← detach.py
 │   ├── + launcher.py            start, stop, find                ← detach.py
 │   └── + client.py              talking to a running viewer      ← detach.py
 │

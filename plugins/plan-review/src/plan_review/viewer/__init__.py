@@ -1,21 +1,16 @@
 """The local web viewer and the detached viewer process."""
 
 from plan_review.viewer.app import create_app
-from plan_review.viewer.detach import (
-    DetachedViewer,
-    ViewerFailed,
-    record_file,
-    start_viewer,
-    stop_viewer,
-)
+from plan_review.viewer.launcher import ViewerFailed, ViewerLauncher
+from plan_review.viewer.lifetime import ViewerLifetime
+from plan_review.viewer.record import ViewerRecord
 from plan_review.viewer.start_page import start_page
 
 __all__ = [
-    "DetachedViewer",
     "ViewerFailed",
+    "ViewerLauncher",
+    "ViewerLifetime",
+    "ViewerRecord",
     "create_app",
-    "record_file",
     "start_page",
-    "start_viewer",
-    "stop_viewer",
 ]

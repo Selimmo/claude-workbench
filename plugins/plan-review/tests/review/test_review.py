@@ -1,3 +1,4 @@
+import shutil
 import threading
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from fastapi.testclient import TestClient
 from plan_review.events.agent_events import AgentEvents
 from plan_review.events.event_log import EventLog
 from plan_review.events.last_event import LastEventStore
+from plan_review.review.approval import approval_routes
 from plan_review.review.approval_file import ApprovalFile, ApprovalRecord
 from plan_review.review.drafts import DraftNotFound, DraftStore
 from plan_review.review.service import review_routes
@@ -226,3 +228,53 @@ def test_review_routes_refuse_a_review_when_the_approval_file_holds_a_record(
     assert response.json() == {"errors": ["the plan is approved: a review can't be sent any more"]}
     assert threads.all() == []
     assert EventLog(tmp_path / "events.json").offer() is None
+
+
+class ReviewArrivesDuringApprove(ApprovalFile):
+    """Another tab sends a review in the gap between approve's checks and its write."""
+
+    def __init__(self, path: Path, work: Path) -> None:
+        super().__init__(path)
+        self._work = work
+        self.review: dict[str, object] = {}
+        self.sender: threading.Thread | None = None
+
+    def _send(self) -> None:
+        drafts = DraftStore(self._work / "drafts.json")  # its own request, on the same files
+        drafts.add("risk:1", "late")
+        reply = review_app(self._work, ThreadStore(self._work / "comments.json"), drafts).post(
+            "/api/review"
+        )
+        self.review = {"status": reply.status_code, "body": reply.json()}
+
+    def write(self, record: ApprovalRecord) -> None:
+        if self.sender is None:
+            self.sender = threading.Thread(target=self._send)
+            self.sender.start()
+            self.sender.join(timeout=0.3)  # unlocked, the review lands within this wait
+        super().write(record)
+
+
+def test_an_approve_and_a_review_at_the_same_moment_cannot_both_succeed(tmp_path: Path) -> None:
+    plan_file = tmp_path / "plan.json"
+    shutil.copy(Path(__file__).parents[2] / "examples" / "plan.json", plan_file)
+    approval = ReviewArrivesDuringApprove(tmp_path / "approved.json", tmp_path)
+    store = ThreadStore(tmp_path / "comments.json")
+    drafts = DraftStore(tmp_path / "drafts.json")
+    events = AgentEvents(
+        LastEventStore(tmp_path / "last_event.json"), EventLog(tmp_path / "events.json")
+    )
+    app = FastAPI()
+    app.include_router(approval_routes(store, drafts, plan_file, events, approval))
+
+    approved = TestClient(app).post("/api/approve")
+    assert approval.sender is not None
+    approval.sender.join(timeout=5)
+
+    assert approved.status_code == 200
+    assert approval.review == {
+        "status": 409,
+        "body": {"errors": ["the plan is approved: a review can't be sent any more"]},
+    }
+    assert store.all() == []
+    assert [d.text for d in drafts.all()] == ["late"]

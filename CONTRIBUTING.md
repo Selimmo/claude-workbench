@@ -106,7 +106,16 @@ claude-workbench/
         │   │   ├── resend.py           # the Resend route
         │   │   └── status.py           # what the agent says it is doing
         │   ├── pipeline/               # /ship helpers: branch name, tree hash, review verdict
-        │   ├── viewer/                 # the web server (app.py) and the detached viewer
+        │   ├── viewer/                 # the web server and the detached viewer
+        │   │   ├── app.py              # create_app: which parts the server is made of
+        │   │   ├── file_watcher.py     # FileWatcher: notices file changes
+        │   │   ├── error_handlers.py   # how errors look on the web
+        │   │   ├── page_routes.py      # the page, /api/plan, the static files
+        │   │   ├── start_page.py       # which page to open first
+        │   │   ├── lifetime.py         # IdleWatch, ViewerLifetime: what a detached viewer does while it runs
+        │   │   ├── record.py           # ViewerRecord: the one owner of viewer.json
+        │   │   ├── launcher.py         # ViewerLauncher: start, stop, find a running viewer
+        │   │   └── client.py           # ViewerClient: talking to a running viewer
         │   ├── harness/                # workflow, generate.py (writes agents/ and skills/ from workflow/; `--check` fails on a stale copy), upgrade
         │   │   ├── wording.py          # Wording: a tool's 7 names for things
         │   │   ├── adapters/           # one small file per tool (found automatically): its Wording and the pieces it picks
