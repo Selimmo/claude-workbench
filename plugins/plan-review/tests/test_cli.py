@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import queue
 import shutil
 import socket
@@ -7,6 +8,8 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
@@ -14,9 +17,10 @@ from typing import IO
 
 import pytest
 from conftest import PACKAGE_VERSION, PLUGIN, WindowsStylePath, version_of
+from fastapi import FastAPI
 
-from plan_review.cli import main
-from plan_review.cli.runtime import Runtime
+from plan_review.cli import main, runtime
+from plan_review.cli.runtime import Runtime, ServerStop
 from plan_review.events.status import StatusStore
 from plan_review.grill.drafts import GrillDraftStore
 from plan_review.grill.grill import GrillStore, SubmittedAnswer
@@ -133,8 +137,63 @@ class FakeServer:
             static_dir=static_dir, run_server=self.run, open_browser=self.opened.append
         )
 
-    def run(self, app: object, sock: socket.socket) -> None:
+    def run(self, app: object, sock: socket.socket, stop: ServerStop | None = None) -> None:
         self.addresses.append(sock.getsockname())
+
+
+def serve_in_a_thread(app: FastAPI, sock: socket.socket, stop: ServerStop) -> threading.Thread:
+    thread = threading.Thread(target=runtime.run_server, args=(app, sock, stop), daemon=True)
+    thread.start()
+    return thread
+
+
+def wait_until_it_answers(port: int) -> None:
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        try:
+            socket.create_connection(("127.0.0.1", port), timeout=1).close()
+        except OSError:
+            time.sleep(0.02)
+        else:
+            return
+    pytest.fail("the server never answered")
+
+
+@pytest.mark.timeout(30)
+def test_a_server_stop_ends_the_running_server() -> None:
+    ended: list[bool] = []
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
+        yield
+        ended.append(True)  # the lifespan shut down in order
+
+    stop = ServerStop()
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        sock.listen()
+        thread = serve_in_a_thread(FastAPI(lifespan=lifespan), sock, stop)
+        wait_until_it_answers(sock.getsockname()[1])
+
+        stop()
+
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+    assert ended == [True]
+
+
+@pytest.mark.timeout(30)
+def test_a_stop_asked_before_the_server_starts_still_ends_it() -> None:
+    stop = ServerStop()
+    stop()
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        sock.listen()
+
+        thread = serve_in_a_thread(FastAPI(), sock, stop)
+
+        thread.join(timeout=5)
+        assert not thread.is_alive()
 
 
 @pytest.fixture
@@ -195,6 +254,24 @@ def test_serve_open_none_prints_the_url_instead_of_opening_a_browser(
     _, port = server.addresses[0]
     assert server.opened == []
     assert f"http://127.0.0.1:{port}/" in capsys.readouterr().out
+
+
+def test_viewer_process_binds_its_own_port_and_records_it(
+    project: Path, server: FakeServer
+) -> None:
+    exit_code = main(["viewer-process", "7", "--port", "0", "--token", "t"], runtime=server.runtime)
+
+    host, port = server.addresses[0]
+    assert exit_code == 0
+    assert host == "127.0.0.1"
+    assert port > 0
+    record = project / ".plan-review" / "work" / "7" / "viewer.json"
+    assert json.loads(record.read_text()) == {
+        "run_id": "7",
+        "pid": os.getpid(),
+        "port": port,
+        "token": "t",
+    }
 
 
 def write_pipeline(project: Path, config: object) -> None:
@@ -1272,3 +1349,21 @@ def test_runs_as_python_m_plan_review_cli() -> None:
 
     assert result.returncode == 0
     assert result.stdout == f"plan-review {PACKAGE_VERSION}\n"
+
+
+def test_a_socket_that_cannot_be_bound_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from plan_review.cli import viewer
+
+    made: list[socket.socket] = []
+
+    class Recording(socket.socket):
+        def __init__(self) -> None:
+            super().__init__()
+            made.append(self)
+
+    monkeypatch.setattr(viewer.socket, "socket", Recording)
+
+    with pytest.raises(OverflowError):
+        viewer._bind_local(70000)  # pyright: ignore[reportPrivateUsage]
+
+    assert made[0].fileno() == -1
