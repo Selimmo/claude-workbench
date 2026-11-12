@@ -75,7 +75,7 @@ def test_generate_writes_every_file_with_lf_endings(tmp_path: Path) -> None:
     generate.write_files(tmp_path)
 
     expected = generate.expected_files(tmp_path)
-    assert len(expected) == 5 + 6  # Claude Code, then Codex
+    assert len(expected) == 5 + 6 + 5  # Claude Code, Codex, then opencode
     for path, content in expected.items():
         assert path.read_bytes() == content
         assert b"\r" not in content

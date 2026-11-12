@@ -169,4 +169,4 @@ uv run python -m plan_review.harness.generate --check   # what check.sh runs: fa
 
 Wording that belongs to one CLI (its tool names, its model nicknames, its override folder) lives in that CLI's file under `src/plan_review/harness/adapters/` (its `Wording` and the pieces it picks); the workflow holds a `{{slot}}` there instead.
 
-To add a tool, add one file to `adapters/` with one `HARNESS` value built from the existing pieces. Every module in that folder is a tool, found in file-name order (the first tool that recognises a plugin folder wins), so keep only tool files there.
+To add a tool, add one file to `adapters/` with one `HARNESS` value built from the existing pieces. Every module in that folder is a tool, found in file-name order (the first tool that recognises a plugin folder wins), so keep only tool files there. A tool may bring its own file format in its file (opencode's `OpencodeMarkdown`) and its own generated folder next to it. Several tools installed from the wheel see the same uv copy, so each is told apart by its own marked files in place (`WheelInstall.installed_at`), and `plan-review upgrade` refreshes every tool that recognises the copy.

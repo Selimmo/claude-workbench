@@ -22,6 +22,10 @@ Then run `/plan-review:ship <issue number, issue link or prompt>` in your projec
 
 plan-review also runs in [OpenAI Codex](https://developers.openai.com/codex) through the `$ship` skill. Install the `plan-review` command from the newest release's wheel (the link is in the [root README](../../README.md#codex)), then run `plan-review install codex`: it writes the skill to `~/.agents/skills/ship/` and four agents to `~/.codex/agents/` (or `$CODEX_HOME/agents/`). It never replaces a file it did not write. Run `$ship <issue number, link or prompt>` in Codex. Codex waits for you with `plan-review wait`, which wakes the model about every 4 minutes while you are away, so a long absence uses some of your quota. To override an agent for one project, put `.codex/agents/<name>.toml` in it. `plan-review upgrade` installs the newest wheel and writes the files again.
 
+### opencode
+
+plan-review also runs in [opencode](https://opencode.ai) through the `/plan-review-ship` command. Install the `plan-review` command from the newest release's wheel (the link is in the [root README](../../README.md#opencode)), then run `plan-review install opencode`: it writes the command to `~/.config/opencode/commands/` and four agents (`plan-review-<role>`) to `~/.config/opencode/agents/`, or under `$XDG_CONFIG_HOME/opencode/` when that is set. It never replaces a file it did not write, and leaves the Codex folders alone. Run `/plan-review-ship <issue number, link or prompt>` in opencode. opencode stops a shell command after 2 minutes, so the agent waits for you with `plan-review wait --timeout 100`, which wakes the model about every 100 seconds while you are away: a long absence uses more of your quota than in Codex. To override an agent for one project, put `.opencode/agents/<name>.md` in it. `plan-review upgrade` installs the newest wheel and writes the files again, for each tool whose files are in place.
+
 ### Upgrade
 
 ```bash
@@ -44,10 +48,11 @@ plan-review schema               # print the plan.json JSON Schema
 plan-review validate plan.json   # check a plan; exit 0 = valid, 1 = invalid, 2 = file not found
 plan-review serve 42             # open the viewer for .plan-review/work/42/plan.json
 plan-review serve 42 --open none # only print the URL (e.g. over SSH)
-plan-review serve 42 --detach    # run the viewer as its own process and return (Codex); finds one already running
+plan-review serve 42 --detach    # run the viewer as its own process and return (Codex, opencode); finds one already running
 plan-review stop 42              # stop that detached viewer
 plan-review wait 42 --timeout 240   # the next thing the owner did, as one JSON line, or {"type":"timeout"}
 plan-review install codex        # write the Codex ship skill and agents into your home folders
+plan-review install opencode     # write the opencode command and agents into ~/.config/opencode
 plan-review config               # this project's pipeline settings, defaults filled in
 plan-review prefs grill          # the grill mode in force (page or chat); exit 3 if none is chosen
 plan-review prefs grill page     # record the owner's choice (page or chat) in .plan-review/work/preferences.json

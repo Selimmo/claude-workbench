@@ -1,6 +1,6 @@
 # claude-workbench
 
-**plan-review: settle the design with your coding agent before it writes any code.** A plugin for Claude Code and OpenAI Codex.
+**plan-review: settle the design with your coding agent before it writes any code.** A plugin for Claude Code, OpenAI Codex and opencode.
 
 ## The problem
 
@@ -76,9 +76,20 @@ plan-review install codex
 
 Then run `$ship` in Codex, with the same arguments as above: `$ship 42 --grill`. Codex needs network access in its sandbox; see [plan-review in Codex](docs/codex.md).
 
+### opencode
+
+In [opencode](https://opencode.ai):
+
+```bash
+uv tool install https://github.com/Selimmo/claude-workbench/releases/download/plan-review--v0.4.0/plan_review-0.4.0-py3-none-any.whl
+plan-review install opencode
+```
+
+Then run `/plan-review-ship` in opencode, with the same arguments as above: `/plan-review-ship 42 --grill`. See [plan-review in opencode](docs/opencode.md).
+
 ### Upgrade
 
-Run `plan-review upgrade`. It works for either tool.
+Run `plan-review upgrade`. It works for each tool.
 
 ## When to use it
 

@@ -8,7 +8,7 @@
  "grill post": "usage: plan-review grill post [-h] run_id file\n\npositional arguments:\n  run_id\n  file        the turn, as JSON (see `grill schema`)\n\noptions:\n  -h, --help  show this help message and exit\n",
  "grill schema": "usage: plan-review grill schema [-h]\n\noptions:\n  -h, --help  show this help message and exit\n",
  "init": "usage: plan-review init [-h] [--prompt NAME] [run_id]\n\npositional arguments:\n  run_id         an issue number or key, e.g. 42 or PROJ-123\n\noptions:\n  -h, --help     show this help message and exit\n  --prompt NAME  start a prompt run named NAME-<today>\n",
- "install": "usage: plan-review install [-h] {claude-code,codex}\n\npositional arguments:\n  {claude-code,codex}\n\noptions:\n  -h, --help           show this help message and exit\n",
+ "install": "usage: plan-review install [-h] {claude-code,codex,opencode}\n\npositional arguments:\n  {claude-code,codex,opencode}\n\noptions:\n  -h, --help            show this help message and exit\n",
  "prefs": "usage: plan-review prefs [-h] {grill} [value]\n\npositional arguments:\n  {grill}\n  value       page or chat; leave out to print the mode\n\noptions:\n  -h, --help  show this help message and exit\n",
  "reply": "usage: plan-review reply [-h] run_id thread_id text\n\npositional arguments:\n  run_id\n  thread_id\n  text\n\noptions:\n  -h, --help  show this help message and exit\n",
  "schema": "usage: plan-review schema [-h]\n\noptions:\n  -h, --help  show this help message and exit\n",
