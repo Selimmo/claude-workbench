@@ -70,7 +70,7 @@ For example:
 In OpenAI Codex:
 
 ```bash
-uv tool install https://github.com/Selimmo/claude-workbench/releases/download/plan-review--v0.4.0/plan_review-0.4.0-py3-none-any.whl
+uv tool install https://github.com/Selimmo/claude-workbench/releases/download/plan-review--v0.5.0/plan_review-0.5.0-py3-none-any.whl
 plan-review install codex
 ```
 
@@ -81,7 +81,7 @@ Then run `$ship` in Codex, with the same arguments as above: `$ship 42 --grill`.
 In [opencode](https://opencode.ai):
 
 ```bash
-uv tool install https://github.com/Selimmo/claude-workbench/releases/download/plan-review--v0.4.0/plan_review-0.4.0-py3-none-any.whl
+uv tool install https://github.com/Selimmo/claude-workbench/releases/download/plan-review--v0.5.0/plan_review-0.5.0-py3-none-any.whl
 plan-review install opencode
 ```
 
