@@ -4,9 +4,9 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
-### Unreleased
+### 0.5.0
 
-- plan-review runs in opencode. `plan-review install opencode` writes the `/plan-review-ship` command and four agents into `~/.config/opencode` (or `$XDG_CONFIG_HOME/opencode`); the agent waits for you in slices of 100 seconds, because opencode stops a shell command after 2 minutes.
+- plan-review runs in opencode ([#89](https://github.com/Selimmo/claude-workbench/issues/89)). `plan-review install opencode` writes the `/plan-review-ship` command and four agents into `~/.config/opencode` (or `$XDG_CONFIG_HOME/opencode`); the agent waits for you in slices of 100 seconds, because opencode stops a shell command after 2 minutes.
 - `plan-review upgrade` now refreshes every tool installed from the wheel (Codex and opencode). A uv copy counts for a tool only when that tool's own files are in place, so one with no Codex files is no longer taken for Codex: `upgrade` then says it can't tell and prints the commands, including `plan-review install codex`.
 
 ### 0.4.0
