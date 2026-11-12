@@ -8,7 +8,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from plan_review.events.agent_events import AgentEvents
-from plan_review.plan.plan import PlanFileError, load_plan
+from plan_review.plan.plan_file import PlanFileError, load_plan
 from plan_review.review.approval_file import ApprovalFile, ApprovalRecord
 from plan_review.review.drafts import DraftStore
 from plan_review.review.threads import ResolveRefused, ThreadStore

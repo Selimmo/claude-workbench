@@ -15,7 +15,8 @@ from plan_review.pipeline.orchestration import (
     tree_hash,
     verdict,
 )
-from plan_review.plan.plan import Issue, load_plan
+from plan_review.plan.model import Issue
+from plan_review.plan.plan_file import load_plan
 
 EXAMPLE = Path(__file__).parents[2] / "examples" / "plan.json"
 

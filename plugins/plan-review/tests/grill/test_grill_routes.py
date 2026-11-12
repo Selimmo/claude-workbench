@@ -12,8 +12,9 @@ from plan_review.events.agent_events import AgentEvents
 from plan_review.events.event_log import EventLog
 from plan_review.events.last_event import LastEventStore
 from plan_review.grill.drafts import AnswerDraft, GrillDraftStore
-from plan_review.grill.grill import GrillStore, SubmittedAnswer
 from plan_review.grill.routes import grill_routes
+from plan_review.grill.state import SubmittedAnswer
+from plan_review.grill.store import GrillStore
 from plan_review.grill.turn import Turn
 from plan_review.viewer.app import create_app
 
@@ -122,6 +123,7 @@ def test_an_other_draft_is_accepted_after_three_replies_and_own_or_ask_are_422(
     ask = client.put("/api/grill/drafts/q1", json={"kind": "ask", "text": "Why?"})
 
     assert answered.status_code == 404
+    assert answered.json()["errors"] == ["question 'q2' is already answered"]
     assert other.status_code == 200
     assert (own.status_code, ask.status_code) == (422, 422)
 

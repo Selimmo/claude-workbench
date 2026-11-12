@@ -9,16 +9,14 @@ from typing import Any
 import pytest
 
 from plan_review.grill.drafts import AnswerDraft, GrillDraftStore
-from plan_review.grill.grill import (
+from plan_review.grill.state import (
     MAX_REPLIES,
     GrillError,
     GrillState,
-    GrillStore,
     Question,
     SubmittedAnswer,
-    load_grill,
-    post_turn,
 )
+from plan_review.grill.store import GrillStore, load_grill, post_turn
 from plan_review.grill.turn import Turn
 from plan_review.review.threads import Message
 
@@ -626,6 +624,7 @@ def test_confirm_needs_done_and_reopen_brings_grilling_back(store: GrillStore) -
     with pytest.raises(GrillError) as blank:
         store.reopen("  ")
     assert not blank.value.conflict
+    assert blank.value.errors == ["text: say what is missing"]
 
     store.reopen("Also ask about caching")
     state = store.get()
@@ -860,3 +859,22 @@ def test_a_broken_drafts_file_does_not_stop_a_turn(
     assert posted.drafts_problem is not None
     assert posted.drafts_problem.startswith(broken.as_posix())
     assert broken.read_text() == "{bad"
+
+
+def test_questions_by_id_maps_every_question_of_every_round(store: GrillStore) -> None:
+    store.post(turn(title="T", round=[question("q1"), question("q2")]))
+    store.submit(
+        [
+            SubmittedAnswer(question_id="q1", kind="choice", choice_id="a"),
+            SubmittedAnswer(question_id="q2", kind="choice", choice_id="b"),
+        ]
+    )
+    store.post(turn(round=[question("q3")]))
+
+    state = store.get()
+    mapped = state.questions_by_id()
+
+    assert list(mapped) == ["q1", "q2", "q3"]
+    assert mapped["q1"].answer is not None
+    assert mapped["q1"] is state.rounds[0].questions[0]
+    assert mapped["q3"] is state.rounds[1].questions[0]

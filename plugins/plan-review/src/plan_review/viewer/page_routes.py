@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from plan_review.plan.plan import load_plan
+from plan_review.plan.plan_file import load_plan
 
 
 def serve_page(app: FastAPI, plan_file: Path, static_dir: Path) -> None:

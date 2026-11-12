@@ -5,7 +5,9 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from plan_review.plan.plan import Plan, PlanFileError, load_plan, record_branch, shape_problems
+from plan_review.plan.diagram_checks import shape_problems
+from plan_review.plan.model import Plan
+from plan_review.plan.plan_file import PlanFileError, load_plan, record_branch
 
 ISSUE = {"id": "7", "kind": "issue", "title": "Add hints"}
 

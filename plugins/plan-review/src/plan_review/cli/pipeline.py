@@ -11,7 +11,9 @@ from plan_review.paths.run_paths import RunPaths
 from plan_review.paths.workdir import new_prompt_work_dir
 from plan_review.pipeline import orchestration
 from plan_review.pipeline.orchestration import MalformedReview
-from plan_review.plan.plan import Plan, PlanFileError, load_plan, record_branch, shape_problems
+from plan_review.plan.diagram_checks import shape_problems
+from plan_review.plan.model import Plan
+from plan_review.plan.plan_file import PlanFileError, load_plan, record_branch
 from plan_review.settings.pipeline_config import PipelineConfigError
 
 

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from plan_review.paths.run_paths import RunPaths
-from plan_review.plan.plan import PlanFileError
+from plan_review.plan.plan_file import PlanFileError
 from plan_review.viewer.start_page import start_page
 
 VALID_PLAN = {

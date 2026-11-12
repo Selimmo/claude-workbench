@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from plan_review.plan.plan import PlanFileError, load_plan
+from plan_review.plan.plan_file import PlanFileError, load_plan
 from plan_review.review.threads import Thread, ThreadStore
 
 

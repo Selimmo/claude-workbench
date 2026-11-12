@@ -8,7 +8,7 @@ from plan_review.cli.runtime import Runtime, ServerStop
 from plan_review.cli.settings import pipeline_settings, print_hint
 from plan_review.paths.run_id import label
 from plan_review.paths.run_paths import RunPaths
-from plan_review.plan.plan import PlanFileError
+from plan_review.plan.plan_file import PlanFileError
 from plan_review.settings.pipeline_config import PipelineConfigError
 from plan_review.viewer.app import create_app
 from plan_review.viewer.launcher import ViewerFailed, ViewerLauncher
