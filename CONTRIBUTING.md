@@ -88,7 +88,10 @@ claude-workbench/
         │   ├── utils/                  # generic helpers: safe file saving, JSON files, text checks (imports no other folder)
         │   ├── paths/                  # run ids, the work folder, and RunPaths (every file a run keeps)
         │   ├── settings/               # preferences, pipeline config, migration of old files
-        │   ├── plan/                   # the plan.json schema
+        │   ├── plan/                   # the plan.json format
+        │   │   ├── model.py            # Plan, Issue and the rest of the format (`plan-review schema`)
+        │   │   ├── plan_file.py        # PlanFileError, load_plan, record_branch
+        │   │   └── diagram_checks.py   # shape_problems: what `plan-review validate` adds
         │   ├── review/                 # comment threads, review drafts, approval and their routes
         │   │   ├── approval.py         # the approve routes
         │   │   ├── approval_file.py    # ApprovalFile: the only code that reads or writes approved.json
@@ -96,7 +99,15 @@ claude-workbench/
         │   │   ├── routes.py           # the comment-thread routes
         │   │   ├── service.py          # the review: drafts, then one submit that sends them all
         │   │   └── threads.py          # comment threads on plan elements (comments.json)
-        │   ├── grill/                  # the grilling before the plan: state, drafts, turns, routes
+        │   ├── grill/                  # the grilling before the plan
+        │   │   ├── state.py            # what a grill holds: GrillState, Question, GrillError (imports nothing else from grill/)
+        │   │   ├── store.py            # GrillStore, post_turn, load_grill, drafts_then_grill (the lock order)
+        │   │   ├── owner_rules.py      # every check on what the owner may do, each refusal written once
+        │   │   ├── pending_text.py     # what the agent is told is waiting (`grill pending`)
+        │   │   ├── turn.py             # Turn: the agent's replies, decisions and next round
+        │   │   ├── drafts.py           # the owner's unsent answers (grill_drafts.json)
+        │   │   ├── routes.py           # the grill page's routes
+        │   │   └── decisions_md.py     # the decisions as markdown
         │   ├── events/                 # what the agent is told and doing: events, status, last event
         │   │   ├── subscribers.py      # Subscribers (the sockets on one endpoint) and Listeners
         │   │   ├── agent_events.py     # AgentEvents: log, keep for a Resend, push
@@ -126,7 +137,7 @@ claude-workbench/
         ├── tests/                      # pytest; the folders mirror src/plan_review/
         └── web/                        # viewer page: React + TypeScript + Vite
             └── src/
-                ├── plan.ts             # plan.json types (mirror plan/plan.py)
+                ├── plan.ts             # plan.json types (mirror plan/model.py)
                 ├── viewModels.ts       # pure plan → view functions (tested)
                 ├── diagram.ts          # plan → boxes-and-arrows model (classes, architecture, flowcharts)
                 ├── sequence.ts         # sequence-diagram geometry

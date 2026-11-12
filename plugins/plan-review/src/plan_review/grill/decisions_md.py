@@ -1,6 +1,6 @@
 """W/decisions.md, written from a confirmed grill in the format /ship wrote by hand."""
 
-from plan_review.grill.grill import Decision, GrillState
+from plan_review.grill.state import Decision, GrillState
 
 
 def decisions_markdown(state: GrillState, label: str) -> str:

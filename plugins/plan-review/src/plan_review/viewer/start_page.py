@@ -1,7 +1,7 @@
 """Which page the viewer opens on."""
 
 from plan_review.paths.run_paths import RunPaths
-from plan_review.plan.plan import PlanFileError, load_plan
+from plan_review.plan.plan_file import PlanFileError, load_plan
 
 
 def start_page(paths: RunPaths) -> str:

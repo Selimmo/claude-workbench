@@ -1,4 +1,4 @@
-// The plan.json format, mirroring plan_review/plan/plan.py (see `plan-review schema`).
+// The plan.json format, mirroring plan_review/plan/model.py (see `plan-review schema`).
 
 export type Status = 'added' | 'modified' | 'removed' | 'unchanged'
 

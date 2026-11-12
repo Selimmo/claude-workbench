@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 from typing import Literal
 
-from plan_review.plan.plan import Issue
+from plan_review.plan.model import Issue
 
 Verdict = Literal["PASS", "FINDINGS"]
 

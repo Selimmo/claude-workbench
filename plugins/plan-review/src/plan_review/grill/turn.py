@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
-from plan_review.grill.grill import (
+from plan_review.grill.state import (
     MAX_REPLIES,
     Answer,
     Choice,
@@ -69,31 +69,18 @@ class Turn(_Strict):
             if self.title is None:
                 errors.append("title: required on the first turn")
             state = GrillState(title=self.title or "")
-        questions = {q.id: q for r in state.rounds for q in r.questions}
+        questions = state.questions_by_id()
         settling = self._settled(questions)
         errors.extend(self._response_problems(questions, settling))
-        used = set(questions)
-        for i, new in enumerate(self.round or []):
-            if new.id in used:
-                errors.append(f"round.{i}.id: '{new.id}' is already used by a question")
-            used.add(new.id)
-        errors.extend(self._decision_problems(state, used))
+        errors.extend(self._round_problems(set(questions)))
+        errors.extend(
+            self._decision_problems(state, set(questions) | {q.id for q in self.round or []})
+        )
         errors.extend(self._frontier_problems(state, questions, settling))
         if errors:
             raise GrillError(errors)
-        by_id = {q.id: q for r in state.rounds for q in r.questions}
-        for reply in self.replies:
-            question = by_id[reply.question_id]
-            question.thread.append(Message(author="agent", text=reply.text))
-            if reply.revised is not None:
-                question.explanation = reply.revised.explanation
-                question.choices = reply.revised.choices
-                question.updated = True
-        for question_id in settling:
-            owner_text = next(
-                m.text for m in reversed(by_id[question_id].thread) if m.author == "owner"
-            )
-            by_id[question_id].answer = Answer(kind="other", text=owner_text)
+        self._add_replies(questions)
+        self._settle(questions, settling)
         state.decisions.extend(self.decisions)
         state.out_of_scope.extend(self.out_of_scope)
         state.done = self.done or (state.done and not self.round)
@@ -101,6 +88,34 @@ class Turn(_Strict):
             new = [Question(**q.model_dump()) for q in self.round]
             state.rounds.append(Round(n=len(state.rounds) + 1, questions=new))
         return state
+
+    def _round_problems(self, taken: set[str]) -> list[str]:
+        """Each new question's id is unused, by an earlier question or by one in this round."""
+        errors: list[str] = []
+        for i, new in enumerate(self.round or []):
+            if new.id in taken:
+                errors.append(f"round.{i}.id: '{new.id}' is already used by a question")
+            taken.add(new.id)
+        return errors
+
+    def _add_replies(self, questions: dict[str, Question]) -> None:
+        """The agent's message onto each thread, and the revision, marked updated."""
+        for reply in self.replies:
+            question = questions[reply.question_id]
+            question.thread.append(Message(author="agent", text=reply.text))
+            if reply.revised is not None:
+                question.explanation = reply.revised.explanation
+                question.choices = reply.revised.choices
+                question.updated = True
+
+    @staticmethod
+    def _settle(questions: dict[str, Question], settling: set[str]) -> None:
+        """Each settled question is answered with the owner's last message."""
+        for question_id in settling:
+            owner_text = next(
+                m.text for m in reversed(questions[question_id].thread) if m.author == "owner"
+            )
+            questions[question_id].answer = Answer(kind="other", text=owner_text)
 
     def _settled(self, questions: dict[str, Question]) -> set[str]:
         """Questions awaiting a reply that a decision of this turn settles."""

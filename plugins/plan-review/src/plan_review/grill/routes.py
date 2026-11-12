@@ -12,7 +12,9 @@ from pydantic import BaseModel
 
 from plan_review.events.agent_events import AgentEvents
 from plan_review.grill.drafts import AnswerDraft, GrillDraftStore
-from plan_review.grill.grill import MAX_REPLIES, GrillError, GrillStore, SubmittedAnswer
+from plan_review.grill.owner_rules import answers_to_submit, require_draftable
+from plan_review.grill.state import MAX_REPLIES
+from plan_review.grill.store import GrillStore, drafts_then_grill
 
 
 class Reopen(BaseModel):
@@ -37,12 +39,8 @@ def grill_routes(
 
     @router.put("/api/grill/drafts/{question_id}")
     def put_draft(question_id: str, draft: AnswerDraft) -> AnswerDraft:  # pyright: ignore[reportUnusedFunction]
-        # Checked under the drafts lock, like submit, so a submit cannot answer the question
-        # between this check and the write.
-        with drafts.held():
-            question = store.get().question(question_id)
-            if question.answer is not None:
-                raise GrillError([f"question '{question_id}' is already answered"], missing=True)
+        with drafts_then_grill(drafts):
+            require_draftable(store.get(), question_id)
             return drafts.put(question_id, draft)
 
     @router.delete("/api/grill/drafts/{question_id}", status_code=204)
@@ -52,18 +50,11 @@ def grill_routes(
 
     @router.post("/api/grill/submit")
     async def submit() -> dict[str, Any]:  # pyright: ignore[reportUnusedFunction]
-        # Drafts stay locked for the whole submit so an edit cannot land in between and be
-        # lost. Lock order: drafts, then grill.json (the store takes its own lock).
-        with drafts.held():
-            # A draft for a question that is no longer open (the agent closed it meanwhile) is
-            # dropped rather than refusing the whole submit.
-            open_ids = {q.id for q in store.get().open_questions()}
+        with drafts_then_grill(drafts):
+            state = store.get()
             events.check_log()  # before anything is written, as a review does
-            drafts.keep_only(open_ids)
-            answers = [
-                SubmittedAnswer(question_id=qid, **draft.model_dump())
-                for qid, draft in drafts.all().items()
-            ]
+            answers = answers_to_submit(state, drafts.all())
+            drafts.keep_only({a.question_id for a in answers})
             store.submit(answers)
             sent = [a.model_dump(exclude_none=True) for a in answers]
             event = {"type": "grill_submitted", "answers": sent}

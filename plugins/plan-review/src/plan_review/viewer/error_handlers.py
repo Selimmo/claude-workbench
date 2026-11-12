@@ -3,8 +3,8 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from plan_review.grill.grill import GrillError
-from plan_review.plan.plan import PlanFileError
+from plan_review.grill.state import GrillError
+from plan_review.plan.plan_file import PlanFileError
 from plan_review.review.drafts import DraftNotFound
 from plan_review.review.threads import ResolveRefused, ThreadNotFound
 from plan_review.utils.json_files import BrokenFile

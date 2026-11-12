@@ -1,8 +1,6 @@
 """The plan format: the contract between the architect agent and the viewer."""
 
-import json
 from collections.abc import Sequence
-from pathlib import Path
 from typing import Annotated, Any, Literal, Self, cast
 
 from pydantic import (
@@ -10,13 +8,10 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    ValidationError,
     model_validator,
 )
 
 from plan_review.paths.run_id import check_run_id
-from plan_review.utils.json_files import named_errors
-from plan_review.utils.safe_files import write_atomically
 
 Status = Literal["added", "modified", "removed", "unchanged"]
 
@@ -252,94 +247,3 @@ def _check_ends(edges: Sequence[_Edge], known: set[str], what: str) -> None:
         for end, ref in (("from", edge.source), ("to", edge.target)):
             if ref not in known:
                 raise ValueError(f"{edge.id}: '{end}' points at unknown {what} id '{ref}'")
-
-
-class PlanFileError(Exception):
-    """A plan file that is missing or invalid, with one readable line per problem."""
-
-    def __init__(self, errors: list[str], *, missing: bool = False) -> None:
-        super().__init__("\n".join(errors))
-        self.errors = errors
-        self.missing = missing
-
-
-def load_plan(path: Path) -> Plan:
-    if not path.is_file():
-        raise PlanFileError([f"{path.as_posix()}: file not found"], missing=True)
-    try:
-        return Plan.model_validate_json(path.read_bytes())
-    except ValidationError as error:
-        raise PlanFileError(named_errors(path, error)) from error
-
-
-def record_branch(path: Path, branch: str) -> None:
-    """Set `branch` in the plan file, leaving the rest as the architect wrote it."""
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    raw["branch"] = branch
-    write_atomically(path, (json.dumps(raw, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
-
-
-def _is_changed(cls: PlanClass) -> bool:
-    return cls.status != "unchanged" or any(m.status != "unchanged" for m in cls.members)
-
-
-def _class_problems(cls: PlanClass) -> list[str]:
-    found: list[str] = []
-    if cls.side is None:
-        found.append(f"{cls.id}: side is required (front or back)")
-    if cls.kind == "function":
-        found.append(
-            f"{cls.id}: a plain function gets no box of its own; "
-            "put it in its module's box (kind 'module') as a method"
-        )
-    for member in cls.members:
-        if member.name is None:
-            found.append(f"{member.id}: name is required")
-        if member.kind is None:
-            found.append(f"{member.id}: kind is required (property or method)")
-    return found
-
-
-def _relation_problem(rel: Relation, a: PlanClass, b: PlanClass) -> list[str]:
-    found: list[str] = []
-    if rel.kind in ("inherits", "implements"):
-        found.append(
-            f"{rel.id}: '{rel.kind}' is not drawn as an arrow; list the base in the class's 'bases'"
-        )
-    if a.side and b.side and a.side != b.side:
-        found.append(
-            f"{rel.id}: links a {a.side} class to a {b.side} class; front and back are drawn apart"
-        )
-    return found
-
-
-def _linked_to_changed(plan: Plan) -> set[str]:
-    """Ids of the classes linked, on their own side, to a changed class."""
-    by_id = {c.id: c for c in plan.classes}
-    linked: set[str] = set()
-    for rel in plan.relations:
-        a, b = by_id[rel.source], by_id[rel.target]
-        if a.side != b.side:
-            continue
-        for one, other in ((a, b), (b, a)):
-            if _is_changed(other):
-                linked.add(one.id)
-    return linked
-
-
-def shape_problems(plan: Plan) -> list[str]:
-    """What `plan-review validate` requires beyond what loading accepts: one line per
-    problem, starting with the element id. Old plans load without these; the viewer
-    draws them the old way."""
-    by_id = {c.id: c for c in plan.classes}
-    found = [line for cls in plan.classes for line in _class_problems(cls)]
-    for rel in plan.relations:
-        found += _relation_problem(rel, by_id[rel.source], by_id[rel.target])
-    linked = _linked_to_changed(plan)
-    found += [
-        f"{cls.id}: unchanged and linked to no changed class on its side, "
-        "so it is not drawn; leave it out of the plan"
-        for cls in plan.classes
-        if cls.side and not _is_changed(cls) and cls.id not in linked
-    ]
-    return found
