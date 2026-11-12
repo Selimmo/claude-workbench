@@ -356,7 +356,7 @@ classDiagram
     running()
   }
   class ViewerRecord {
-    why - what viewer.json holds
+    why - the one owner of viewer.json
   }
   class ProcessSpawner {
     why - starting a process on each OS
@@ -370,7 +370,6 @@ classDiagram
   create_app --> FileWatcher
   create_app --> error_handlers
   create_app --> page_routes
-  create_app --> ViewerLifetime
   ViewerLifetime --> IdleWatch
   ViewerLifetime --> ViewerRecord
   ViewerLauncher --> ViewerRecord
@@ -510,8 +509,8 @@ src/plan_review/
 │   └── migration.py                                             ← migration.py
 │
 ├── plan/                       what a plan is
-│   ├── model.py                Plan, Issue                      ← plan.py
-│   ├── + plan_file.py           load_plan, record_branch         ← plan.py
+│   ├── model.py                Plan, Issue, the format          ← plan.py
+│   ├── + plan_file.py           PlanFileError, load_plan, record_branch  ← plan.py
 │   └── + diagram_checks.py      shape_problems                   ← plan.py
 │
 ├── review/                     comments, drafts and approval on a plan
@@ -523,13 +522,13 @@ src/plan_review/
 │   └── routes.py                                                ← thread_routes.py
 │
 ├── grill/                      the question-and-answer rounds
-│   ├── state.py                GrillState, Question             ← grill.py
-│   ├── store.py                GrillStore                       ← grill.py
-│   ├── + owner_rules.py         what the owner may do and when   ← grill.py
+│   ├── state.py                GrillState, Question, GrillError ← grill.py
+│   ├── store.py                GrillStore, post_turn, drafts_then_grill ← grill.py
+│   ├── + owner_rules.py         what the owner may do and when   ← grill.py, grill_routes.py
 │   ├── turn.py                 Turn (kept whole)                ← grill_turn.py
 │   ├── drafts.py                                                ← grill_drafts.py
 │   ├── routes.py                                                ← grill_routes.py
-│   ├── + pending_text.py        what the agent is told is waiting
+│   ├── + pending_text.py        what the agent is told is waiting  ← grill.py
 │   └── decisions_md.py                                          ← decisions_md.py
 │
 ├── events/                     what the owner did, and who hears about it
@@ -546,9 +545,12 @@ src/plan_review/
 │
 ├── viewer/                     the local web server and its process
 │   ├── app.py                  create_app                       ← server.py
-│   ├── + file_watcher.py                                         ← server.py
-│   ├── + error_handlers.py                                      ← server.py
+│   ├── + file_watcher.py        FileWatcher                      ← app.py
+│   ├── + error_handlers.py      add_error_handlers               ← app.py
+│   ├── + page_routes.py         serve_page: the page, /api/plan  ← app.py
+│   ├── start_page.py           which page to open               ← start_page.py
 │   ├── + lifetime.py            IdleWatch, ViewerLifetime        ← detach.py
+│   ├── + record.py              ViewerRecord, ViewerInfo         ← detach.py
 │   ├── + launcher.py            start, stop, find                ← detach.py
 │   └── + client.py              talking to a running viewer      ← detach.py
 │

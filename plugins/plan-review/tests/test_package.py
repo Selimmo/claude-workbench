@@ -39,7 +39,7 @@ def test_zips_the_plugin_with_its_root_at_the_top(built: Path, tmp_path: Path) -
         "bin/plan-review",
         "agents/architect.md",
         "skills/ship/SKILL.md",
-        "src/plan_review/cli.py",
+        "src/plan_review/cli/__init__.py",
         "src/plan_review/static/index.html",
         "pyproject.toml",
         "uv.lock",
@@ -135,9 +135,9 @@ def test_the_wheel_holds_the_page_and_the_codex_files(tmp_path: Path) -> None:
     names = zipfile.ZipFile(wheel).namelist()
     assert "plan_review/static/index.html" in names
     for shipped in [
-        "plan_review/adapters/codex_files/skills/ship/SKILL.md",
-        "plan_review/adapters/codex_files/skills/ship/agents/openai.yaml",
-        "plan_review/adapters/codex_files/agents/plan-review-architect.toml",
+        "plan_review/harness/adapters/codex_files/skills/ship/SKILL.md",
+        "plan_review/harness/adapters/codex_files/skills/ship/agents/openai.yaml",
+        "plan_review/harness/adapters/codex_files/agents/plan-review-architect.toml",
     ]:
         assert shipped in names
 

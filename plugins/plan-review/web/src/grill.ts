@@ -1,4 +1,4 @@
-// The grill as the server returns it (see plan_review/grill.py and grill_drafts.py).
+// The grill as the server returns it (see plan_review/grill/state.py and grill/drafts.py).
 
 import type { Message } from './threads'
 

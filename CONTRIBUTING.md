@@ -75,14 +75,69 @@ claude-workbench/
         ├── agents/                     # GENERATED from workflow/: architect, implementer, test-reviewer, code-reviewer
         ├── skills/ship/SKILL.md        # GENERATED from workflow/: /plan-review:ship, the orchestrator
         ├── examples/                   # plan.json, config.json, grill samples, and demo/ (the README GIFs' inputs)
-        ├── src/plan_review/            # CLI, plan schema, server, comment threads, review drafts, /ship helpers, init, upgrade
-        │   ├── adapters/               # one adapter per CLI (Claude Code): upgrade steps, generated files, its words
-        │   ├── generate.py             # writes agents/ and skills/ from workflow/; `--check` fails on a stale copy
+        ├── src/plan_review/            # only __init__.py at the root; every module lives in a folder (cli/ holds the entry point)
+        │   ├── cli/                    # the command line: __init__.py has the parser and main(), one file per command group
+        │   │   ├── __main__.py         # python -m plan_review.cli: how the detached viewer starts
+        │   │   ├── runtime.py          # Runtime: what a command takes from outside (work folder, date, server, browser), so tests hand in fakes
+        │   │   ├── viewer.py           # serve, stop, viewer-process
+        │   │   ├── agent.py            # wait, status, reply, threads
+        │   │   ├── grill.py            # grill post, pending, decisions, schema
+        │   │   ├── pipeline.py         # init, schema, validate, branch, verdict, tree-hash
+        │   │   ├── settings.py         # config, prefs
+        │   │   └── setup.py            # install, upgrade
+        │   ├── utils/                  # generic helpers: safe file saving, JSON files, text checks (imports no other folder)
+        │   ├── paths/                  # run ids, the work folder, and RunPaths (every file a run keeps)
+        │   ├── settings/               # preferences, pipeline config, migration of old files
+        │   ├── plan/                   # the plan.json format
+        │   │   ├── model.py            # Plan, Issue and the rest of the format (`plan-review schema`)
+        │   │   ├── plan_file.py        # PlanFileError, load_plan, record_branch
+        │   │   └── diagram_checks.py   # shape_problems: what `plan-review validate` adds
+        │   ├── review/                 # comment threads, review drafts, approval and their routes
+        │   │   ├── approval.py         # the approve routes
+        │   │   ├── approval_file.py    # ApprovalFile: the only code that reads or writes approved.json
+        │   │   ├── drafts.py           # the owner's unsent review comments (drafts.json)
+        │   │   ├── routes.py           # the comment-thread routes
+        │   │   ├── service.py          # the review: drafts, then one submit that sends them all
+        │   │   └── threads.py          # comment threads on plan elements (comments.json)
+        │   ├── grill/                  # the grilling before the plan
+        │   │   ├── state.py            # what a grill holds: GrillState, Question, GrillError (imports nothing else from grill/)
+        │   │   ├── store.py            # GrillStore, post_turn, load_grill, drafts_then_grill (the lock order)
+        │   │   ├── owner_rules.py      # every check on what the owner may do, each refusal written once
+        │   │   ├── pending_text.py     # what the agent is told is waiting (`grill pending`)
+        │   │   ├── turn.py             # Turn: the agent's replies, decisions and next round
+        │   │   ├── drafts.py           # the owner's unsent answers (grill_drafts.json)
+        │   │   ├── routes.py           # the grill page's routes
+        │   │   └── decisions_md.py     # the decisions as markdown
+        │   ├── events/                 # what the agent is told and doing: events, status, last event
+        │   │   ├── subscribers.py      # Subscribers (the sockets on one endpoint) and Listeners
+        │   │   ├── agent_events.py     # AgentEvents: log, keep for a Resend, push
+        │   │   ├── event_log.py        # events.json: record, offer, confirm
+        │   │   ├── waiter.py           # wait_for_event, behind `plan-review wait`
+        │   │   ├── last_event.py       # the event kept for a Resend
+        │   │   ├── resend.py           # the Resend route
+        │   │   └── status.py           # what the agent says it is doing
+        │   ├── pipeline/               # /ship helpers: branch name, tree hash, review verdict
+        │   ├── viewer/                 # the web server and the detached viewer
+        │   │   ├── app.py              # create_app: which parts the server is made of
+        │   │   ├── file_watcher.py     # FileWatcher: notices file changes
+        │   │   ├── error_handlers.py   # how errors look on the web
+        │   │   ├── page_routes.py      # the page, /api/plan, the static files
+        │   │   ├── start_page.py       # which page to open first
+        │   │   ├── lifetime.py         # IdleWatch, ViewerLifetime: what a detached viewer does while it runs
+        │   │   ├── record.py           # ViewerRecord: the one owner of viewer.json
+        │   │   ├── launcher.py         # ViewerLauncher: start, stop, find a running viewer
+        │   │   └── client.py           # ViewerClient: talking to a running viewer
+        │   ├── harness/                # workflow, generate.py (writes agents/ and skills/ from workflow/; `--check` fails on a stale copy), upgrade
+        │   │   ├── wording.py          # Wording: a tool's 7 names for things
+        │   │   ├── adapters/           # one small file per tool (found automatically): its Wording and the pieces it picks
+        │   │   ├── agent_files/        # file formats: MarkdownAgents, TomlAgents
+        │   │   ├── distribution/       # install and upgrade: MarketplacePlugin, WheelInstall, releases.py
+        │   │   └── waiting/            # how an agent waits for the owner: SocketWaiting, PollingWaiting
         │   └── static/                 # built viewer page (generated, gitignored)
-        ├── tests/                      # pytest
+        ├── tests/                      # pytest; the folders mirror src/plan_review/
         └── web/                        # viewer page: React + TypeScript + Vite
             └── src/
-                ├── plan.ts             # plan.json types (mirror plan.py)
+                ├── plan.ts             # plan.json types (mirror plan/model.py)
                 ├── viewModels.ts       # pure plan → view functions (tested)
                 ├── diagram.ts          # plan → boxes-and-arrows model (classes, architecture, flowcharts)
                 ├── sequence.ts         # sequence-diagram geometry
@@ -108,8 +163,10 @@ claude-workbench/
 Edit the text in `plugins/plan-review/workflow/`, never `skills/ship/SKILL.md` or `agents/*.md`: those are generated. Then run, from `plugins/plan-review/`:
 
 ```bash
-uv run python -m plan_review.generate           # rewrite the generated files
-uv run python -m plan_review.generate --check   # what check.sh runs: fails if a copy is stale
+uv run python -m plan_review.harness.generate           # rewrite the generated files
+uv run python -m plan_review.harness.generate --check   # what check.sh runs: fails if a copy is stale
 ```
 
-Wording that belongs to one CLI (its tool names, its model nicknames, its override folder) lives in that CLI's adapter under `src/plan_review/adapters/`; the workflow holds a `{{slot}}` there instead.
+Wording that belongs to one CLI (its tool names, its model nicknames, its override folder) lives in that CLI's file under `src/plan_review/harness/adapters/` (its `Wording` and the pieces it picks); the workflow holds a `{{slot}}` there instead.
+
+To add a tool, add one file to `adapters/` with one `HARNESS` value built from the existing pieces. Every module in that folder is a tool, found in file-name order (the first tool that recognises a plugin folder wins), so keep only tool files there.

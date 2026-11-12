@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import queue
 import shutil
 import socket
@@ -7,28 +8,26 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from typing import IO
 
 import pytest
 from conftest import PACKAGE_VERSION, PLUGIN, WindowsStylePath, version_of
+from fastapi import FastAPI
 
-from plan_review import cli
-from plan_review.cli import main
-from plan_review.grill import GrillStore, SubmittedAnswer
-from plan_review.grill_drafts import GrillDraftStore
-from plan_review.pipeline import PipelineConfigError, load_pipeline
-from plan_review.plan import PlanFileError, load_plan
-from plan_review.status import StatusStore
-from plan_review.threads import ThreadStore
-
-
-@pytest.fixture
-def windows_style_paths(monkeypatch: pytest.MonkeyPatch) -> None:
-    real_work_dir, real_ensure = cli.work_dir, cli.ensure_work_dir
-    monkeypatch.setattr(cli, "work_dir", lambda r, i: WindowsStylePath(real_work_dir(r, i)))
-    monkeypatch.setattr(cli, "ensure_work_dir", lambda r, i: WindowsStylePath(real_ensure(r, i)))
+from plan_review.cli import main, runtime
+from plan_review.cli.runtime import Runtime, ServerStop
+from plan_review.events.status import StatusStore
+from plan_review.grill.drafts import GrillDraftStore
+from plan_review.grill.state import SubmittedAnswer
+from plan_review.grill.store import GrillStore
+from plan_review.plan.plan_file import PlanFileError, load_plan
+from plan_review.review.threads import ThreadStore
+from plan_review.settings.pipeline_config import PipelineConfigError, load_pipeline
 
 
 def test_version_flag_prints_version_and_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
@@ -132,12 +131,70 @@ def test_validate_malformed_json_is_reported_not_raised(
 class FakeServer:
     """Stands in for uvicorn and the browser so serve() can be tested without either."""
 
-    def __init__(self) -> None:
+    def __init__(self, static_dir: Path) -> None:
         self.addresses: list[tuple[str, int]] = []
         self.opened: list[str] = []
+        self.runtime = Runtime(
+            static_dir=static_dir, run_server=self.run, open_browser=self.opened.append
+        )
 
-    def run(self, app: object, sock: socket.socket) -> None:
+    def run(self, app: object, sock: socket.socket, stop: ServerStop | None = None) -> None:
         self.addresses.append(sock.getsockname())
+
+
+def serve_in_a_thread(app: FastAPI, sock: socket.socket, stop: ServerStop) -> threading.Thread:
+    thread = threading.Thread(target=runtime.run_server, args=(app, sock, stop), daemon=True)
+    thread.start()
+    return thread
+
+
+def wait_until_it_answers(port: int) -> None:
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        try:
+            socket.create_connection(("127.0.0.1", port), timeout=1).close()
+        except OSError:
+            time.sleep(0.02)
+        else:
+            return
+    pytest.fail("the server never answered")
+
+
+@pytest.mark.timeout(30)
+def test_a_server_stop_ends_the_running_server() -> None:
+    ended: list[bool] = []
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
+        yield
+        ended.append(True)  # the lifespan shut down in order
+
+    stop = ServerStop()
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        sock.listen()
+        thread = serve_in_a_thread(FastAPI(lifespan=lifespan), sock, stop)
+        wait_until_it_answers(sock.getsockname()[1])
+
+        stop()
+
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+    assert ended == [True]
+
+
+@pytest.mark.timeout(30)
+def test_a_stop_asked_before_the_server_starts_still_ends_it() -> None:
+    stop = ServerStop()
+    stop()
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        sock.listen()
+
+        thread = serve_in_a_thread(FastAPI(), sock, stop)
+
+        thread.join(timeout=5)
+        assert not thread.is_alive()
 
 
 @pytest.fixture
@@ -150,22 +207,28 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     static = tmp_path / "static"
     static.mkdir()
     (static / "index.html").write_text("<h1>plan-review</h1>")
-    monkeypatch.setattr(cli, "STATIC_DIR", static)
     return tmp_path
 
 
 @pytest.fixture
-def server(monkeypatch: pytest.MonkeyPatch) -> FakeServer:
-    fake = FakeServer()
-    monkeypatch.setattr(cli, "run_server", fake.run)
-    monkeypatch.setattr(cli.webbrowser, "open", fake.opened.append)
-    return fake
+def server(project: Path) -> FakeServer:
+    return FakeServer(project / "static")
+
+
+@pytest.fixture
+def windows_style_paths(server: FakeServer) -> Runtime:
+    real = server.runtime
+    return replace(
+        real,
+        work_dir=lambda r, i: WindowsStylePath(real.work_dir(r, i)),
+        ensure_work_dir=lambda r, i: WindowsStylePath(real.ensure_work_dir(r, i)),
+    )
 
 
 def test_serve_without_a_plan_exits_2_and_starts_nothing(
     project: Path, server: FakeServer, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    exit_code = main(["serve", "8"])
+    exit_code = main(["serve", "8"], runtime=server.runtime)
 
     assert exit_code == 2
     assert ".plan-review/work/8/plan.json: file not found" in capsys.readouterr().err
@@ -175,7 +238,7 @@ def test_serve_without_a_plan_exits_2_and_starts_nothing(
 def test_serve_binds_localhost_on_a_free_port_and_opens_the_browser(
     project: Path, server: FakeServer
 ) -> None:
-    exit_code = main(["serve", "7"])
+    exit_code = main(["serve", "7"], runtime=server.runtime)
 
     host, port = server.addresses[0]
     assert exit_code == 0
@@ -187,11 +250,29 @@ def test_serve_binds_localhost_on_a_free_port_and_opens_the_browser(
 def test_serve_open_none_prints_the_url_instead_of_opening_a_browser(
     project: Path, server: FakeServer, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    main(["serve", "7", "--open", "none"])
+    main(["serve", "7", "--open", "none"], runtime=server.runtime)
 
     _, port = server.addresses[0]
     assert server.opened == []
     assert f"http://127.0.0.1:{port}/" in capsys.readouterr().out
+
+
+def test_viewer_process_binds_its_own_port_and_records_it(
+    project: Path, server: FakeServer
+) -> None:
+    exit_code = main(["viewer-process", "7", "--port", "0", "--token", "t"], runtime=server.runtime)
+
+    host, port = server.addresses[0]
+    assert exit_code == 0
+    assert host == "127.0.0.1"
+    assert port > 0
+    record = project / ".plan-review" / "work" / "7" / "viewer.json"
+    assert json.loads(record.read_text()) == {
+        "run_id": "7",
+        "pid": os.getpid(),
+        "port": port,
+        "token": "t",
+    }
 
 
 def write_pipeline(project: Path, config: object) -> None:
@@ -201,7 +282,7 @@ def write_pipeline(project: Path, config: object) -> None:
 def test_serve_follows_viewer_open_from_pipeline_json(project: Path, server: FakeServer) -> None:
     write_pipeline(project, {"viewer": {"open": "none"}})
 
-    main(["serve", "7"])
+    main(["serve", "7"], runtime=server.runtime)
 
     assert server.opened == []
 
@@ -211,14 +292,14 @@ def test_serve_with_open_flag_does_not_read_a_broken_config(
 ) -> None:
     (project / ".plan-review" / "config.json").write_text("{bad")
 
-    assert main(["serve", "7", "--open", "none"]) == 0
+    assert main(["serve", "7", "--open", "none"], runtime=server.runtime) == 0
     assert len(server.addresses) == 1
 
 
 def test_serve_open_flag_overrides_pipeline_json(project: Path, server: FakeServer) -> None:
     write_pipeline(project, {"viewer": {"open": "none"}})
 
-    main(["serve", "7", "--open", "browser"])
+    main(["serve", "7", "--open", "browser"], runtime=server.runtime)
 
     assert len(server.opened) == 1
 
@@ -226,12 +307,11 @@ def test_serve_open_flag_overrides_pipeline_json(project: Path, server: FakeServ
 def test_the_missing_viewer_page_is_reported_with_forward_slashes(
     project: Path,
     server: FakeServer,
-    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(cli, "STATIC_DIR", WindowsStylePath(project / "missing"))
+    runtime = replace(server.runtime, static_dir=WindowsStylePath(project / "missing"))
 
-    main(["serve", "7"])
+    main(["serve", "7"], runtime=runtime)
 
     expected = f"{(project / 'missing').as_posix()}: viewer page not built"
     assert expected in capsys.readouterr().err
@@ -240,12 +320,11 @@ def test_the_missing_viewer_page_is_reported_with_forward_slashes(
 def test_serve_without_a_built_page_says_how_to_build_it(
     project: Path,
     server: FakeServer,
-    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(cli, "STATIC_DIR", project / "missing")
+    runtime = replace(server.runtime, static_dir=project / "missing")
 
-    exit_code = main(["serve", "7"])
+    exit_code = main(["serve", "7"], runtime=runtime)
 
     assert exit_code == 2
     assert "npm --prefix web run build" in capsys.readouterr().err
@@ -415,18 +494,17 @@ def test_init_creates_the_issues_work_folder_and_prints_it(
 
 def test_serve_keeps_the_work_folder_out_of_git(project: Path, server: FakeServer) -> None:
     # The page writes comments.json and drafts.json there, even for a hand-made folder.
-    main(["serve", "7"])
+    main(["serve", "7"], runtime=server.runtime)
 
     assert (project / ".plan-review" / "work" / ".gitignore").read_text() == "*\n"
 
 
-@pytest.mark.usefixtures("windows_style_paths")
 def test_paths_in_messages_use_forward_slashes_on_every_os(
-    project: Path, server: FakeServer, capsys: pytest.CaptureFixture[str]
+    windows_style_paths: Runtime, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert main(["serve", "8"]) == 2
-    assert main(["status", "99", "Answering questions"]) == 1
-    assert main(["init", "42"]) == 0
+    assert main(["serve", "8"], runtime=windows_style_paths) == 2
+    assert main(["status", "99", "Answering questions"], runtime=windows_style_paths) == 1
+    assert main(["init", "42"], runtime=windows_style_paths) == 0
 
     captured = capsys.readouterr()
     assert ".plan-review/work/8/plan.json: file not found" in captured.err
@@ -463,7 +541,7 @@ def key_project(project: Path) -> Path:
     return work
 
 
-def run_command(name: str, run_id: str) -> int:
+def run_command(name: str, run_id: str, runtime: Runtime) -> int:
     commands = {
         "init": ["init", run_id],
         "serve": ["serve", run_id, "--open", "none"],
@@ -472,7 +550,7 @@ def run_command(name: str, run_id: str) -> int:
         "status": ["status", run_id, "Working"],
         "branch": ["branch", run_id],
     }
-    return main(commands[name])
+    return main(commands[name], runtime=runtime)
 
 
 COMMANDS = ["init", "serve", "threads", "reply", "status", "branch"]
@@ -539,7 +617,8 @@ def test_a_bad_run_id_is_rejected_before_anything_runs(
 ) -> None:
     before = sorted(p.name for p in (project / ".plan-review" / "work").iterdir())
 
-    exit_code = run_command(name, bad)  # main() returns; it must not raise SystemExit
+    # main() returns; it must not raise SystemExit
+    exit_code = run_command(name, bad, server.runtime)
 
     out, err = capsys.readouterr()
     assert exit_code == 2
@@ -556,10 +635,10 @@ def test_init_prompt_creates_a_dated_run_and_prints_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(cli, "today", lambda: date(2026, 11, 5))
+    runtime = Runtime(today=lambda: date(2026, 11, 5))
 
-    first = main(["init", "--prompt", "add-dark-mode"])
-    second = main(["init", "--prompt", "add-dark-mode"])
+    first = main(["init", "--prompt", "add-dark-mode"], runtime=runtime)
+    second = main(["init", "--prompt", "add-dark-mode"], runtime=runtime)
 
     assert (first, second) == (0, 0)
     assert capsys.readouterr().out.splitlines() == [
@@ -596,8 +675,8 @@ def test_serve_announces_the_run_by_its_label(
 ) -> None:
     key_project(project)
 
-    main(["serve", "7", "--open", "none"])
-    main(["serve", "PROJ-123", "--open", "none"])
+    main(["serve", "7", "--open", "none"], runtime=server.runtime)
+    main(["serve", "PROJ-123", "--open", "none"], runtime=server.runtime)
 
     first, second = capsys.readouterr().out.splitlines()
     port = server.addresses[0][1]
@@ -783,14 +862,14 @@ def test_serve_starts_from_grill_json_and_points_at_the_grill_page(
     project: Path, server: FakeServer, capsys: pytest.CaptureFixture[str]
 ) -> None:
     (project / ".plan-review" / "work" / "7" / "plan.json").unlink()
-    assert main(["serve", "7"]) == 2  # neither a plan nor a grill
+    assert main(["serve", "7"], runtime=server.runtime) == 2  # neither a plan nor a grill
     assert ".plan-review/work/7/plan.json: file not found" in capsys.readouterr().err
     assert server.addresses == []
 
     main(["grill", "post", "7", str(write_turn(project, FIRST_TURN))])
     capsys.readouterr()
 
-    assert main(["serve", "7"]) == 0
+    assert main(["serve", "7"], runtime=server.runtime) == 0
 
     _, port = server.addresses[0]
     url = f"http://127.0.0.1:{port}/grill"
@@ -804,7 +883,7 @@ def test_serve_with_an_invalid_plan_still_exits_1_even_with_a_grill(
     main(["grill", "post", "7", str(write_turn(project, FIRST_TURN))])
     (project / ".plan-review" / "work" / "7" / "plan.json").write_text("{}")
 
-    assert main(["serve", "7"]) == 1
+    assert main(["serve", "7"], runtime=server.runtime) == 1
     assert server.addresses == []
 
 
@@ -813,7 +892,7 @@ def test_serve_with_an_invalid_plan_names_the_file(
 ) -> None:
     (project / ".plan-review" / "work" / "7" / "plan.json").write_text("{bad")
 
-    assert main(["serve", "7"]) == 1
+    assert main(["serve", "7"], runtime=server.runtime) == 1
 
     err = capsys.readouterr().err
     assert err.splitlines() == [
@@ -1133,7 +1212,7 @@ def test_serve_prints_its_url_line_before_the_hint(
     monkeypatch.setattr(sys, "stdout", combined)
     monkeypatch.setattr(sys, "stderr", combined)
 
-    assert main(["serve", "7"]) == 0
+    assert main(["serve", "7"], runtime=server.runtime) == 0
 
     lines = combined.getvalue().splitlines()
     assert server.opened == []
@@ -1242,3 +1321,50 @@ def test_help_does_not_list_the_internal_viewer_process(
 
     assert "viewer-process" not in top
     assert "SUPPRESS" not in top
+
+
+HELP_TEXTS = json.loads((PLUGIN / "tests" / "fixtures" / "help-0.4.0.json").read_text("utf-8"))
+
+
+@pytest.mark.parametrize("command", sorted(HELP_TEXTS), ids=lambda c: c or "plan-review")
+def test_every_help_text_is_the_same_as_before(
+    command: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("COLUMNS", "80")
+    monkeypatch.setenv("PYTHON_COLORS", "0")
+
+    with pytest.raises(SystemExit) as exited:
+        main([*command.split(), "--help"])
+
+    assert exited.value.code == 0
+    assert capsys.readouterr().out == HELP_TEXTS[command]
+
+
+def test_runs_as_python_m_plan_review_cli() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "plan_review.cli", "--version"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == f"plan-review {PACKAGE_VERSION}\n"
+
+
+def test_a_socket_that_cannot_be_bound_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from plan_review.cli import viewer
+
+    made: list[socket.socket] = []
+
+    class Recording(socket.socket):
+        def __init__(self) -> None:
+            super().__init__()
+            made.append(self)
+
+    monkeypatch.setattr(viewer.socket, "socket", Recording)
+
+    with pytest.raises(OverflowError):
+        viewer._bind_local(70000)  # pyright: ignore[reportPrivateUsage]
+
+    assert made[0].fileno() == -1

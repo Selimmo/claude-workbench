@@ -9,8 +9,8 @@ SRC = PLUGIN / "src" / "plan_review"
 CLI_NAMES = re.compile(r"claude|codex", re.IGNORECASE)
 MONITOR = re.compile(r"\bMonitor\b")  # Claude Code's tool: exact case, so "monitoring" is fine
 
-# The files that must name the old files and the old author value (see migration.py).
-PYTHON_EXCEPTIONS = {"migration.py"}
+# Files that must name the old files and author value (migration.py) or the repo (releases.py).
+PYTHON_EXCEPTIONS = {"migration.py", "releases.py"}
 PAGE_EXCEPTIONS = {"web/src/threads.ts": "export type Author = 'owner' | 'agent' | 'claude'"}
 
 
