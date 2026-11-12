@@ -12,7 +12,7 @@ cd plugins/plan-review
 The tag starts `plan-review-release.yml`:
 
 1. **build** (read-only token): runs `check.sh`, which builds the viewer page, and zips the plugin with `scripts/package.sh` (the files in `scripts/shipped-paths`, the built page and `LICENSE`, plugin root at the top). The built page ships only in the zip: `static/` stays gitignored.
-2. **publish**: attaches `plan-review-<version>.zip` and `plan_review-<version>-py3-none-any.whl` (built after `check.sh`; Codex installs from it) to the GitHub release, then runs `scripts/link-release.sh`. If the repo is **public**, it commits the marketplace entry (`archive` source: url, sha256, version) to `main`. If it is **private** (a fork, say), the release is a test release: the log says so and `main` is left alone, because the zip's URL is a 404 for anyone without access.
+2. **publish**: attaches `plan-review-<version>.zip` and `plan_review-<version>-py3-none-any.whl` (built after `check.sh`; Codex and opencode install from it) to the GitHub release, then runs `scripts/link-release.sh`. If the repo is **public**, it commits the marketplace entry (`archive` source: url, sha256, version) to `main`. If it is **private** (a fork, say), the release is a test release: the log says so and `main` is left alone, because the zip's URL is a 404 for anyone without access.
 
 ## Version guard
 
@@ -35,6 +35,10 @@ After one release run `scripts/prove-release.sh install ~/tmp/proof`; after the 
 ## Proving the Codex install and upgrade
 
 `scripts/prove-codex-release.sh ~/tmp/codex-proof` installs the release wheels in a throwaway home (`HOME`, `CODEX_HOME` and the uv tool folders are all inside the folder), checks the version, the ship skill and the four agents, and does not start Codex. With two releases that carry a wheel it installs the older one and runs its own `plan-review upgrade`; with one it proves the install and says the upgrade needs a second release. The first release with a wheel has nothing to upgrade from, so prove the upgrade after the next one.
+
+## Proving the opencode install and upgrade
+
+`scripts/prove-opencode-release.sh ~/tmp/opencode-proof` does the same for opencode: it installs the release wheels in a throwaway home (`HOME` and the uv tool folders are inside the folder; `XDG_CONFIG_HOME` is unset), checks the version, the `/plan-review-ship` command and the four agents against the wheel's `opencode_files`, checks that no `~/.agents/skills/ship` appeared, and does not start opencode. The upgrade is proved only when the older release's wheel also carries opencode's files; otherwise it proves the install and says the upgrade needs a second release with opencode.
 
 `link-release.sh` also rewrites the `uv tool install` line in the root README to the new wheel, in the same commit as the marketplace entry.
 

@@ -150,13 +150,14 @@ def test_ship_runs_only_when_asked_for() -> None:
     assert re.search(r"allow_implicit_invocation:\s*false", policy)
 
 
-def test_generator_writes_both_adapters() -> None:
+def test_generator_writes_every_adapter() -> None:
     expected = generate.expected_files(PLUGIN)
 
     names = {p.relative_to(PLUGIN).as_posix() for p in expected}
     assert "skills/ship/SKILL.md" in names
     assert "src/plan_review/harness/adapters/codex_files/skills/ship/SKILL.md" in names
-    assert len(expected) == 1 + 4 + 1 + 1 + 4
+    assert "src/plan_review/harness/adapters/opencode_files/commands/plan-review-ship.md" in names
+    assert len(expected) == 1 + 4 + 1 + 1 + 4 + 1 + 4
 
 
 def test_a_changed_codex_file_is_reported_stale(tmp_path: Path) -> None:
@@ -182,6 +183,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("HOME", str(folder))
     monkeypatch.setenv("USERPROFILE", str(folder))
     monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     return folder
 
 
@@ -427,8 +429,13 @@ def test_upgrade_with_no_network_prints_what_to_run(
 
 
 def test_upgrade_without_uv_says_so(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
+    main(["install", "codex"])  # a uv copy is Codex's only with its files in place
+    capsys.readouterr()
     tool = tmp_path / "tool"
     (tool / "lib").mkdir(parents=True)
     (tool / "uv-receipt.toml").write_text("[tool]\n")
@@ -443,12 +450,14 @@ def test_upgrade_without_uv_says_so(
     assert "plan-review install codex" in err
 
 
-def test_a_uv_tool_copy_is_codex(tmp_path: Path) -> None:
+def test_a_uv_tool_copy_is_codex(home: Path, tmp_path: Path) -> None:
     tool = tmp_path / "tools" / "plan-review"
     root = tool / "lib" / "python3.15"
     root.mkdir(parents=True)
     (tool / "uv-receipt.toml").write_text("[tool]\n")
 
+    assert not codex.HARNESS.distribution.installed_at(root)  # no Codex files yet
+    main(["install", "codex"])
     assert codex.HARNESS.distribution.installed_at(root)
     assert not codex.HARNESS.distribution.installed_at(tmp_path / "elsewhere")
 

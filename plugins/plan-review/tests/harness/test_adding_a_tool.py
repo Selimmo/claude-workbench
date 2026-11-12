@@ -26,11 +26,11 @@ def sample_tool(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 
 def test_the_tools_are_found_in_the_adapters_folder_in_file_name_order() -> None:
-    assert [h.key for h in all_adapters()] == ["claude-code", "codex"]
+    assert [h.key for h in all_adapters()] == ["claude-code", "codex", "opencode"]
 
 
 def test_tools_in_two_folders_are_ordered_by_file_name_across_both(sample_tool: None) -> None:
-    assert [h.key for h in all_adapters()] == ["sample-tool", "claude-code", "codex"]
+    assert [h.key for h in all_adapters()] == ["sample-tool", "claude-code", "codex", "opencode"]
 
 
 def test_the_adapters_package_names_no_tool() -> None:
@@ -45,7 +45,7 @@ def test_the_adapters_package_names_no_tool() -> None:
         ),
     ]
 
-    assert not [n for n in names if "claude_code" in n or "codex" in n]
+    assert not [n for n in names if "claude_code" in n or "codex" in n or "opencode" in n]
 
 
 def write_workflow(root: Path) -> None:

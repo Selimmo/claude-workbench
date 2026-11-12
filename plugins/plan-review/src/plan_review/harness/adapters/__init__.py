@@ -1,9 +1,9 @@
 """One file per tool that can run the agents, each holding one `HARNESS` value.
 
 Every module in this folder is a tool, found each time it is asked for, in file-name order.
-That order is the order of the checks in `installed_adapter`: the first tool that recognises
-the folder wins, so `claude_code.py` sorts before `codex.py` on purpose. Keep only tool files
-here; shared code belongs in the piece folders next to this one.
+Several tools can recognise one copy of plan-review (each by its own files), and upgrade runs
+every one that does; the file-name order only fixes the order they run in, it picks no winner.
+Keep only tool files here; shared code belongs in the piece folders next to this one.
 """
 
 import importlib
@@ -19,9 +19,9 @@ def all_adapters() -> list[Harness]:
     return [importlib.import_module(f"{__name__}.{name}").HARNESS for name in names]
 
 
-def installed_adapter(package_root: Path) -> Harness | None:
-    """The tool that installed the copy of plan-review in `package_root`, if any."""
-    return next((h for h in all_adapters() if h.distribution.installed_at(package_root)), None)
+def installed_adapters(package_root: Path) -> list[Harness]:
+    """Every tool that recognises the copy of plan-review in `package_root`."""
+    return [h for h in all_adapters() if h.distribution.installed_at(package_root)]
 
 
 def adapter_by_key(key: str) -> Harness | None:

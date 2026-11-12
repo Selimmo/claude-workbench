@@ -124,7 +124,7 @@ def test_the_built_page_stays_out_of_git_on_main() -> None:
 
 
 @pytest.mark.timeout(180)
-def test_the_wheel_holds_the_page_and_the_codex_files(tmp_path: Path) -> None:
+def test_the_wheel_holds_the_page_and_the_codex_and_opencode_files(tmp_path: Path) -> None:
     page = PLUGIN / "src" / "plan_review" / "static" / "index.html"
     if not page.is_file():
         pytest.skip("the viewer page is not built: run `npm --prefix web run build`")
@@ -138,6 +138,8 @@ def test_the_wheel_holds_the_page_and_the_codex_files(tmp_path: Path) -> None:
         "plan_review/harness/adapters/codex_files/skills/ship/SKILL.md",
         "plan_review/harness/adapters/codex_files/skills/ship/agents/openai.yaml",
         "plan_review/harness/adapters/codex_files/agents/plan-review-architect.toml",
+        "plan_review/harness/adapters/opencode_files/commands/plan-review-ship.md",
+        "plan_review/harness/adapters/opencode_files/agents/plan-review-architect.md",
     ]:
         assert shipped in names
 

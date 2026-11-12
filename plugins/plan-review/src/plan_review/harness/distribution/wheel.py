@@ -1,8 +1,9 @@
 """A tool whose files plan-review writes itself; plan-review comes from a release's wheel.
 
 `plan-review` is installed with `uv tool install` from the wheel of a release, so an upgrade
-installs the newest wheel and then writes the tool's files again. Only one tool should use
-this: a second one would recognise the same uv-installed copy.
+installs the newest wheel and then writes the tool's files again. Several tools can use this:
+they all see the same uv-installed copy, so each also needs its own marked files in place to
+count it as its own.
 """
 
 import shutil
@@ -28,11 +29,27 @@ class WheelInstall:
     mark: str
 
     def installed_at(self, package_root: Path) -> bool:
-        """A copy `uv tool install` made: a folder above it holds uv-receipt.toml."""
-        return any(
+        """A copy `uv tool install` made (a folder above it holds uv-receipt.toml), for a
+        tool whose own files are in place."""
+        from_uv = any(
             (folder / "uv-receipt.toml").is_file()
             for folder in [package_root, *package_root.parents]
         )
+        return from_uv and self.files_in_place()
+
+    def files_in_place(self) -> bool:
+        """Whether one of this tool's files is where it goes and holds the mark."""
+        return any(
+            target.is_file() and self.mark in target.read_text("utf-8", "replace")
+            for target in self._targets().values()
+        )
+
+    def _targets(self) -> dict[Path, Path]:
+        """Each file in `files`, with where it goes."""
+        return {
+            source: self.targets(source.relative_to(self.files))
+            for source in sorted(p for p in self.files.rglob("*") if p.is_file())
+        }
 
     def upgrade_commands(self) -> list[str]:
         return [
@@ -83,10 +100,7 @@ class WheelInstall:
 
     def install(self) -> int:
         """Write the files into the owner's home folders."""
-        targets = {
-            source: self.targets(source.relative_to(self.files))
-            for source in sorted(p for p in self.files.rglob("*") if p.is_file())
-        }
+        targets = self._targets()
         if not targets:
             print(
                 f"{self.files.as_posix()}: the {self.tool_name} files are missing from this copy",

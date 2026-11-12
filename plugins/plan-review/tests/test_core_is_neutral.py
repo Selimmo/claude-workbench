@@ -6,7 +6,7 @@ import subprocess
 from conftest import PLUGIN
 
 SRC = PLUGIN / "src" / "plan_review"
-CLI_NAMES = re.compile(r"claude|codex", re.IGNORECASE)
+CLI_NAMES = re.compile(r"claude|codex|opencode", re.IGNORECASE)
 MONITOR = re.compile(r"\bMonitor\b")  # Claude Code's tool: exact case, so "monitoring" is fine
 
 # Files that must name the old files and author value (migration.py) or the repo (releases.py).
@@ -58,7 +58,7 @@ def test_the_page_names_no_cli() -> None:
 
 def test_the_workflow_source_names_no_cli() -> None:
     forbidden = re.compile(
-        r"claude|codex|Monitor|run_in_background|\$ARGUMENTS|Skill tool|Bash tool"
+        r"claude|codex|opencode|Monitor|run_in_background|\$ARGUMENTS|Skill tool|Bash tool"
         r"|\bopus\b|\bsonnet\b|\bhaiku\b",
         re.IGNORECASE,
     )
