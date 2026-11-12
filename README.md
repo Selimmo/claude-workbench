@@ -70,7 +70,7 @@ For example:
 In OpenAI Codex:
 
 ```bash
-uv tool install https://github.com/Selimmo/claude-workbench/releases/download/plan-review--v0.3.0/plan_review-0.3.0-py3-none-any.whl
+uv tool install https://github.com/Selimmo/claude-workbench/releases/download/plan-review--v0.4.0/plan_review-0.4.0-py3-none-any.whl
 plan-review install codex
 ```
 
