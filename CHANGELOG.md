@@ -4,8 +4,9 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
-### Unreleased
+### 0.4.0
 
+- plan-review's code is reorganised into one folder per part ([#69](https://github.com/Selimmo/claude-workbench/issues/69)), so a new tool touches only its own files. Apart from the changes below, every command, page and message works as before.
 - Approving takes the drafts lock while it checks and writes, as sending a review does, so an approval and a review sent at the same moment can't both succeed.
 - `serve --detach` no longer picks a port and lets it go: the viewer binds its own port and records it in `viewer.json`, and the command waits for that record.
 - A review can't be sent once the plan is approved: the viewer answers 409 and keeps your drafts.
