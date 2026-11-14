@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pydantic import TypeAdapter, ValidationError
 
-from plan_review.cli.runtime import Runtime
+from plan_review.cli.runtime import Runtime, project
 from plan_review.grill.decisions_md import decisions_markdown
 from plan_review.grill.drafts import GrillDraftStore
 from plan_review.grill.state import GrillError, SubmittedAnswer
@@ -29,7 +29,7 @@ def post(run_id: str, file: Path, *, runtime: Runtime) -> int:
     if not file.is_file():
         print(f"{file.as_posix()}: file not found", file=sys.stderr)
         return 2
-    paths = RunPaths(runtime.ensure_work_dir(Path(), run_id))
+    paths = RunPaths(runtime.ensure_work_dir(project(), run_id))
     try:
         posted = post_turn(
             GrillStore(paths.grill), GrillDraftStore(paths.grill_drafts), file.read_bytes()
@@ -45,7 +45,7 @@ def post(run_id: str, file: Path, *, runtime: Runtime) -> int:
 
 
 def pending(run_id: str, *, runtime: Runtime) -> int:
-    store = GrillStore(RunPaths(runtime.work_dir(Path(), run_id)).grill)
+    store = GrillStore(RunPaths(runtime.work_dir(project(), run_id)).grill)
     try:
         state = store.get()
     except GrillError as error:
@@ -57,7 +57,7 @@ def pending(run_id: str, *, runtime: Runtime) -> int:
 
 
 def decisions(run_id: str, *, runtime: Runtime) -> int:
-    paths = RunPaths(runtime.work_dir(Path(), run_id))
+    paths = RunPaths(runtime.work_dir(project(), run_id))
     try:
         state = GrillStore(paths.grill).get()
     except GrillError as error:
@@ -72,7 +72,7 @@ def decisions(run_id: str, *, runtime: Runtime) -> int:
 
 
 def _record(run_id: str, action: Callable[[GrillStore], object], *, runtime: Runtime) -> int:
-    store = GrillStore(RunPaths(runtime.work_dir(Path(), run_id)).grill)
+    store = GrillStore(RunPaths(runtime.work_dir(project(), run_id)).grill)
     try:
         action(store)
     except GrillError as error:

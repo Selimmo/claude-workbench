@@ -268,7 +268,7 @@ There is one settings file, `config.json`, at two levels: yours, in `~/.plan-rev
 
 **Moving from earlier versions.** Settings, runs and your recorded grill mode used to live under `.claude/`. plan-review still reads the old settings (`.claude/pipeline.json`) when `.plan-review/config.json` doesn't exist, and prints one line on stderr saying how to move it. Your page-or-chat choice used to live in `preferences.json`, which is gone: the first `plan-review config` (that is, the first `/ship`) moves it into the project's `.plan-review/config.json` as `grill` and deletes the file (nothing is moved if the config already sets `grill`). A very old `.claude/work/preferences.json` is only copied, never changed or deleted. Runs in `.claude/work/` are not read: finish a run before you upgrade, or move its folder to `.plan-review/work/` by hand. Replies saved by older versions still load, and the page shows them as Agent.
 
-All fields are optional. `plan-review config --harness <tool>` prints the settings in force, with the workflow and each agent's model and effort, and which file each came from, and reports mistakes before any agent starts. See [`examples/config.json`](examples/config.json):
+All fields are optional. `plan-review config --harness <tool>` prints the settings in force, with the workflow and each agent's model and effort, and which file each came from, and reports mistakes before any agent starts. Every command finds the project from any folder inside it: the nearest folder upwards that has `.plan-review/`, not above the git root (else the git root; outside git, the current folder). `plan-review config` names the folder it read as `project`. See [`examples/config.json`](examples/config.json):
 
 | Field | Default | Meaning |
 |---|---|---|

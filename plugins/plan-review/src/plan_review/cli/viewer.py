@@ -4,7 +4,7 @@ import socket
 import sys
 from pathlib import Path
 
-from plan_review.cli.runtime import Runtime, ServerStop
+from plan_review.cli.runtime import Runtime, ServerStop, project
 from plan_review.cli.settings import pipeline_settings, print_hint
 from plan_review.paths.run_id import label
 from plan_review.paths.run_paths import RunPaths
@@ -35,13 +35,13 @@ def serve(run_id: str, open_flag: str | None, *, detach: bool, runtime: Runtime)
             file=sys.stderr,
         )
         return 2
-    paths = RunPaths(runtime.work_dir(Path(), run_id))
+    paths = RunPaths(runtime.work_dir(project(), run_id))
     try:
         page = start_page(paths)
     except PlanFileError as error:
         print("\n".join(error.errors), file=sys.stderr)
         return 2 if error.missing else 1
-    work = runtime.ensure_work_dir(Path(), run_id)  # the page writes comments and drafts there
+    work = runtime.ensure_work_dir(project(), run_id)  # the page writes comments and drafts there
     if detach:
         return _serve_detached(run_id, work, page, open_mode, hint, runtime=runtime)
     # Bind and listen before opening the browser: its first request then waits in the
@@ -60,7 +60,7 @@ def _serve_detached(
     run_id: str, work: Path, page: str, open_mode: str, hint: str | None, *, runtime: Runtime
 ) -> int:
     try:
-        info, started = ViewerLauncher(work, run_id).start(Path())
+        info, started = ViewerLauncher(work, run_id).start(project())
     except ViewerFailed as error:
         print(error.log, file=sys.stderr, end="" if error.log.endswith("\n") else "\n")
         return error.code
@@ -76,7 +76,7 @@ def _serve_detached(
 
 
 def stop(run_id: str, *, runtime: Runtime) -> int:
-    if ViewerLauncher(runtime.work_dir(Path(), run_id), run_id).stop():
+    if ViewerLauncher(runtime.work_dir(project(), run_id), run_id).stop():
         print(f"plan-review: stopped the viewer for {label(run_id)}")
     else:
         print(f"plan-review: no viewer is running for {label(run_id)}")
@@ -85,7 +85,7 @@ def stop(run_id: str, *, runtime: Runtime) -> int:
 
 def viewer_process(run_id: str, port: int, token: str, *, runtime: Runtime) -> int:
     """The detached viewer itself: the server of `serve`, stoppable and stopping when idle."""
-    work = runtime.work_dir(Path(), run_id)
+    work = runtime.work_dir(project(), run_id)
     stop = ServerStop()
     lifetime = ViewerLifetime(
         run_id=run_id, token=token, request_stop=stop, record=ViewerRecord(work)

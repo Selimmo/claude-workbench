@@ -5,7 +5,7 @@ import math
 import sys
 from pathlib import Path
 
-from plan_review.cli.runtime import Runtime
+from plan_review.cli.runtime import Runtime, project
 from plan_review.events.event_log import EventLog
 from plan_review.events.status import StatusStore, set_status
 from plan_review.paths.run_id import label
@@ -16,7 +16,7 @@ from plan_review.utils.text import BlankComment
 
 def _existing_work_dir(run_id: str, runtime: Runtime) -> Path | None:
     """The run's folder; None (after saying so) if there is none, e.g. a wrong directory."""
-    work = runtime.work_dir(Path(), run_id)
+    work = runtime.work_dir(project(), run_id)
     if work.is_dir():
         return work
     print(
@@ -29,7 +29,7 @@ def _existing_work_dir(run_id: str, runtime: Runtime) -> Path | None:
 def threads(run_id: str, *, runtime: Runtime) -> int:
     open_threads = [
         t
-        for t in ThreadStore(RunPaths(runtime.work_dir(Path(), run_id)).comments).all()
+        for t in ThreadStore(RunPaths(runtime.work_dir(project(), run_id)).comments).all()
         if not t.resolved
     ]
     print(json.dumps([t.model_dump(mode="json") for t in open_threads], indent=2))
@@ -37,7 +37,7 @@ def threads(run_id: str, *, runtime: Runtime) -> int:
 
 
 def reply(run_id: str, thread_id: str, text: str, *, runtime: Runtime) -> int:
-    comments = RunPaths(runtime.work_dir(Path(), run_id)).comments
+    comments = RunPaths(runtime.work_dir(project(), run_id)).comments
     try:
         ThreadStore(comments).reply(thread_id, text, author="agent")
     except ThreadNotFound:
