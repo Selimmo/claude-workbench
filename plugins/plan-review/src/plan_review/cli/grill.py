@@ -2,16 +2,22 @@
 
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
+
+from pydantic import TypeAdapter, ValidationError
 
 from plan_review.cli.runtime import Runtime
 from plan_review.grill.decisions_md import decisions_markdown
 from plan_review.grill.drafts import GrillDraftStore
-from plan_review.grill.state import GrillError
+from plan_review.grill.state import GrillError, SubmittedAnswer
 from plan_review.grill.store import GrillStore, post_turn
 from plan_review.grill.turn import Turn
 from plan_review.paths.run_id import label
 from plan_review.paths.run_paths import RunPaths
+from plan_review.utils.json_files import named_errors
+
+_ANSWERS = TypeAdapter(list[SubmittedAnswer])
 
 
 def schema() -> int:
@@ -63,3 +69,34 @@ def decisions(run_id: str, *, runtime: Runtime) -> int:
     paths.decisions.write_text(decisions_markdown(state, label(run_id)), encoding="utf-8")
     print(paths.decisions.as_posix())
     return 0
+
+
+def _record(run_id: str, action: Callable[[GrillStore], object], *, runtime: Runtime) -> int:
+    store = GrillStore(RunPaths(runtime.work_dir(Path(), run_id)).grill)
+    try:
+        action(store)
+    except GrillError as error:
+        print("\n".join(error.errors), file=sys.stderr)
+        return 1
+    return 0
+
+
+def answer(run_id: str, file: Path, *, runtime: Runtime) -> int:
+    """The owner's answers to the open questions, as the page's submit records them."""
+    if not file.is_file():
+        print(f"{file.as_posix()}: file not found", file=sys.stderr)
+        return 2
+    try:
+        answers = _ANSWERS.validate_json(file.read_bytes())
+    except ValidationError as error:
+        print("\n".join(named_errors(file, error)), file=sys.stderr)
+        return 1
+    return _record(run_id, lambda store: store.submit(answers), runtime=runtime)
+
+
+def confirm(run_id: str, *, runtime: Runtime) -> int:
+    return _record(run_id, lambda store: store.confirm(), runtime=runtime)
+
+
+def reopen(run_id: str, text: str, *, runtime: Runtime) -> int:
+    return _record(run_id, lambda store: store.reopen(text), runtime=runtime)

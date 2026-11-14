@@ -5,7 +5,7 @@
 # Run it after a release that has a wheel. With two such releases it installs the older one,
 # runs that copy's own `plan-review upgrade`, and checks the newest is there afterwards. With
 # one it proves the install and says the upgrade needs a second release. It does not start
-# Codex: it checks the version, the ship skill and the four agent files.
+# Codex: it checks the version, the ship skill and the five agent files.
 set -euo pipefail
 if [[ $# -ne 1 ]]; then
   echo "usage: scripts/prove-codex-release.sh <dir>" >&2
@@ -50,6 +50,7 @@ check() { # <version>: the installed copy is that version, and the files in the 
   for file in \
     "$HOME/.agents/skills/ship/SKILL.md" \
     "$HOME/.agents/skills/ship/agents/openai.yaml" \
+    "$CODEX_HOME/agents/plan-review-grill-explorer.toml" \
     "$CODEX_HOME/agents/plan-review-architect.toml" \
     "$CODEX_HOME/agents/plan-review-implementer.toml" \
     "$CODEX_HOME/agents/plan-review-test-reviewer.toml" \
@@ -72,7 +73,7 @@ check() { # <version>: the installed copy is that version, and the files in the 
     echo "FAIL: plan-review $want: a file differs from the files in the installed wheel" >&2
     exit 1
   }
-  echo "ok: plan-review $want, with the ship skill and the four agents"
+  echo "ok: plan-review $want, with the ship skill and the five agents"
 }
 
 latest_version="${wheels[0]%% *}"

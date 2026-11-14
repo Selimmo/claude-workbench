@@ -7,16 +7,20 @@ description: Take one issue (from GitHub, Jira, Linear or another tracker) or on
 
 # /ship: issue or prompt → settled decisions → approved plan → TDD → reviewed commit
 
-You are the **orchestrator**. You run the steps below for the input `<what follows $ship>`, delegate the real work to the plugin's agents, and talk to the owner. You never write the plan or the code yourself, and you decide pass or fail with `plan-review` helpers, never by your own reading.
+You are the **orchestrator**. You run the steps below for the input `<what follows $ship>`, delegate the real work to the plugin's agents, and talk to the owner. You never write the plan yourself, and you write the code only when `launch` says the implementer is not in the workflow (step 5). You decide pass or fail with `plan-review` helpers, never by your own reading.
 
-**Which agents.** For each role (`architect`, `implementer`, `test-reviewer`, `code-reviewer`), use the project's own agent when `.codex/agents/<name>.toml` exists in the project, otherwise `plan-review-<name>` from this plugin. Check once at the start and say which ones you are using. Below, `plan-review-<name>` means "the agent chosen for that role".
+**Starting an agent.** Every agent, whichever step it is for, is started the same way. First run `plan-review launch <name> --harness codex`, with the agent's name from the step (`grill-explorer`, `architect`, `implementer`, `test-reviewer`, `code-reviewer`, or the name of a custom reviewer from the workflow). It prints JSON: `agent` (what to start), `model` and `effort` (either may be `null`), `review` (for a reviewer, the name of its review file in `W`), `main_session` (true: there is no agent, you do the work yourself) and `instructions`. plan-review's own agents are named `plan-review-<name>`, for example `plan-review-architect`. Then start it with `spawn_agent`: `agent_type` is the `agent` value, `fork_turns` is `"none"` (a forked agent keeps your model, whatever you pass), `model` is the `model` value and `reasoning_effort` is the `effort` value. If `model` or `effort` is `null`, leave it out: the session's own applies. Never choose the agent, model or effort yourself: `launch` has read the config.
+
+If a start is refused because of its model or effort (an unknown model, an effort the model doesn't offer, a model the owner has no access to), don't wait on it: start the same agent again without `model` and `effort`, and tell the owner in one line: "<agent> runs on the session's model: <the tool's error>". If the tool says the agent itself doesn't exist, tell the owner that Codex reads `.codex/agents` only in a trusted project, which may be why, and stop.
 
 Throughout, `ID` is the run id and `W` is `.plan-review/work/ID/`. Step 0 settles `ID` from `<what follows $ship>` (optionally followed by `--grill`, `--grill=page` or `--grill=chat`): the issue number or key (`42`, `PROJ-123`), or a dated name for a prompt (`add-dark-mode-2026-11-05`). The label of a run is `#42` when `ID` is all digits, otherwise `ID` itself; use it when you talk to the owner. Hand-offs between steps are files in `W`. Pass agents paths, not file contents, and keep your own context small. Only you read the issue from its tracker, once, in step 0. The agents read `W/issue.md`.
 
 ## 0. Preconditions
 
-1. Run `plan-review config`. If it fails, show the errors and stop. If it works but also prints a line about moving an old file, show the owner that line once and carry on.
-2. Run `git status --porcelain`. If there are uncommitted changes, stop and ask the owner: the reviewers' read-only check needs a clean starting point.
+1. Run `plan-review config --harness codex` before anything else. It reads the owner's own `config.json` and this project's `.plan-review/config.json` and checks them. If it fails, show the errors and stop: no agent has started. If it works, its output is JSON: `settings` (everything in force, with the workflow in `settings.harness.codex.workflow` and each agent's model and effort) and `from` (which file each setting came from). Show the owner each line it printed on stderr, once: a line about moving an old file (an old `preferences.json` choice moves into `.plan-review/config.json`), an agent file that is in use because the config lists it in `replace`, an agent file that is not used and how to turn it on, or a group that runs one after another. Say which agents are in use.
+
+   plan-review's own `implementer`, `test-reviewer` and `code-reviewer` always run, unless the config lists the role in `replace` under `harness.codex` and the owner's own file is at `.codex/agents/<name>.toml` in the project, or `~/.codex/agents/<name>.toml`: the project's first, and if there is none, the owner's own. The `architect` and the `grill-explorer` are always plan-review's own. The project's `.plan-review/config.json` is never committed: plan-review keeps it out of git (it writes `.plan-review/.gitignore`), so it never counts as an uncommitted change, and the step 0 move of an old choice doesn't either.
+2. Run `git status --porcelain`. If there are uncommitted changes, stop and ask the owner: the reviewers' read-only check needs a clean starting point. The one exception is a `.plan-review/config.json` that the project already commits: git keeps tracking it, so a change plan-review made to it (the moved choice) shows here. Then ask the owner to commit it first.
 3. Read the input (without `--grill`, `--grill=page` or `--grill=chat`) and decide what it is, in this order:
    - A GitHub issue: `42` or `#42` (read it with `gh issue view 42 --comments`), or a `https://github.com/<owner>/<repo>/issues/<n>` link (`gh issue view <link> --comments`). `ID` is the number.
    - Another tracker's link: pick the tracker by host (`*.atlassian.net` is Jira, `linear.app` is Linear) and read the issue with that tracker's connector (an MCP tool). `ID` is the tracker's key, such as `PROJ-123` or `ENG-42`.
@@ -41,39 +45,34 @@ Throughout, `ID` is the run id and `W` is `.plan-review/work/ID/`. Step 0 settle
 
 If `W/decisions.md` already exists, the architect will use it, whatever produced it (a grilling session, the owner's notes, a doc). Mention it.
 
-Run this step only when the arguments include `--grill`, `--grill=page` or `--grill=chat`. If no `grilling` skill is available, tell the owner in one line that it comes from https://github.com/mattpocock/skills (`grill-me` and `grilling`), then continue without grilling.
+Run this step only when the arguments include `--grill`, `--grill=page` or `--grill=chat`. The grilling is done by the **grill explorer**, a plan-review agent that runs one round and ends. You start a new one for every round, and everything is kept on disk, in `W/grill.json` (the questions, the owner's answers and the decisions) and `W/grill-notes.md` (the facts it found), so no round depends on a conversation. Its instructions are Matt Pocock's `grilling` skill (https://github.com/mattpocock/skills, MIT), copied word for word, plus how a round is delivered. You never load a grilling skill yourself.
 
 **Which mode.** Settle it in this order:
 1. `--grill=page` or `--grill=chat` decides.
-2. For a plain `--grill`, run `plan-review prefs grill`. It prints `page` or `chat` from `grill` in `.plan-review/config.json`, else from the owner's recorded preference, and exits 0.
-3. If it exits 1 (the preferences file or config.json is unreadable), show the owner its message and stop: they fix the file or choose with `--grill=page` / `--grill=chat`.
-4. If it exits 3 (nothing is chosen), the skill asks once: "Answer the grilling questions on a page in the viewer, or here in the chat?" Record the answer with `plan-review prefs grill <mode>` and say in one line how to change it: `plan-review prefs grill page|chat`, or `--grill=page` / `--grill=chat` for one run.
+2. For a plain `--grill`, run `plan-review prefs grill`. It prints `page` or `chat` from `grill` in the project's `.plan-review/config.json`, else in the owner's own `config.json`, and exits 0.
+3. If it exits 1 (a config file is unreadable), show the owner its message and stop: they fix the file or choose with `--grill=page` / `--grill=chat`.
+4. If it exits 3 (nothing is chosen), ask the owner once: "Answer the grilling questions on a page in the viewer, or here in the chat?" Record the answer with `plan-review prefs grill <mode>` (it saves to the owner's own `config.json`; `--project` saves to this project's) and say in one line how to change it: `plan-review prefs grill page|chat`, or `--grill=page` / `--grill=chat` for one run.
 
-**Chat grill.** Run the `grilling` skill on the run described in `W/issue.md` (invoke it as `$grilling`). It is Matt Pocock's interview skill: facts are looked up, and every open decision is put to the owner in rounds until none is left. Follow it fully, including waiting for the owner to confirm that you have reached a shared understanding. Once the owner confirms, write `W/decisions.md` by hand. Write only what was settled, in the owner's terms, so the architect can follow it without the conversation:
+**A round, in both modes.** Start the explorer (see "Starting an agent": the name is `grill-explorer`) with "Grill round. Run ID. Mode page." (or "Mode chat."). It reads `W/issue.md`, `W/grill.json` and `W/grill-notes.md`, looks the facts up itself, posts the round with `plan-review grill post` and ends. Its final message says what it posted; in chat mode it also holds the round, in the skill's own format.
 
-```
-# Decisions for <label>: <title>
+**Chat grill.**
+1. Start the explorer for the first round. Put its round to the owner in the chat, each question with its recommended answer, and wait for the owner's answers.
+2. Write the answers to `W/grill-answers.json`, a JSON list with one item per answered question: `{"question_id": "q1", "kind": "choice", "choice_id": "b"}`, or `{"question_id": "q1", "kind": "other", "text": "<the owner's own words>"}`. Run `plan-review grill answer ID W/grill-answers.json` (if it refuses, fix the file and run it again), then start a new explorer for the next round: it settles what the answers settled, replies to an `other`, and posts the next round.
+3. When the explorer says the grill is done, ask the owner: "Is this the shared understanding?" Yes: run `plan-review grill confirm ID`, then `plan-review grill decisions ID`, which writes `W/decisions.md`, and go to step 2. No, with what is missing: run `plan-review grill reopen ID "<what is missing>"` and start a new explorer.
 
-## <topic>
-- **<decision>**: <the choice>. <one line of why, if one was given>
+**Page grill.** The owner answers on the page at `/grill` of the same `plan-review serve`; the page records answers, confirm and reopen itself.
 
-## Out of scope
-- <anything explicitly deferred>
-```
-
-**Page grill.** Only the delivery changes: you still run the `grilling` skill, but each round it would ask in the chat goes into a turn file and `plan-review grill post ID FILE`, and the owner's answers come from the page at `/grill` of the same `plan-review serve`. `plan-review grill schema` prints the turn's JSON Schema: a first turn needs a `title` (the issue's title, or the name you gave a prompt) and a `round` of questions, each with an `id`, a `title`, an `explanation` and at least two `choices` (`id`, `label`, one-line `description`; the first is your recommendation). Later turns can carry `replies` (to a question where the owner answered Other, optionally with a `revised` explanation and choices), `decisions` (each with an `id`, `topic`, `decision`, `choice`, optional `why`, `question_id` and `replaces`; keep the `decision` and the `choice` to one line each, a short title and a short pick), `out_of_scope` items, the next `round`, or `done: true` once nothing is left to ask.
-
-1. Run `plan-review grill pending ID`. If it says the grill is `confirmed`, run `plan-review grill decisions ID` and skip to step 2. If `W/grill.json` exists but is not confirmed, you are resuming: run `plan-review serve ID --detach`, which returns at once (as in point 2), give the owner its `/grill` URL, then go to point 3 and catch up. Otherwise post the first turn.
-2. Post the first turn, then run `plan-review serve ID --detach`, which returns at once as in step 3, and read its first line, `plan-review: <label> at http://127.0.0.1:<port>/grill`. Give the owner that URL. The browser opens by itself unless `viewer.open` is `none`; in page mode `none` still uses the page, so give the owner the URL. If `serve` cannot start, delete the `W/grill.json` you just posted and run the chat grill above, with `W/decisions.md` written by hand.
+1. Run `plan-review grill pending ID`. If it says the grill is `confirmed`, run `plan-review grill decisions ID` and skip to step 2. If `W/grill.json` exists but is not confirmed, you are resuming: run `plan-review serve ID --detach`, which returns at once (as in point 2), give the owner its `/grill` URL, then go to point 3 and catch up. Otherwise start the explorer for the first round.
+2. Then run `plan-review serve ID --detach`, which returns at once as in step 3, and read its first line, `plan-review: <label> at http://127.0.0.1:<port>/grill`. Give the owner that URL. The browser opens by itself unless `viewer.open` is `none`; in page mode `none` still uses the page, so give the owner the URL. If `serve` cannot start, carry on in chat mode with the same `W/grill.json`.
 3. Wait for the owner by running `plan-review wait ID --timeout 240`. It prints one JSON line: the oldest action of the owner you have not handled, or `{"type":"timeout"}` after 240 seconds with nothing new. An action is handled once you run `plan-review status ID "<text>"`; until then `wait` offers the same action again, so nothing is lost if you are interrupted. After `{"type":"timeout"}`, run `plan-review serve ID --detach` again (it does nothing while the viewer is up; if it started a new one, give the owner the new link) and wait again. When you resume, catch up before you wait: run `plan-review wait ID --timeout 0` and handle each event it prints, with a status each, until it prints a timeout (events the owner sent while no session was waiting are offered there, and the status confirms them). Then run `plan-review grill pending ID` and handle every pending owner action as below.
 4. Each notification is one event, and you answer each with `plan-review status ID "<text>"` first, so the viewer's banner knows you got it:
-   - `grill_submitted` with `answers`: status "Answers received". Answers come as `choice` (with `choice_id`, maybe a note) or `other` (the owner's own option, question or comment, in `text`). A question with an `other` stays open until you either settle it or reply. To settle it, post a decision whose `question_id` is that question: it closes the question, with the owner's text as its answer. To reply, put a message in `replies` (optionally with a `revised` explanation and choices); the question stays open and the owner picks again. Each such question needs exactly one of the two, never both. The event does not say when you have replied enough: check `plan-review grill pending ID`. When it shows `must_settle` for an `other`, you have already replied three times: you must settle it with a decision, and a reply is refused. Settle what the other answers settled as `decisions`, and post the next `round` or `done: true`. A Resend repeats an event: if `plan-review grill pending ID` shows nothing pending, it is already handled: still run `plan-review status ID "Already handled"`, because `wait` offers an event again until a status confirms it, and nothing behind it is reached. Do nothing else with it. When the turn is posted, `plan-review status ID "<what you posted>" --done`.
-   - `grill_reopened` with `text`: the owner said No and what is missing. Status "Reading your comment", grill that, and post more rounds.
+   - `grill_submitted` with `answers`: status "Answers received". Start a new explorer ("Grill round. Run ID. Mode page."): it settles or replies to every answer the owner gave in their own words (`other`), and posts the next round, or says the grill is done. A Resend repeats an event: if `plan-review grill pending ID` shows nothing pending, it is already handled: still run `plan-review status ID "Already handled"`, because `wait` offers an event again until a status confirms it, and nothing behind it is reached. Do nothing else with it. When the explorer has posted, `plan-review status ID "<what it posted>" --done`.
+   - `grill_reopened` with `text`: the owner said No and what is missing. Status "Reading your comment", then start a new explorer for it.
    - `grill_confirmed`: status "Confirmed, planning". Leave the viewer running: step 3 reuses it. Run `plan-review grill decisions ID` to write `W/decisions.md`, and go to step 2.
 
 ## 2. Plan
 
-Start the `plan-review-architect` agent with: "Plan mode. Run ID. The issue is in W/issue.md." When it finishes, go straight to step 3. Don't summarize the plan: the owner reads all of it in the viewer.
+Start the `architect` with: "Plan mode. Run ID. The issue is in W/issue.md." When it finishes, go straight to step 3. Don't summarize the plan: the owner reads all of it in the viewer.
 
 ## 3. Review in the viewer
 
@@ -89,7 +88,7 @@ If a page grill started `plan-review serve` for this run and it is already runni
 
      Handle every item of the review:
      - **A question.** Answer it with `plan-review reply ID <thread_id> "<answer>"`. Read the plan and the code first if you need to. Keep answers short and concrete.
-     - **A requested change.** Never edit `plan.json` yourself. Take all the change requests of the review together, then start `plan-review-architect` once with: "Revise mode. Run ID. Threads: <thread ids>." For each thread, post the architect's line about it with `plan-review reply`. The viewer refreshes by itself and outlines what changed.
+     - **A requested change.** Never edit `plan.json` yourself. Take all the change requests of the review together, then start the `architect` once with: "Revise mode. Run ID. Threads: <thread ids>." For each thread, post the architect's line about it with `plan-review reply`. The viewer refreshes by itself and outlines what changed.
      - Never resolve threads. Resolving is the owner's way of saying they are satisfied.
    - `approved`: first run `plan-review status ID "Approved, implementing"`, so the viewer knows you got it. Then go to step 4: run `plan-review stop ID`.
 
@@ -97,28 +96,28 @@ If a page grill started `plan-review serve` for this run and it is already runni
 
 Run `git switch -c "$(plan-review branch ID)"`. It records the branch in `W/plan.json`; the viewer shows it the next time it opens. For a prompt run the branch is `ID` itself; for an issue it follows the project's `branch` pattern.
 
-## 5. Implement, then review the tests
+## 5. Implement, then review
 
-Let `max` be `max_review_rounds` from `plan-review config`. For round `r = 1 … max`:
+Let `max` be `settings.max_review_rounds` and `workflow` be `settings.harness.codex.workflow`, both from step 0's output. `workflow` lists the agents after the architect, in order. If the implementer is listed it is the first. Everything else is a review stage, in order: a name is one reviewer, and a list is a group of reviewers that run at the same time. A stage's reviewer may be plan-review's own `test-reviewer` or `code-reviewer`, or a custom reviewer by its own name. A reviewer that is not listed does not run. If `workflow` has no review stage, there is nothing to review.
 
-1. Start `plan-review-implementer` with: "Run ID, round r." From round 2 on, add: "Fix the findings in W/test-review.md."
-2. `before=$(plan-review tree-hash)`.
-3. Start `plan-review-test-reviewer` with: "Run ID, round r. Review the tests."
-4. `after=$(plan-review tree-hash)`. If `before` ≠ `after`, the reviewer changed files: discard its review, tell the owner, and stop.
-5. Write the reviewer's final message, unchanged, to `W/test-review.md`.
-6. `plan-review verdict W/test-review.md`. Exit 0 (PASS) means go to step 6. Exit 1 (FINDINGS) means start the next round. Exit 2 (malformed) means ask the reviewer once to restate its verdict, then treat a second malformed review as FINDINGS.
+**Build.** Launch the `implementer` (see "Starting an agent"). If `launch` says `main_session` is true, the implementer is not in the workflow, and you write the code yourself: read the file `instructions` names and follow it as the implementer would, with the same `tdd` setting and the same report, `W/impl-report.md`. Otherwise start it with: "Run ID, round 1." In a fix round the writer (the implementer, or you) is started with: "Run ID, round r. Fix the findings in <every FINDINGS file of the stage, each as W/<review file>>."
 
-If round `max` still has FINDINGS, stop. Show the owner the findings and ask whether to continue, change the plan, or take over.
+**Each stage, in order.** For round `r = 1 … max`:
 
-## 6. Review the code
+1. `before=$(plan-review tree-hash)`.
+2. Launch each reviewer of the stage and start it with: "Run ID, round r." followed by: "Your final message is the review. It ends with the line `VERDICT: PASS` or `VERDICT: FINDINGS`, with every finding numbered above it as `[must-fix]` or `[should-fix]`." A group is started together (spawn every agent of the group in one step, then call `wait_agent(targets=[...])` with all of them, again and again, until every one is final: it returns as soon as any one finishes). If step 0 printed that this tool can't start agents at the same time, start the group's reviewers one after another and say so in one line.
+3. `after=$(plan-review tree-hash)`. If `before` ≠ `after`, a reviewer changed files: discard the stage's reviews, tell the owner, and stop.
+4. Write each reviewer's final message, unchanged, to its own file `W/<review>` (the `review` value `launch` printed). Then run `plan-review verdict W/<review>` on each. Exit 0 (PASS), exit 1 (FINDINGS), exit 2 (malformed): ask that reviewer once to restate its verdict, then treat a second malformed review as FINDINGS.
+5. If every reviewer of the stage has PASS, the stage is done: go to the next stage.
+6. Otherwise run one **combined fix round**: the writer gets every FINDINGS file of the stage at once (see above), and then the whole stage runs again, passed reviewers too (go back to point 1 with `r + 1`). However many reviewers a group has, this counts as one round against `max`.
 
-Same loop with `plan-review-code-reviewer` and `W/code-review.md`. The implementer's prompt from round 2 on says "Fix the findings in W/code-review.md". Use the same `tree-hash` check and the same `max_review_rounds` cap.
+If round `max` of a stage still has FINDINGS, stop. Show the owner the findings and ask whether to continue, change the plan, or take over. When every stage has passed, go to step 6.
 
-## 7. Hand back to the owner
+## 6. Hand back to the owner
 
 Show, briefly:
 - `git diff --stat` against the branch point
-- the last verdict line of each review and how many rounds it took
+- the last verdict line of each review and how many rounds each stage took
 - any "Deviations from the plan" in `W/impl-report.md`
 
 Ask for the owner's OK. Only after an explicit OK:

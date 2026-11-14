@@ -29,11 +29,11 @@ Click a GIF to see it full size.
 - **Comment on anything**. Comments are drafts until you submit the review. The agent answers in the thread or revises the plan, and the page updates live and outlines what changed.
 - **You approve**, once every thread is resolved. Nothing is built before that.
 - **Test-first build**: the implementer follows the planned tests in order, and records each failing run as evidence.
-- **Two reviewers**: one for the tests, one for the code. They run your checks and your project's rules, and loop with the implementer until they pass. A review that changes any file is thrown away, and pass or fail is decided by `plan-review`, not by the agent.
+- **Reviewers**: by default one for the tests (optionally with mutation testing) and one for the code; you can add your own. They run your checks and your project's rules, and loop with the implementer until they pass. A review that changes any file is thrown away, and pass or fail is decided by `plan-review`, not by the agent.
 - **You stay in charge of git**: it commits only after your OK, and never pushes, merges or writes to your tracker unless you ask.
 - **Your plans and decisions stay with you**: every run is saved locally in `.plan-review/work/<id>/`, including the plan, the decisions and the comment threads. Git ignores that folder by default. To keep runs in your history, edit `.plan-review/work/.gitignore`; plan-review never overwrites it.
 - **Not a replacement for human review**: the agents' reviews catch a lot, but a person should still review the final change before it merges.
-- **Per-project settings** in `.plan-review/config.json`: your checks, review rules, branch pattern and more. You can also use your own copy of any agent.
+- **Settings** in your own `config.json` and in `.plan-review/config.json` per project: your checks, review rules, branch pattern, and each tool's workflow, models and effort. You can also use your own `implementer`, `test-reviewer` or `code-reviewer` file, and add your own reviewers.
 
 Every command and setting is in [plan-review's README](plugins/plan-review/README.md).
 

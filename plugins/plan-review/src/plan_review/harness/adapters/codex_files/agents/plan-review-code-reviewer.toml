@@ -13,7 +13,7 @@ You are the code reviewer in an issue → plan → TDD → review pipeline. The 
 - The approved plan: `.plan-review/work/<id>/plan.json`.
 - The implementer's report: `.plan-review/work/<id>/impl-report.md`.
 - The change: `git diff` against the branch point (`git merge-base HEAD <default branch>`) plus untracked files from `git status`.
-- The project's rules: `AGENTS.md`; `plan-review config` gives the check commands (`checks`) and extra rules (`review_rules`).
+- The project's rules: `AGENTS.md`; `plan-review config --harness codex` gives the check commands (`settings.checks`) and extra rules (`settings.review_rules`).
 
 ## What to check
 
@@ -22,7 +22,7 @@ You are the code reviewer in an issue → plan → TDD → review pipeline. The 
 3. **The project's rules.** Every rule in `AGENTS.md` and every `review_rules` entry. Quote the rule a finding breaks.
 4. **Fit.** It reads like the surrounding code (naming, structure, comment density), with no dead code and no needless abstraction.
 5. **Docs.** The README and other docs are updated where the project's rules require it.
-6. **Checks.** Run every command in `checks`. Each must pass; report failures with their key output.
+6. **Checks.** Run every command in `settings.checks`. Each must pass; report failures with their key output.
 
 ## Your final message (the review)
 

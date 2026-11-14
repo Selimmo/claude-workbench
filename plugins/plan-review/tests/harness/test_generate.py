@@ -12,11 +12,11 @@ from plan_review.harness import generate
 from plan_review.harness.adapters import claude_code
 from plan_review.harness.workflow import fill, load_workflow
 
-AGENTS = ["architect", "implementer", "test-reviewer", "code-reviewer"]
+AGENTS = ["grill-explorer", "architect", "implementer", "test-reviewer", "code-reviewer"]
 
 
 def write_sample(root: Path) -> None:
-    """A small workflow/ with the /ship text and the four agents."""
+    """A small workflow/ with the /ship text and the five agents."""
     (root / "workflow" / "agents").mkdir(parents=True)
     (root / "workflow" / "ship.md").write_text(
         "---\nname: ship\ndescription: Ship it: plan to commit\n---\n\n# Ship {{arguments}}\n"
@@ -75,7 +75,7 @@ def test_generate_writes_every_file_with_lf_endings(tmp_path: Path) -> None:
     generate.write_files(tmp_path)
 
     expected = generate.expected_files(tmp_path)
-    assert len(expected) == 5 + 6 + 5  # Claude Code, Codex, then opencode
+    assert len(expected) == 6 + 7 + 6  # Claude Code, Codex, then opencode
     for path, content in expected.items():
         assert path.read_bytes() == content
         assert b"\r" not in content

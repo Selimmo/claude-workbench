@@ -6,7 +6,7 @@ from pathlib import PurePosixPath
 from plan_review.harness.agent_files import TomlAgents
 from plan_review.harness.workflow import Workflow, WorkflowText
 
-NAMES = ("architect", "implementer", "test-reviewer", "code-reviewer")
+NAMES = ("grill-explorer", "architect", "implementer", "test-reviewer", "code-reviewer")
 
 
 def test_toml_agents_write_marked_files_inside_their_folder() -> None:

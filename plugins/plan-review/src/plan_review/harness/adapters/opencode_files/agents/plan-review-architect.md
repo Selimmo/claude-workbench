@@ -18,7 +18,7 @@ Your prompt gives you the run id (`<id>`: an issue number or key such as `42` or
 **Plan mode** (first plan):
 1. Read `.plan-review/work/<id>/issue.md`: the issue with its acceptance criteria and comments, or, for a prompt run, the owner's prompt exactly as given.
 2. Read `.plan-review/work/<id>/decisions.md` if it exists. These are decisions the owner already made; follow them and don't reopen them.
-3. Read the project's rules: `AGENTS.md` and `plan-review config` (check commands, extra review rules).
+3. Read the project's rules: `AGENTS.md` and `plan-review config --harness opencode` (`settings`: the check commands `checks`, the extra review rules `review_rules`, and `tdd`).
 4. Read the code the issue touches. Look before you design: reuse what exists, match its style and naming.
 
 **Revise mode**: the prompt lists comment threads (`plan-review threads <id>` prints them). Read the current `plan.json` and change it to address every thread that asks for a change. Keep every id that still refers to the same element **unchanged**, because comment threads attach by id. Give an element a new id only when it really is a different element.

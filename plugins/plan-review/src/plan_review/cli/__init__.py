@@ -32,6 +32,7 @@ def parser() -> argparse.ArgumentParser:
         sub.set_defaults(run=run)
         return sub
 
+    tool_keys = [h.key for h in all_adapters()]
     command("schema", "print the plan.json JSON Schema", lambda a, rt: pipeline.schema())
     init = command(
         "init",
@@ -77,11 +78,19 @@ def parser() -> argparse.ArgumentParser:
     process.add_argument("run_id")
     process.add_argument("--port", type=int, required=True)
     process.add_argument("--token", required=True)
-    command(
+    config = command(
         "config",
-        "print this project's pipeline settings, defaults filled in",
-        lambda a, rt: settings.config(),
+        "print the settings in force and where each came from; check them",
+        lambda a, rt: settings.config(a.harness),
     )
+    config.add_argument("--harness", choices=tool_keys, help="only this tool's section")
+    launch = command(
+        "launch",
+        "how to start one agent: its name, model and effort, from the config",
+        lambda a, rt: settings.launch(a.name, a.harness),
+    )
+    launch.add_argument("name")
+    launch.add_argument("--harness", choices=tool_keys, required=True)
     command(
         "threads",
         "list a run's open comment threads as JSON",
@@ -155,13 +164,36 @@ def parser() -> argparse.ArgumentParser:
     grill_command(
         "schema", "print the JSON Schema of a turn", lambda a, rt: grill_commands.schema()
     )
+    answer = grill_command(
+        "answer",
+        "record the owner's chat answers (a JSON list) in a run's grill.json",
+        lambda a, rt: grill_commands.answer(a.run_id, a.file, runtime=rt),
+    )
+    answer.add_argument("run_id")
+    answer.add_argument("file", type=Path, help="the answers, as a JSON list")
+    confirm = grill_command(
+        "confirm",
+        "record that the owner confirmed the shared understanding",
+        lambda a, rt: grill_commands.confirm(a.run_id, runtime=rt),
+    )
+    confirm.add_argument("run_id")
+    reopen = grill_command(
+        "reopen",
+        "record that the owner said 'not yet', and what is missing",
+        lambda a, rt: grill_commands.reopen(a.run_id, a.text, runtime=rt),
+    )
+    reopen.add_argument("run_id")
+    reopen.add_argument("text")
     prefs = command(
         "prefs",
         "the owner's recorded choices: `prefs grill [page|chat]` sets or prints the grill mode",
-        lambda a, rt: settings.prefs(a.setting, a.value),
+        lambda a, rt: settings.prefs(a.setting, a.value, a.project),
     )
     prefs.add_argument("setting", choices=["grill"])
     prefs.add_argument("value", nargs="?", help="page or chat; leave out to print the mode")
+    prefs.add_argument(
+        "--project", action="store_true", help="save in this project's config.json, not yours"
+    )
     command(
         "upgrade",
         "update the installed plugin to its newest release",

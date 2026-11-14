@@ -45,7 +45,7 @@ pkg="$UV_TOOL_DIR/plan-review/lib/site-packages/plan_review/harness/adapters/ope
 if [ ! -e "$FAKES/no-opencode-$version" ]; then
   mkdir -p "$pkg/commands" "$pkg/agents"
   echo "command $version" > "$pkg/commands/plan-review-ship.md"
-  for role in architect implementer test-reviewer code-reviewer; do
+  for role in grill-explorer architect implementer test-reviewer code-reviewer; do
     echo "agent $version" > "$pkg/agents/plan-review-$role.md"
   done
 fi
@@ -60,6 +60,7 @@ case "\\$1" in
     [ -e "$FAKES/also-codex" ] && mkdir -p "\\$HOME/.agents/skills/ship" && echo codex > "\\$HOME/.agents/skills/ship/SKILL.md"
     cp -R "\\$pkg/commands" "\\$pkg/agents" "\\$HOME/.config/opencode/"
     [ -e "$FAKES/lose-agent" ] && rm "\\$HOME/.config/opencode/agents/plan-review-implementer.md"
+    [ -e "$FAKES/lose-explorer" ] && rm "\\$HOME/.config/opencode/agents/plan-review-grill-explorer.md"
     true ;;
   upgrade)
     newest="\\$(cat "$FAKES/newest")"
@@ -113,7 +114,7 @@ def test_prove_opencode_release_proves_the_install(
         f"HOME={work}/home XDG=unset TOOLS={work}/uv/tools BIN={work}/uv/bin"
     )
     assert not (tmp_path / "owners-own-config").exists()
-    assert "ok: plan-review 0.5.0, with the command and the four agents" in result.stdout
+    assert "ok: plan-review 0.5.0, with the command and the five agents" in result.stdout
     assert "upgrade needs a second release" in result.stdout
 
 
@@ -125,6 +126,18 @@ def test_prove_opencode_release_fails_when_an_agent_is_missing(fakes: Path, tmp_
 
     assert result.returncode == 1
     assert "plan-review-implementer.md is missing" in result.stderr
+
+
+def test_prove_opencode_release_fails_when_the_grill_explorer_is_missing(
+    fakes: Path, tmp_path: Path
+) -> None:
+    only_release(fakes, "plan-review--v0.5.0")
+    (fakes / "lose-explorer").write_text("")
+
+    result = prove(tmp_path / "proof")
+
+    assert result.returncode == 1
+    assert "plan-review-grill-explorer.md is missing" in result.stderr
 
 
 def test_prove_opencode_release_fails_when_the_version_is_wrong(
@@ -164,7 +177,7 @@ def test_prove_opencode_release_proves_the_upgrade(fakes: Path, tmp_path: Path) 
         "plan_review-0.5.1-py3-none-any.whl",  # then its own upgrade
     ]
     assert result.stdout.strip().splitlines()[-1] == (
-        "ok: plan-review 0.5.1, with the command and the four agents"
+        "ok: plan-review 0.5.1, with the command and the five agents"
     )
 
 
@@ -191,7 +204,7 @@ def test_prove_opencode_release_proves_only_the_install_when_the_older_wheel_has
         line.split()[4].rsplit("/", 1)[1] for line in (fakes / "calls.log").read_text().splitlines()
     ]
     assert installs[-1] == "plan_review-0.5.1-py3-none-any.whl"
-    assert "ok: plan-review 0.5.1, with the command and the four agents" in result.stdout
+    assert "ok: plan-review 0.5.1, with the command and the five agents" in result.stdout
     assert "the upgrade needs a second release with opencode" in result.stdout
 
 

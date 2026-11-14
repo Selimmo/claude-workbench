@@ -1,6 +1,6 @@
 """Everything specific to opencode.
 
-opencode has no plugin to install here: the /plan-review-ship command and the four agents are
+opencode has no plugin to install here: the /plan-review-ship command and the five agents are
 Markdown files in `~/.config/opencode/` (or `$XDG_CONFIG_HOME/opencode/`). `plan-review` itself is
 installed with `uv tool install` from the wheel of a release. opencode's shell stops a command
 after 2 minutes, so the agent waits for the owner in slices of 100 seconds.
@@ -17,6 +17,7 @@ from plan_review.harness.harness import Harness
 from plan_review.harness.waiting import PollingWaiting
 from plan_review.harness.wording import Wording
 from plan_review.harness.workflow import Workflow, fill
+from plan_review.settings.agent_rules import AgentRules
 
 KEY = "opencode"
 NAME = "opencode"
@@ -36,6 +37,7 @@ _DENY_SUBAGENTS = (("subagent", "*", "deny"),)
 _DENY_EDITS = (("edit", "*", "deny"),)
 # Who may not start other agents, and who may not change files.
 AGENT_PERMISSIONS: Mapping[str, tuple[tuple[str, str, str], ...]] = {
+    "grill-explorer": _DENY_SUBAGENTS,  # it writes its turn and notes, so edit stays
     "architect": _DENY_SUBAGENTS,
     "implementer": _DENY_SUBAGENTS,
     "test-reviewer": _DENY_SUBAGENTS + _DENY_EDITS,
@@ -107,19 +109,47 @@ def home_target(relative: PurePath) -> Path:
     return config_home() / relative
 
 
+PREFIX = "plan-review-"
+
+RULES = AgentRules(
+    own_prefix=PREFIX,
+    defaults={},  # nothing set: follow the session
+    models=None,
+    efforts=None,
+    effort_needs_model=True,  # the effort is the model's `#variant`
+    project_agent_folders=(PurePosixPath(".opencode/agent"), PurePosixPath(".opencode/agents")),
+    user_agent_folders=lambda: (config_home() / "agent", config_home() / "agents"),
+    agent_suffix=".md",
+    own_agent_file=lambda role: FILES / "agents" / f"{PREFIX}{role}.md",
+)
+
 HARNESS = Harness(
     key=KEY,
     name=NAME,
     wording=Wording(
         arguments="$ARGUMENTS",
-        agent_prefix="plan-review-",
-        agent_override=".opencode/agents/<name>.md",
+        agent_prefix=PREFIX,
+        agent_override=(
+            ".opencode/agents/<name>.md` in the project, or `~/.config/opencode/agents/<name>.md"
+        ),
         rules_file="AGENTS.md",
         rules_also="",
         harness_folder=".opencode/",
-        skill_tool="(load it with the `skill` tool)",
+        start_agent=(
+            "with the `subagent` tool: `agent` is the `agent` value and `model` is the `model` "
+            "value, written `<model>#<effort>` when `effort` is set (the effort is the model's "
+            "variant, so it needs a model)."
+        ),
+        start_together=(
+            "one `subagent` call per agent of the group, all in the same message; the results "
+            "all come back together, and a failed one doesn't stop the others"
+        ),
+        unknown_agent=(
+            "tell the owner the agent file is missing (`launch` printed its name) and stop."
+        ),
     ),
     agent_files=OpencodeMarkdown(folder=PACKAGE_FILES, mark=MARK),
     distribution=WheelInstall(key=KEY, tool_name=NAME, files=FILES, targets=home_target, mark=MARK),
     waiting=PollingWaiting(wait_seconds=100),
+    rules=RULES,
 )

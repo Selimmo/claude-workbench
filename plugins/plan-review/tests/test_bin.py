@@ -13,7 +13,9 @@ from conftest import PACKAGE_VERSION
 WRAPPER = Path(__file__).parents[1] / "bin" / "plan-review"
 
 
-def run_launcher(launcher: Path, *args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+def run_launcher(
+    launcher: Path, *args: str, cwd: Path, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     """Run the launcher as the Bash tool does: directly on POSIX, through Git's sh on
     Windows, which cannot execute a shebang file itself. Not `bash`, which can be WSL's."""
     command = [str(launcher)]
@@ -21,7 +23,9 @@ def run_launcher(launcher: Path, *args: str, cwd: Path) -> subprocess.CompletedP
         sh = shutil.which("sh")
         assert sh, "Git for Windows' sh is not on PATH"
         command = [sh, launcher.as_posix()]  # forward slashes: the script runs dirname "$0"
-    return subprocess.run([*command, *args], cwd=cwd, capture_output=True, text=True, check=False)
+    return subprocess.run(
+        [*command, *args], cwd=cwd, capture_output=True, text=True, check=False, env=env
+    )
 
 
 def site_packages(venv: Path) -> Path | None:
@@ -60,10 +64,17 @@ def test_runs_by_name_from_path_like_the_bash_tool(tmp_path: Path) -> None:
 def test_keeps_the_callers_directory_as_the_project_root(tmp_path: Path) -> None:
     (tmp_path / ".plan-review").mkdir()
     (tmp_path / ".plan-review" / "config.json").write_text(json.dumps({"max_review_rounds": 5}))
+    home = tmp_path / "home"  # not the real one: its ~/.plan-review/config.json is the owner's
+    home.mkdir()
 
-    result = run_launcher(WRAPPER, "config", cwd=tmp_path)
+    result = run_launcher(
+        WRAPPER,
+        "config",
+        cwd=tmp_path,
+        env={**os.environ, "HOME": str(home), "USERPROFILE": str(home), "APPDATA": str(home)},
+    )
 
-    assert json.loads(result.stdout)["max_review_rounds"] == 5
+    assert json.loads(result.stdout)["settings"]["max_review_rounds"] == 5
 
 
 @pytest.mark.timeout(120)  # a cold first run on Windows builds a whole virtualenv

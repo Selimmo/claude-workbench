@@ -4,6 +4,9 @@ from pathlib import Path
 
 import pytest
 
+from plan_review.harness.adapters import adapter_by_key
+from plan_review.harness.workflow import load_workflow
+
 SKILL = Path(__file__).parents[1] / "skills" / "ship" / "SKILL.md"
 
 
@@ -25,9 +28,8 @@ def test_ship_takes_an_issue_number_link_or_prompt() -> None:
     "required",
     [
         "plan-review:architect",
-        "plan-review:implementer",
-        "plan-review:test-reviewer",
-        "plan-review:code-reviewer",
+        "plan-review launch",
+        "plan-review config --harness claude-code",
         "plan-review serve",
         "plan-review reply",
         "plan-review verdict",
@@ -43,11 +45,13 @@ def test_it_delegates_to_the_agents_and_deterministic_helpers(required: str) -> 
     assert required in body
 
 
-def test_project_agents_take_precedence_over_the_plugins() -> None:
+def test_ship_no_longer_picks_project_agents_itself() -> None:
     _, body = parts()
 
-    assert "`.claude/agents/<name>.md`" in body
-    assert "otherwise `plan-review:<name>`" in body
+    assert "use the project's own agent when" not in body
+    assert "otherwise `plan-review:<name>`" not in body
+    assert "Never choose the agent, model or effort yourself" in body
+    assert "plan-review launch <name> --harness claude-code" in body
 
 
 def test_grilling_is_opt_in_and_the_hand_off_is_a_plain_file() -> None:
@@ -157,7 +161,7 @@ def test_the_grilling_covers_whatever_issue_md_describes() -> None:
 
 def test_ship_never_writes_to_the_tracker() -> None:
     _, body = parts()
-    step_7 = body.split("## 7.", 1)[1].split("## If something", 1)[0]
+    step_7 = body.split("## 6.", 1)[1].split("## If something", 1)[0]
 
     for forbidden in ["gh issue comment", "gh issue close", "Closes #"]:
         assert forbidden not in body, forbidden
@@ -185,7 +189,7 @@ def test_grill_mode_comes_from_the_flag_then_pipeline_then_preference_then_askin
         "--grill=page",
         "--grill=chat",
         "plan-review prefs grill",
-        "asks once",
+        "ask the owner once",
         "plan-review prefs grill <mode>",
         "change it",
     ]:
@@ -201,7 +205,6 @@ def test_page_grill_goes_through_the_helpers_and_keeps_the_banner_answered() -> 
         "plan-review grill post",
         "plan-review grill pending",
         "plan-review grill decisions",
-        "plan-review grill schema",
         "plan-review serve ID",
         "/grill",
         "Monitor",
@@ -219,14 +222,7 @@ def test_page_grill_goes_through_the_helpers_and_keeps_the_banner_answered() -> 
 def test_page_grill_explains_other_answers_and_one_line_decisions() -> None:
     step_1 = _step_1()
 
-    for required in [
-        "`other`",
-        "decision whose `question_id`",
-        "never both",
-        "`must_settle`",
-        "to one line each",
-    ]:
-        assert required in step_1, required
+    assert "`other`" in step_1  # the explorer settles or replies to it: see its own text
     for gone in ["`own`", "`ask`", "asked back", "not yet"]:
         assert gone not in step_1, gone
 
@@ -240,8 +236,7 @@ def test_resume_and_the_chat_fallback_are_described() -> None:
     resume = step_1.split("you are resuming:")[1].split("Otherwise")[0]
     assert "plan-review serve ID" in resume  # nothing is running on a resume
     assert "serve` cannot start" in step_1
-    assert "written by hand" in step_1
-    assert "delete" in step_1  # the grill.json just posted
+    assert "carry on in chat mode with the same `W/grill.json`" in step_1
     assert "already running" in step_3
     assert 'plan-review status ID "Plan ready for review" --done' in step_3
 
@@ -256,7 +251,7 @@ def test_the_skill_uses_the_new_folder_and_config_file() -> None:
 
 
 def test_an_old_file_hint_is_passed_on_to_the_owner() -> None:
-    assert "show the owner" in _step_0()
+    assert "Show the owner each line it printed on stderr" in _step_0()
     assert "line about moving an old file" in _step_0()
 
 
@@ -268,3 +263,146 @@ def test_claude_code_ship_keeps_its_waiting_text() -> None:
     assert "arm it again" in body
     assert "plan-review wait" not in body
     assert "--detach" not in body
+
+
+# --- config, launch, groups and the grill explorer (#66) ---------------------------------------
+
+PLUGIN = SKILL.parents[2]
+
+
+def generated_ship(key: str) -> str:
+    harness = adapter_by_key(key)
+    assert harness is not None
+    files = harness.files(load_workflow(PLUGIN / "workflow"))
+    return next(text for path, text in files.items() if "ship" in path.as_posix().lower())
+
+
+def generated_agents(key: str) -> dict[str, str]:
+    harness = adapter_by_key(key)
+    assert harness is not None
+    files = harness.files(load_workflow(PLUGIN / "workflow"))
+    return {path.name: text for path, text in files.items() if "agents/" in path.as_posix()}
+
+
+TOOLS = ["claude-code", "codex", "opencode"]
+
+
+@pytest.mark.parametrize("key", TOOLS)
+def test_the_generated_texts_name_their_tool_for_config_and_launch(key: str) -> None:
+    harness = adapter_by_key(key)
+    assert harness is not None
+    ship = generated_ship(key)
+
+    assert harness.slots()["harness"] == key
+    assert f"plan-review config --harness {key}" in ship
+    assert f"plan-review launch <name> --harness {key}" in ship
+    for name, text in generated_agents(key).items():
+        if any(role in name for role in ("architect", "implementer", "reviewer")):
+            assert f"plan-review config --harness {key}" in text, name
+
+
+START_AGENT = {
+    "claude-code": ["Agent tool", "`subagent_type`", "`model`", "`effort`"],
+    "codex": ["`spawn_agent`", "`agent_type`", '`fork_turns` is `"none"`', "`reasoning_effort`"],
+    "opencode": ["`subagent` tool", "`agent`", "`<model>#<effort>`"],
+}
+
+
+@pytest.mark.parametrize("key", TOOLS)
+def test_each_ship_starts_an_agent_with_its_tools_model_and_effort_parameters(key: str) -> None:
+    ship = generated_ship(key)
+
+    for needle in START_AGENT[key]:
+        assert needle in ship, needle
+    assert "leave it out" in ship  # a null model or effort
+
+
+TOGETHER = {
+    "claude-code": ["one Agent call per reviewer", "in the same message"],
+    "codex": ["`wait_agent(targets=[...])`", "until every one is final"],
+    "opencode": ["one `subagent` call per agent", "in the same message"],
+}
+
+
+@pytest.mark.parametrize("key", TOOLS)
+def test_each_ship_starts_a_group_together_and_waits_for_all(key: str) -> None:
+    ship = generated_ship(key)
+
+    for needle in TOGETHER[key]:
+        assert needle in ship, needle
+
+
+@pytest.mark.parametrize("key", TOOLS)
+def test_ship_falls_back_to_the_session_when_a_model_or_effort_is_refused(key: str) -> None:
+    ship = generated_ship(key)
+
+    assert "start the same agent again without `model` and `effort`" in ship
+    assert "runs on the session's model: <the tool's error>" in ship
+    assert "don't wait on it" in ship
+
+
+def test_codex_ship_says_to_trust_the_project_for_an_unknown_agent() -> None:
+    assert "only in a trusted project" in generated_ship("codex")
+    for key in ("claude-code", "opencode"):
+        assert "trusted project" not in generated_ship(key)
+        assert "agent file is missing" in generated_ship(key)
+
+
+def test_ship_checks_the_config_before_anything_and_passes_its_lines_on() -> None:
+    step_0 = _step_0()
+
+    assert step_0.index("plan-review config --harness claude-code") < step_0.index("git status")
+    assert "show the errors and stop" in step_0
+    assert "each line it printed on stderr, once" in step_0
+    assert "never committed" in step_0
+    assert ".plan-review/.gitignore" in step_0
+    assert "already commits" in step_0
+    assert "ask the owner to commit it" in step_0
+    assert "`replace`" in step_0
+    assert "`.claude/agents/<name>.md` in the project, or `~/.claude/agents/<name>.md`" in step_0
+
+
+def _step_5() -> str:
+    _, body = parts()
+    return body.split("## 5.", 1)[1].split("## 6.", 1)[0]
+
+
+def test_ship_runs_each_stage_with_one_combined_fix_round() -> None:
+    step_5 = _step_5()
+
+    for needle in (
+        "settings.harness.claude-code.workflow",
+        "a list is a group of reviewers that run at the same time",
+        "`before=$(plan-review tree-hash)`",
+        "`after=$(plan-review tree-hash)`",
+        "`W/<review>`",
+        "plan-review verdict W/<review>",
+        "one **combined fix round**",
+        "every FINDINGS file of the stage at once",
+        "the whole stage runs again",
+        "counts as one round against `max`",
+    ):
+        assert needle in step_5, needle
+
+
+def test_ship_writes_the_code_itself_when_the_implementer_is_removed() -> None:
+    step_5 = _step_5()
+
+    assert "`main_session` is true" in step_5
+    assert "read the file `instructions` names" in step_5
+    assert "same `tdd` setting" in step_5
+    assert "W/impl-report.md" in step_5
+
+
+def test_grill_runs_through_a_fresh_grill_explorer_each_round() -> None:
+    step_1 = _step_1()
+
+    assert "plan-review launch" in parts()[1]
+    assert 'Start the explorer (see "Starting an agent": the name is `grill-explorer`)' in step_1
+    assert "Grill round. Run ID. Mode page." in step_1
+    assert "You never load a grilling skill yourself" in step_1
+    assert "Skill tool" not in step_1
+    for command in ("grill answer ID W/grill-answers.json", "grill confirm ID", "grill reopen ID"):
+        assert f"plan-review {command}" in step_1
+    assert "plan-review grill decisions ID" in step_1
+    assert "a new explorer" in step_1

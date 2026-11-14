@@ -6,7 +6,7 @@
 # installs the older one, runs that copy's own `plan-review upgrade`, and checks the newest is
 # there afterwards. With one (or when the older wheel has no opencode files) it proves the
 # install and says the upgrade needs a second release with opencode. It does not start
-# opencode: it checks the version, the /plan-review-ship command and the four agent files, and
+# opencode: it checks the version, the /plan-review-ship command and the five agent files, and
 # that the Codex ship skill was not written.
 set -euo pipefail
 if [[ $# -ne 1 ]]; then
@@ -57,6 +57,7 @@ check() { # <version>: the installed copy is that version, and the files in the 
   local file
   for file in \
     "$config/commands/plan-review-ship.md" \
+    "$config/agents/plan-review-grill-explorer.md" \
     "$config/agents/plan-review-architect.md" \
     "$config/agents/plan-review-implementer.md" \
     "$config/agents/plan-review-test-reviewer.md" \
@@ -83,7 +84,7 @@ check() { # <version>: the installed copy is that version, and the files in the 
     echo "FAIL: plan-review $want: a file differs from the files in the installed wheel" >&2
     exit 1
   }
-  echo "ok: plan-review $want, with the command and the four agents"
+  echo "ok: plan-review $want, with the command and the five agents"
 }
 
 latest_version="${wheels[0]%% *}"

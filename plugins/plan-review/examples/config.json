@@ -10,5 +10,26 @@
   "branch": "{issue}-{slug}",
   "viewer": { "open": "browser" },
   "grill": "page",
-  "max_review_rounds": 3
+  "max_review_rounds": 3,
+  "tdd": true,
+  "mutation": "agent",
+  "agents": {
+    "security-reviewer": { "kind": "reviewer" }
+  },
+  "harness": {
+    "claude-code": {
+      "workflow": ["implementer", ["test-reviewer", "security-reviewer"], "code-reviewer"],
+      "replace": ["code-reviewer"],
+      "architect": { "model": "opus", "effort": "high" },
+      "implementer": { "model": "sonnet" },
+      "security-reviewer": { "model": "haiku" }
+    },
+    "codex": {
+      "workflow": ["implementer", "code-reviewer"],
+      "architect": { "model": "gpt-5.5", "effort": "high" }
+    },
+    "opencode": {
+      "architect": { "model": "anthropic/claude-opus-4-5", "effort": "high" }
+    }
+  }
 }

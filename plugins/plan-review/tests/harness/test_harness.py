@@ -13,6 +13,7 @@ from plan_review.harness.harness import Harness
 from plan_review.harness.waiting import SocketWaiting
 from plan_review.harness.wording import Wording
 from plan_review.harness.workflow import AGENT_NAMES, Workflow, WorkflowText
+from plan_review.settings.agent_rules import AgentRules
 
 
 def wording_fields() -> dict[str, str]:
@@ -40,10 +41,20 @@ def make_harness(distribution: SelfInstall | ToolInstall | None = None) -> Harne
         key="x",
         name="Xtool",
         wording=Wording(**wording_fields()),
-        agent_files=MarkdownAgents(),
+        agent_files=MarkdownAgents(models={}),
         distribution=distribution
         or MarketplacePlugin("Xtool", "xcli", "m", "p", ".x/plugin.json", "done"),
         waiting=SocketWaiting(listener="Watcher"),
+        rules=AgentRules(
+            own_prefix="x-",
+            defaults={},
+            models=None,
+            efforts=None,
+            project_agent_folders=(),
+            user_agent_folders=lambda: (),
+            agent_suffix=".md",
+            own_agent_file=lambda role: Path(role),
+        ),
     )
 
 
@@ -52,10 +63,11 @@ def test_slots_join_the_wording_and_the_waiting_text() -> None:
 
     slots = harness.slots()
 
-    assert len(slots) == 18
+    assert len(slots) == 21
     assert slots["arguments"] == "<arguments>"
     assert slots["stop_viewer"] == "stop the Watcher and the server task"
     assert slots["grill_listen"] == harness.waiting.grill_listen
+    assert slots["harness"] == "x"
 
 
 def test_every_slot_in_the_workflow_is_a_wording_field_or_a_waiting_text() -> None:

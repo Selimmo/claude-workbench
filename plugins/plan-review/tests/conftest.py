@@ -62,6 +62,16 @@ def isolated_git(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.M
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
 
 
+@pytest.fixture(autouse=True)
+def user_config_folder(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """The CLI's user config folder, pointed at a temp folder so no test reads the real one."""
+    folder = tmp_path_factory.mktemp("user-config")
+    monkeypatch.setattr("plan_review.cli.settings.user_config_dir", lambda: folder)
+    return folder
+
+
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
     """A clone of a small claude-workbench, released as 0.1.0; returns the plugin folder.

@@ -13,4 +13,6 @@ class Wording:
     rules_file: str
     rules_also: str
     harness_folder: str
-    skill_tool: str
+    start_agent: str  # how to start one agent with the `launch` values, in the tool's words
+    start_together: str  # how to start a group at once and wait for every result
+    unknown_agent: str  # what to do when the tool says an agent doesn't exist
