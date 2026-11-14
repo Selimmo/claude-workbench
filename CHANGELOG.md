@@ -4,7 +4,7 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
-### Unreleased
+### 0.6.0
 
 - **One config file at two levels** ([#66](https://github.com/Selimmo/claude-workbench/issues/66)). `config.json` now lives in your own folder (`~/.plan-review/`, or `%APPDATA%\plan-review\` on Windows) as well as in the project's `.plan-review/`, merged setting by setting: the project over yours over the built-in defaults. `plan-review prefs grill` saves to your file (or to the project's with `--project`). `plan-review config --harness <tool>` checks the settings and shows which file each came from, and `/ship` runs it first.
 - **Per-tool workflow, models and effort.** A `harness` section per tool sets the `workflow` (agent names in order; a list inside it runs at the same time, with its findings fixed in one combined round) and each agent's `model` and `effort` in that tool's own words. Claude Code keeps today's models; Codex and opencode follow your session unless you set them. A model that is refused when an agent starts falls back to the session's, with one line. New settings: `tdd` (on by default), `mutation`, `agents` (custom reviewers).
