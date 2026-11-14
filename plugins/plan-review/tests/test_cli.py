@@ -121,7 +121,8 @@ def test_validate_prints_the_long_note_line_and_exits_1(
 
     assert exit_code == 1
     assert (
-        f"{path}: class:X.go: note is 301 characters; the limit is 300" in capsys.readouterr().err
+        f"{Path(path).as_posix()}: class:X.go: note is 301 characters; the limit is 300"
+        in capsys.readouterr().err
     )
 
 
