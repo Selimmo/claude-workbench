@@ -90,7 +90,7 @@ If a page grill started `plan-review serve` for this run and it is already runni
      4. When the whole review is handled: `plan-review status ID "<what changed>" --done`, for example "Replies posted to 2 threads; plan updated: HintPolicy split".
 
      Handle every item of the review:
-     - **A question.** Answer it with `plan-review reply ID <thread_id> "<answer>"`. Read the plan and the code first if you need to. Keep answers short and concrete.
+     - **A question.** Answer it with `plan-review reply ID <thread_id> "<answer>"`. Read the plan and the code first if you need to. Keep answers short and concrete. Put all code and file paths in your answers in backticks; the viewer shows them as code.
      - **A requested change.** Never edit `plan.json` yourself. Take all the change requests of the review together, then start the `architect` once with: "Revise mode. Run ID. Threads: <thread ids>." For each thread, post the architect's line about it with `plan-review reply`. The viewer refreshes by itself and outlines what changed.
      - Never resolve threads. Resolving is the owner's way of saying they are satisfied.
    - `approved`: first run `plan-review status ID "Approved, implementing"`, so the viewer knows you got it. Then go to step 4: run `plan-review stop ID`.

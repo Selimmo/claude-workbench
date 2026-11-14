@@ -6,5 +6,11 @@ export default defineConfig({
   plugins: [react()],
   // ELK alone is ~1.5 MB; it is served locally and loaded lazily, so the warning is noise.
   build: { outDir: '../src/plan_review/static', emptyOutDir: true, chunkSizeWarningLimit: 2000 },
-  test: { environment: 'jsdom', globals: true, setupFiles: ['./src/test/setup.ts'] },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
+    // cardStyles.test.ts reads styles.css as text; by default vitest hands back an empty string.
+    css: { include: [/styles\.css/] },
+  },
 })

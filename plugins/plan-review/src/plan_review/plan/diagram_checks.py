@@ -2,6 +2,8 @@
 
 from plan_review.plan.model import Plan, PlanClass, Relation
 
+NOTE_LIMIT = 300
+
 
 def _is_changed(cls: PlanClass) -> bool:
     return cls.status != "unchanged" or any(m.status != "unchanged" for m in cls.members)
@@ -22,6 +24,16 @@ def _class_problems(cls: PlanClass) -> list[str]:
         if member.kind is None:
             found.append(f"{member.id}: kind is required (property or method)")
     return found
+
+
+def _note_problems(cls: PlanClass) -> list[str]:
+    notes = [(cls.id, cls.note)] + [(m.id, m.note) for m in cls.members]
+    return [
+        f"{element}: note is {len(note)} characters; the limit is {NOTE_LIMIT}. "
+        "Write one or two plain sentences and move exact details to files or tests"
+        for element, note in notes
+        if note and len(note) > NOTE_LIMIT
+    ]
 
 
 def _relation_problem(rel: Relation, a: PlanClass, b: PlanClass) -> list[str]:
@@ -56,7 +68,7 @@ def shape_problems(plan: Plan) -> list[str]:
     problem, starting with the element id. Old plans load without these; the viewer
     draws them the old way."""
     by_id = {c.id: c for c in plan.classes}
-    found = [line for cls in plan.classes for line in _class_problems(cls)]
+    found = [line for cls in plan.classes for line in _class_problems(cls) + _note_problems(cls)]
     for rel in plan.relations:
         found += _relation_problem(rel, by_id[rel.source], by_id[rel.target])
     linked = _linked_to_changed(plan)

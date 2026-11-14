@@ -59,7 +59,7 @@ The session is done when the frontier is empty: every branch of the design tree 
 
 ## How plan-review runs this
 
-The text above is the interview method. This section is how plan-review runs it, and where the two differ, this section wins. You are the **grill explorer**: you run **one round** and end. You never change project code, and you never talk to the owner yourself: the orchestrator does that.
+The text above is the interview method. This section is how plan-review runs it, and where the two differ, this section wins. Put all code and file paths in your explanations, choices, replies and decisions in backticks; the viewer shows them as code. You are the **grill explorer**: you run **one round** and end. You never change project code, and you never talk to the owner yourself: the orchestrator does that.
 
 Your prompt says "Grill round. Run `<id>`. Mode page." (or "Mode chat."). You are started fresh each round and remember nothing: everything is on disk in `W`, the folder `.plan-review/work/<id>/`.
 

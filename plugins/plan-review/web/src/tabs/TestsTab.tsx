@@ -1,5 +1,6 @@
 import type { Plan } from '../plan'
 import { tabOf } from '../viewModels'
+import { Prose } from '../Prose'
 
 interface Props {
   plan: Plan
@@ -15,7 +16,9 @@ export function TestsTab({ plan, onShow }: Props) {
         return (
           <li key={test.id} data-element-id={test.id}>
             <code>{test.name}</code>
-            <span className="reason">{test.behaviour}</span>
+            <span className="reason">
+              <Prose text={test.behaviour} />
+            </span>
             <button
               className="link"
               disabled={targetTab === null}

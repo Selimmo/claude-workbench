@@ -7,6 +7,7 @@ import {
   classSides,
   currentShape,
   flowchartDiagram,
+  memberLine,
   sideDiagram,
   sideOf,
 } from './diagram'
@@ -14,6 +15,12 @@ import type { Plan } from './plan'
 
 const plan = example as Plan
 const oldPlan = old as Plan
+
+const findMember = (id: string) => {
+  const member = plan.classes.flatMap((c) => c.members).find((m) => m.id === id)
+  if (!member) throw new Error(`no member ${id}`)
+  return member
+}
 
 test('class diagram: a node per class with member rows, an edge per relation', () => {
   const diagram = classDiagram(oldPlan)
@@ -195,31 +202,80 @@ test('the example plan splits into a front and a back diagram', () => {
     for (const n of nodes) expect(sideOf(converted, n.id)).toBe(side)
 })
 
-test('classDetails gives each member signature, status in words and note', () => {
+test('classDetails puts members in new, changed and removed groups, fields before methods', () => {
   const details = classDetails(plan, 'class:Orchestrator')
 
-  expect(details).toMatchObject({
-    id: 'class:Orchestrator',
-    title: 'Orchestrator',
-    status: 'changed',
-  })
-  expect(details?.members.map((m) => [m.id, m.signature, m.status])).toEqual([
-    ['class:Orchestrator.give_hint', 'give_hint() -> AsyncIterator[str]', 'new'],
-    ['class:Orchestrator.hints_given', 'hints_given: int', 'new'],
-    ['class:Orchestrator.parse_command', 'parse_command(text: str) -> Command | None', 'removed'],
-    ['class:Orchestrator.on_event', 'on_event(event: ClientEvent) -> None', 'changed'],
+  expect(details?.groups.map((g) => [g.status, g.members.map((m) => m.name)])).toEqual([
+    ['added', ['hints_given', 'give_hint']],
+    ['modified', ['on_event']],
+    ['removed', ['parse_command']],
   ])
+  expect(details?.unchanged).toEqual([])
   expect(details?.note).toBeTruthy()
   expect(details?.kind).toBe('class')
-  expect(details?.members.find((m) => m.id === 'class:Orchestrator.on_event')?.note).toBe(
+  expect(details?.groups[1].members[0].note).toBe(
     'Handles RequestHint by asking the policy for the next level.',
   )
-  expect(classDetails(plan, 'class:HintLevel')).toMatchObject({
-    title: 'HintLevel: Enum',
-    kind: 'enum',
-  })
-  expect(classDetails(plan, 'class:LLMClient')?.members[0].status).toBe('unchanged')
+  expect(details?.groups[0].members[1].id).toBe('class:Orchestrator.give_hint')
   expect(classDetails(plan, 'class:Gone')).toBeNull()
+})
+
+test('classDetails keeps unchanged members apart', () => {
+  const details = classDetails(plan, 'class:LLMClient')
+
+  expect(details?.groups).toEqual([])
+  expect(details?.unchanged.map((m) => m.name)).toEqual(['stream'])
+})
+
+test('a field line shows its type and cannot open', () => {
+  const field = (signature: string) =>
+    memberLine({
+      id: 'class:X.f',
+      name: 'f',
+      kind: 'property',
+      signature,
+      status: 'added',
+    })
+
+  expect(memberLine(findMember('class:Orchestrator.hints_given'))).toMatchObject({
+    name: 'hints_given',
+    type: ': int',
+    signature: null,
+  })
+  expect(field('f')).toMatchObject({ name: 'f', type: null, signature: null })
+  expect(field('int f')).toMatchObject({ name: 'f', type: null, signature: null })
+  expect(
+    memberLine({
+      ...findMember('class:Orchestrator.hints_given'),
+      name: 'hints',
+      signature: 'hints_given: int',
+    }),
+  ).toMatchObject({
+    type: null,
+  })
+})
+
+test('a method line has its bare name and opens to its full signature', () => {
+  expect(memberLine(findMember('class:Orchestrator.give_hint'))).toMatchObject({
+    name: 'give_hint',
+    type: null,
+    signature: 'give_hint() -> AsyncIterator[str]',
+  })
+})
+
+test('a member from a plan before 0.1.12 shows its whole signature and cannot open', () => {
+  const details = classDetails(oldPlan, 'class:HintPolicy')
+
+  expect(details?.groups[0].members.map((m) => [m.name, m.type, m.signature])).toEqual([
+    ['max_hints: int = 3', null, null],
+    ['next_level(given: int) -> HintLevel | None', null, null],
+  ])
+  expect(classDetails(plan, 'class:HintLevel')).toMatchObject({
+    name: 'HintLevel',
+    bases: ['Enum'],
+    title: 'HintLevel: Enum',
+    status: 'added',
+  })
 })
 
 test('sideOf finds the side of a class or member id', () => {

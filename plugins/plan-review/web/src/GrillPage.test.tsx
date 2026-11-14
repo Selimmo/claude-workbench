@@ -938,3 +938,51 @@ test('the Grill and Plan switch appears after a reconnect that missed the plan',
     await screen.findByRole('navigation', { name: 'Pages' }, { timeout: 3000 }),
   ).toBeInTheDocument()
 })
+
+test('backticks show as code on the grill page', async () => {
+  localStorage.clear()
+  const server = new FakeServer()
+  const tick = (name: string) => `see \`${name}\` here`
+  const done = question('q1', {
+    title: tick('t1'),
+    explanation: tick('e1'),
+    choices: [
+      { id: 'a', label: tick('ans1'), description: tick('cd1') },
+      { id: 'b', label: 'Other choice', description: '' },
+    ],
+    answer: answered('choice', { choice_id: 'a', text: tick('note1') }),
+  })
+  const open_ = question('q2', {
+    title: tick('t2'),
+    explanation: tick('e2'),
+    choices: [{ id: 'a', label: tick('l2'), description: tick('d2') }],
+    thread: [message('owner', tick('m2'))],
+  })
+  server.grill = grill([done], [open_])
+  server.grill.decisions = [
+    {
+      id: 'd1',
+      topic: tick('topic'),
+      decision: tick('dec'),
+      choice: tick('ch'),
+      why: tick('why'),
+      question_id: null,
+      replaces: null,
+    },
+  ]
+  server.grill.out_of_scope = [tick('oos')]
+  server.grill.log = [{ kind: 'answers', text: null, at: '' }]
+  server.grill.handled = 1
+  open(server)
+
+  fireEvent.click(await screen.findByRole('button', { name: /t1/ }))
+
+  const chips = [...document.querySelectorAll('code.inline-code')].map((c) => c.textContent)
+  for (const name of ['t1', 'ans1', 'note1', 'e1', 'cd1', 't2', 'e2', 'l2', 'd2', 'm2']) {
+    expect(chips, name).toContain(name)
+  }
+  for (const name of ['topic', 'dec', 'ch', 'why', 'oos']) expect(chips, name).toContain(name)
+  expect(document.querySelector('main')?.textContent ?? document.body.textContent).not.toContain(
+    '`',
+  )
+})

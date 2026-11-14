@@ -1,6 +1,6 @@
 // A box-and-arrow diagram, independent of what it depicts: classes, architecture, flowcharts.
 
-import type { Edge, Flowchart, Plan, PlanClass, Side, Status } from './plan'
+import type { Edge, Flowchart, Member, Plan, PlanClass, Side, Status } from './plan'
 
 export interface DiagramRow {
   id: string
@@ -150,36 +150,69 @@ export function sideDiagram(plan: Plan, side: Side): Diagram {
   }
 }
 
-const WORDS: Record<Status, string> = {
-  added: 'new',
-  modified: 'changed',
-  removed: 'removed',
-  unchanged: 'unchanged',
+export interface MemberLine {
+  id: string
+  /** The short name; for a member from a plan before 0.1.12, the whole signature. */
+  name: string
+  /** Fields only: what follows the name in the signature. */
+  type: string | null
+  /** Methods only: the full signature shown when the line opens. */
+  signature: string | null
+  note: string | null
+}
+
+export interface MemberGroup {
+  status: 'added' | 'modified' | 'removed'
+  members: MemberLine[]
 }
 
 export interface ClassDetails {
   id: string
+  /** The dialog's accessible name: `Name: Base, Base`. */
   title: string
+  name: string
+  bases: string[]
   kind: string
-  status: string
+  status: Status
   note: string | null
-  members: { id: string; signature: string; status: string; note: string | null }[]
+  groups: MemberGroup[]
+  unchanged: MemberLine[]
 }
+
+export function memberLine(m: Member): MemberLine {
+  const note = m.note ?? null
+  if (!m.name) return { id: m.id, name: m.signature, type: null, signature: null, note }
+  if (m.kind === 'method')
+    return { id: m.id, name: m.name, type: null, signature: m.signature, note }
+  const rest = m.signature.startsWith(m.name) ? m.signature.slice(m.name.length) : ''
+  // The name must end there: `count` is not the start of `counter: int`.
+  const type = /^\w/.test(rest) ? null : rest || null
+  return { id: m.id, name: m.name, type, signature: null, note }
+}
+
+const GROUP_ORDER = ['added', 'modified', 'removed'] as const
 
 export function classDetails(plan: Plan, id: string): ClassDetails | null {
   const c = plan.classes.find((x) => x.id === id)
   if (!c) return null
+  const fieldsFirst = (members: Member[]) => [
+    ...members.filter((m) => m.kind !== 'method'),
+    ...members.filter((m) => m.kind === 'method'),
+  ]
+  const withStatus = (status: Status) => fieldsFirst(c.members.filter((m) => m.status === status))
+  const bases = c.bases ?? []
   return {
     id: c.id,
-    title: c.bases?.length ? `${c.name}: ${c.bases.join(', ')}` : c.name,
+    title: bases.length ? `${c.name}: ${bases.join(', ')}` : c.name,
+    name: c.name,
+    bases,
     kind: c.kind,
-    status: WORDS[c.status],
+    status: c.status,
     note: c.note ?? null,
-    members: c.members.map((m) => ({
-      id: m.id,
-      signature: m.signature,
-      status: WORDS[m.status],
-      note: m.note ?? null,
-    })),
+    groups: GROUP_ORDER.map((status) => ({
+      status,
+      members: withStatus(status).map(memberLine),
+    })).filter((g) => g.members.length > 0),
+    unchanged: withStatus('unchanged').map(memberLine),
   }
 }

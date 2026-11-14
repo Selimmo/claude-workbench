@@ -19,6 +19,7 @@ import { useSpot } from './position'
 import { ReviewPanel } from './ReviewPanel'
 import { type Note, Toast } from './Toast'
 import { ThreadCard } from './ThreadCard'
+import { Prose } from '../Prose'
 
 type Open =
   | { kind: 'thread'; id: string }
@@ -97,7 +98,7 @@ function ThreadList({
         {threads.map((t) => (
           <li key={t.id}>
             <button className="link" data-resolved={t.resolved} onClick={() => onOpen(t.id)}>
-              <code>{t.anchor}</code> {t.messages[0]?.text}
+              <code>{t.anchor}</code> <Prose text={t.messages[0]?.text ?? ''} />
             </button>
           </li>
         ))}

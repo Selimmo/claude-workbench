@@ -57,7 +57,13 @@ class Member(_Strict):
         description="property or method. `plan-review validate` requires it.",
     )
     signature: str
-    note: str | None = Field(default=None, description="What this plan changes about it.")
+    note: str | None = Field(
+        default=None,
+        description=(
+            "What this plan changes about it, in one or two plain sentences for the owner. "
+            "plan-review validate refuses more than 300 characters."
+        ),
+    )
     status: Status
 
 
@@ -82,7 +88,13 @@ class PlanClass(_Strict):
     bases: list[str] = Field(
         default=[], description="What it extends or implements, shown in the box title."
     )
-    note: str | None = Field(default=None, description="What this plan changes about it.")
+    note: str | None = Field(
+        default=None,
+        description=(
+            "What this plan changes about it, in one or two plain sentences for the owner. "
+            "plan-review validate refuses more than 300 characters."
+        ),
+    )
     status: Status
     members: list[Member] = []
 

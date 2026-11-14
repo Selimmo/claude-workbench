@@ -1,6 +1,7 @@
 import type { AnswerDraft, GrillQuestion } from '../grill'
 import { otherIsFinal, pick, type Pick } from '../grillModel'
 import { authorLabel } from '../threads'
+import { Prose } from '../Prose'
 
 const CHOICE_HINT = 'Add a few words to your choice (optional)'
 const OTHER_HINT = 'Type your own option, a question, or a comment'
@@ -13,7 +14,7 @@ export function Thread({ question }: { question: GrillQuestion }) {
     <ul className="ask-thread" aria-label="Conversation">
       {question.thread.map((m, i) => (
         <li key={i} data-author={m.author === 'owner' ? 'owner' : 'agent'}>
-          <strong>{authorLabel(m.author)}:</strong> {m.text}
+          <strong>{authorLabel(m.author)}:</strong> <Prose text={m.text} />
         </li>
       ))}
     </ul>
@@ -61,10 +62,12 @@ export function QuestionCard({
   return (
     <fieldset className="question-card" aria-label={question.title}>
       <legend>
-        {question.title}
+        <Prose text={question.title} />
         {question.updated && <span className="updated-tag">updated</span>}
       </legend>
-      <p>{question.explanation}</p>
+      <p>
+        <Prose text={question.explanation} />
+      </p>
       <Thread question={question} />
       {options.map((option) => (
         <div key={option.key} className="option">
@@ -77,10 +80,14 @@ export function QuestionCard({
               onChange={() => onDraft(pick(draft, option.target))}
             />
             <span className="choice-label">
-              {option.label}
+              <Prose text={option.label} />
               {option.recommended && <span className="recommended">Recommended</span>}
             </span>
-            {option.description && <span className="choice-description">{option.description}</span>}
+            {option.description && (
+              <span className="choice-description">
+                <Prose text={option.description} />
+              </span>
+            )}
           </label>
           {option.checked && (
             <textarea

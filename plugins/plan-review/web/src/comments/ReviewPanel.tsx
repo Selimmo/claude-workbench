@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { discardDraft, submitReview } from '../api'
 import type { Draft } from '../threads'
 import type { Note } from './Toast'
+import { Prose } from '../Prose'
 
 interface Props {
   drafts: Draft[]
@@ -61,7 +62,9 @@ export function ReviewPanel({ drafts, onChanged, onEdit, onNotify }: Props) {
           <li key={d.id}>
             <code>{d.anchor}</code>
             {d.thread_id && <span className="kind"> reply</span>}
-            <span className="text">{d.text}</span>
+            <span className="text">
+              <Prose text={d.text} />
+            </span>
             <span className="draft-actions">
               <button className="link" onClick={() => onEdit(d)}>
                 Edit

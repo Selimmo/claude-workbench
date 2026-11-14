@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { Grill } from '../grill'
 import { decisionsByTopic, replacedCount } from '../grillModel'
 import { storeOpen, storedOpen } from './panelState'
+import { Prose } from '../Prose'
 
 /** What is settled so far, by topic, and what was left out of scope. Can be collapsed. */
 export function DecisionsPanel({ grill }: { grill: Grill }) {
@@ -24,13 +25,23 @@ export function DecisionsPanel({ grill }: { grill: Grill }) {
         <>
           {decisionsByTopic(grill, withReplaced).map((group) => (
             <section key={group.topic}>
-              <h3>{group.topic}</h3>
+              <h3>
+                <Prose text={group.topic} />
+              </h3>
               <ul>
                 {group.decisions.map((d) => (
                   <li key={d.id} data-replaced={d.replaced}>
-                    <strong>{d.decision}</strong>
-                    <span className="decision-choice">{d.choice}</span>
-                    {d.why && <span className="decision-why">{d.why}</span>}
+                    <strong>
+                      <Prose text={d.decision} />
+                    </strong>
+                    <span className="decision-choice">
+                      <Prose text={d.choice} />
+                    </span>
+                    {d.why && (
+                      <span className="decision-why">
+                        <Prose text={d.why} />
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -46,7 +57,9 @@ export function DecisionsPanel({ grill }: { grill: Grill }) {
               <h3>Out of scope</h3>
               <ul>
                 {grill.out_of_scope.map((item) => (
-                  <li key={item}>{item}</li>
+                  <li key={item}>
+                    <Prose text={item} />
+                  </li>
                 ))}
               </ul>
             </section>

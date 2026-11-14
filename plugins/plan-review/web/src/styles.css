@@ -11,6 +11,7 @@
   --modified-bg: #fdf3e1;
   --removed: #c92a2a;
   --removed-bg: #fdecec;
+  --code-bg: #efefec;
   --high: #c92a2a;
   --medium: #945800;
   --low: #6b6b70;
@@ -38,6 +39,7 @@
     --modified-bg: #33270f;
     --removed: #ff7b7b;
     --removed-bg: #3a1a1a;
+    --code-bg: #2c2c31;
     --high: #ff7b7b;
     --medium: #f0b35a;
     --low: #9a9aa2;
@@ -59,6 +61,7 @@
   --modified-bg: #33270f;
   --removed: #ff7b7b;
   --removed-bg: #3a1a1a;
+  --code-bg: #2c2c31;
   --high: #ff7b7b;
   --medium: #f0b35a;
   --low: #9a9aa2;
@@ -741,7 +744,7 @@ marker path {
 
 .thread-card .actions button {
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--card-text);
   padding: 5px 12px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -927,12 +930,25 @@ marker path {
 }
 
 .thread-card {
+  /* One scale for the class popup, the thread card and the new-comment box. */
+  --card-title: 0.95rem;
+  --card-text: 0.875rem;
+  --card-code: 0.8rem;
+  --card-small: 0.75rem;
+  --card-gap: 8px;
+  --card-pad: 12px;
+  --card-leading: 1.45;
+
   width: 320px;
+  max-width: calc(100vw - 2rem);
   max-height: 60vh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
+  gap: var(--card-gap);
+  padding: var(--card-pad);
+  font-size: var(--card-text);
+  line-height: var(--card-leading);
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--surface);
@@ -941,15 +957,48 @@ marker path {
 }
 
 .card-top {
+  flex: none;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: var(--card-gap);
 }
 
 .card-top code {
-  font-size: 0.8rem;
+  font-size: var(--card-code);
   color: var(--muted);
+}
+
+/* The only part of a card that scrolls: the top line (name, comment icon, Close) stays in view. */
+.card-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--card-gap);
+}
+
+.thread-card .hint {
+  font-size: var(--card-small);
+}
+
+.thread-card .badge {
+  font-size: var(--card-small);
+}
+
+.thread-card .error {
+  font-size: var(--card-text);
+}
+
+.thread-card .draft-actions button.link {
+  font-size: var(--card-small);
+}
+
+.thread-card button.icon {
+  font-size: var(--card-title);
 }
 
 button.icon {
@@ -965,10 +1014,9 @@ button.icon {
   list-style: none;
   margin: 0;
   padding: 0;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--card-gap);
 }
 
 .messages li {
@@ -985,14 +1033,14 @@ button.icon {
 }
 
 .messages .author {
-  font-size: 0.75rem;
+  font-size: var(--card-small);
   font-weight: 600;
   color: var(--muted);
 }
 
 .messages .text {
   white-space: pre-wrap;
-  line-height: 1.4;
+  line-height: var(--card-leading);
 }
 
 .thread-card textarea {
@@ -1590,33 +1638,197 @@ html {
   background: var(--removed);
 }
 
-/* The popup a class box opens: full signatures and what this plan changes. */
+/* The popup a class box opens: members in coloured boxes, full signatures on click. */
 
 .class-details {
   width: 380px;
+  max-width: calc(100vw - 2rem);
 }
 
-.class-details p {
-  margin: 4px 0 0;
+.details-title {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: var(--card-title);
+}
+
+.details-title strong {
+  color: var(--text);
+}
+
+/* The global [data-status] box must not tint the title: only the name is coloured. */
+.details-title[data-status='added'] {
+  background: none;
+  border-left: 0;
+}
+
+.details-title[data-status='added'] strong {
+  color: var(--added);
+}
+
+/* The global [data-status] box must not tint the title: only the name is coloured. */
+.details-title[data-status='modified'] {
+  background: none;
+  border-left: 0;
+}
+
+.details-title[data-status='modified'] strong {
+  color: var(--modified);
+}
+
+/* The global [data-status] box must not tint the title: only the name is coloured. */
+.details-title[data-status='removed'] {
+  background: none;
+  border-left: 0;
+}
+
+.details-title[data-status='removed'] strong {
+  color: var(--removed);
+}
+
+.details-title .bases {
+  font-size: var(--card-small);
+  font-weight: 400;
   color: var(--muted);
-  font-size: 0.85rem;
 }
 
-.member-details {
+.card-top .kind {
+  font-size: var(--card-small);
+  color: var(--muted);
+  margin-right: auto;
+}
+
+/* The kind label took the free space, so the icon must not take a share too. */
+.class-details .card-top .comment-icon {
+  margin-left: 0;
+}
+
+.details-note,
+.member-note {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: var(--card-text);
+}
+
+.member-group {
   list-style: none;
   margin: 0;
-  padding: 0;
-  overflow-y: auto;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border-left: 3px solid var(--added);
+  background: var(--added-bg);
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.member-details li {
-  font-size: 0.85rem;
+.member-group[data-status='modified'] {
+  border-left-color: var(--modified);
+  background: var(--modified-bg);
 }
 
-.member-details code {
-  font-size: 12px;
+.member-group[data-status='removed'] {
+  border-left-color: var(--removed);
+  background: var(--removed-bg);
+}
+
+.member-group:not([data-status]) {
+  border-left: none;
+  background: none;
+  padding-left: 11px;
+}
+
+.member-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.member-name {
+  font:
+    700 var(--card-code) ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: var(--text);
+}
+
+.member-type,
+.member-signature {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--card-small);
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.member-signature {
+  display: block;
+  margin-top: 2px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--code-bg);
+  white-space: pre;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.member-line s {
+  text-decoration-color: var(--removed);
+}
+
+.member-toggle {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 4px;
+  align-items: baseline;
+}
+
+.member-toggle .arrow {
+  font-size: var(--card-small);
+  color: var(--muted);
+}
+
+.member-toggle[aria-expanded='true'] .arrow {
+  transform: rotate(90deg);
+}
+
+/* Hidden with opacity only, so Tab still reaches it and Enter presses it. */
+.comment-icon {
+  border: none;
+  background: none;
+  color: var(--muted);
+  padding: 2px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.1s;
+  cursor: pointer;
+  display: inline-flex;
+}
+
+.member-line:hover .comment-icon,
+.member-line:focus-within .comment-icon,
+.card-top:hover .comment-icon,
+.comment-icon:focus-visible {
+  opacity: 1;
+}
+
+.comment-icon:hover {
+  color: var(--accent);
+}
+
+/* Backticked text in written text. */
+.inline-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--code-bg);
+  color: var(--text);
   overflow-wrap: anywhere;
 }

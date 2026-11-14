@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { GrillQuestion } from '../grill'
 import { answerParts } from '../grillModel'
 import { Thread } from './QuestionCard'
+import { Prose } from '../Prose'
 
 function Row({ question }: { question: GrillQuestion }) {
   const [expanded, setExpanded] = useState(false)
@@ -13,17 +14,27 @@ function Row({ question }: { question: GrillQuestion }) {
         <span className="tick" aria-hidden="true">
           ✓
         </span>
-        <span className="answered-title">{question.title}</span>
-        <strong>{answer}</strong>
-        {note && <span className="answer-note">{note}</span>}
+        <span className="answered-title">
+          <Prose text={question.title} />
+        </span>
+        <strong>
+          <Prose text={answer} />
+        </strong>
+        {note && (
+          <span className="answer-note">
+            <Prose text={note} />
+          </span>
+        )}
       </button>
       {expanded && (
         <div className="collapsed-detail">
-          <p>{question.explanation}</p>
+          <p>
+            <Prose text={question.explanation} />
+          </p>
           <ul>
             {question.choices.map((c) => (
               <li key={c.id}>
-                {c.label}: {c.description}
+                <Prose text={c.label} />: <Prose text={c.description} />
               </li>
             ))}
           </ul>

@@ -1,5 +1,6 @@
 import type { Plan, Risk } from '../plan'
 import { risksByKind } from '../viewModels'
+import { Prose } from '../Prose'
 
 function RiskList({ title, items }: { title: string; items: Risk[] }) {
   return (
@@ -12,8 +13,14 @@ function RiskList({ title, items }: { title: string; items: Risk[] }) {
           {items.map((risk) => (
             <li key={risk.id} data-element-id={risk.id} data-severity={risk.severity}>
               <span className="severity">{risk.severity}</span>
-              <span>{risk.text}</span>
-              {risk.mitigation && <span className="reason">Mitigation: {risk.mitigation}</span>}
+              <span>
+                <Prose text={risk.text} />
+              </span>
+              {risk.mitigation && (
+                <span className="reason">
+                  Mitigation: <Prose text={risk.mitigation} />
+                </span>
+              )}
             </li>
           ))}
         </ul>

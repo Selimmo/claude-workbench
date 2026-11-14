@@ -96,6 +96,36 @@ def test_validate_reports_each_error_with_its_location(
     assert all(line.startswith(f"{path}: ") for line in err.splitlines())
 
 
+def test_validate_prints_the_long_note_line_and_exits_1(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    member = {
+        "id": "class:X.go",
+        "name": "go",
+        "kind": "method",
+        "signature": "go()",
+        "status": "added",
+        "note": "n" * 301,
+    }
+    cls = {
+        "id": "class:X",
+        "name": "X",
+        "kind": "class",
+        "side": "back",
+        "status": "added",
+        "members": [member],
+    }
+    path = write_plan(tmp_path, {**VALID_PLAN, "classes": [cls]})
+
+    exit_code = main(["validate", path])
+
+    assert exit_code == 1
+    assert (
+        f"{Path(path).as_posix()}: class:X.go: note is 301 characters; the limit is 300"
+        in capsys.readouterr().err
+    )
+
+
 @pytest.mark.parametrize("issue", [5, None])
 def test_validate_reports_an_issue_that_is_not_an_object(
     issue: object, tmp_path: Path, capsys: pytest.CaptureFixture[str]

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { useSpot } from './position'
+import { Prose } from '../Prose'
 
 interface Props {
   anchor: string
@@ -37,7 +38,7 @@ export function Pin({ anchor, badge, label, preview, draft = false, offset = 0, 
       </button>
       {hover && (
         <div role="tooltip" className="pin-tip">
-          {preview.length > 80 ? `${preview.slice(0, 80)}…` : preview}
+          <Prose text={preview.length > 80 ? `${preview.slice(0, 80)}…` : preview} />
         </div>
       )}
     </div>

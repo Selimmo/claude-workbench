@@ -4,6 +4,12 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
+### Unreleased
+
+- **A clearer class popup** ([#65](https://github.com/Selimmo/claude-workbench/issues/65)). The class name is bold and coloured by its status, with its parents in small grey text. Members sit in a green (new), orange (changed) and red (removed) box, fields before methods, each as a bold name with its description below; fields show their type, methods open to their full signature, removed names are crossed out and unchanged members fold behind **Show N unchanged**. **Comment** becomes a speech-bubble icon on hover or Tab. The popup, thread card and new-comment box share one set of sizes, and a tall one scrolls its body under a fixed top line.
+- Text in `backticks` shows as a code chip everywhere written text appears in the viewer (not in diagram labels); the architect, grill explorer and orchestrator are told to put code and file paths in backticks.
+- `plan-review validate` now refuses a class or member `note` over 300 characters, and the architect is told to write notes in plain words (older plans with longer notes still open in the viewer).
+
 ### 0.6.0
 
 - **One config file at two levels** ([#66](https://github.com/Selimmo/claude-workbench/issues/66)). `config.json` now lives in your own folder (`~/.plan-review/`, or `%APPDATA%\plan-review\` on Windows) as well as in the project's `.plan-review/`, merged setting by setting: the project over yours over the built-in defaults. `plan-review prefs grill` saves to your file (or to the project's with `--project`). `plan-review config --harness <tool>` checks the settings and shows which file each came from, and `/ship` runs it first.
