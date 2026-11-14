@@ -59,3 +59,14 @@ def _ignore_work_folder(folder: Path) -> None:
     ignore = folder / ".gitignore"
     if not ignore.exists():  # never overwrite a project's own rules
         ignore.write_text("*\n")
+
+
+def config_file(root: Path) -> Path:
+    """`.plan-review/config.json`, with its folder and a `.gitignore` there that makes git
+    ignore the file (and itself), so the project's own settings are never committed."""
+    folder = root / ".plan-review"
+    folder.mkdir(parents=True, exist_ok=True)
+    ignore = folder / ".gitignore"
+    if not ignore.exists():  # never overwrite a project's own rules
+        ignore.write_text("config.json\n.gitignore\n")
+    return config_path(root)

@@ -16,7 +16,7 @@ from plan_review.harness.distribution import releases, wheel
 from plan_review.harness.workflow import load_workflow
 
 FILES = PLUGIN / "src" / "plan_review" / "harness" / "adapters" / "opencode_files"
-ROLES = ["architect", "implementer", "test-reviewer", "code-reviewer"]
+ROLES = ["grill-explorer", "architect", "implementer", "test-reviewer", "code-reviewer"]
 
 
 def generated() -> dict[PurePosixPath, str]:
@@ -118,7 +118,7 @@ def test_opencode_files_name_nothing_from_claude_code_or_codex() -> None:
 
 def test_opencode_files_use_opencode_wording() -> None:
     assert "edit anything under `.opencode/`" in agent("implementer")
-    assert "(load it with the `skill` tool)" in command()
+    assert "`subagent` tool" in command()
 
 
 def test_opencode_waits_under_the_shell_time_limit() -> None:

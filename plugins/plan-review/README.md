@@ -16,15 +16,15 @@ This adds the `claude-workbench` marketplace and installs the latest release: a 
 
 **Coming from a local clone's marketplace?** It is also named `claude-workbench`, so remove it first: `claude plugin marketplace remove claude-workbench` (this uninstalls its plan-review), then run the install command above.
 
-Then run `/plan-review:ship <issue number, issue link or prompt>` in your project, optionally with a `.plan-review/config.json` (see below). There is no other setup: plan-review keeps its files in `.plan-review/work/`, and creates `.plan-review/work/.gitignore` (`*`) the first time it writes there, so they are never committed.
+Then run `/plan-review:ship <issue number, issue link or prompt>` in your project, optionally with a `.plan-review/config.json` (see below). There is no other setup: plan-review keeps its files in `.plan-review/work/`, and creates `.plan-review/work/.gitignore` (`*`) the first time it writes there, so they are never committed. The project's `.plan-review/config.json` is never committed either: whenever plan-review writes or finds that file it also writes `.plan-review/.gitignore` (`config.json` and itself), so git doesn't list it and the clean-start check isn't tripped. If your project already commits it, that stays: ignoring only affects new files, and a change plan-review makes to it then shows up for you to commit. To stop sharing a committed one, run `git rm --cached .plan-review/config.json`.
 
 ### Codex
 
-plan-review also runs in [OpenAI Codex](https://developers.openai.com/codex) through the `$ship` skill. Install the `plan-review` command from the newest release's wheel (the link is in the [root README](../../README.md#codex)), then run `plan-review install codex`: it writes the skill to `~/.agents/skills/ship/` and four agents to `~/.codex/agents/` (or `$CODEX_HOME/agents/`). It never replaces a file it did not write. Run `$ship <issue number, link or prompt>` in Codex. Codex waits for you with `plan-review wait`, which wakes the model about every 4 minutes while you are away, so a long absence uses some of your quota. To override an agent for one project, put `.codex/agents/<name>.toml` in it. `plan-review upgrade` installs the newest wheel and writes the files again.
+plan-review also runs in [OpenAI Codex](https://developers.openai.com/codex) through the `$ship` skill. Install the `plan-review` command from the newest release's wheel (the link is in the [root README](../../README.md#codex)), then run `plan-review install codex`: it writes the skill to `~/.agents/skills/ship/` and five agents to `~/.codex/agents/` (or `$CODEX_HOME/agents/`). It never replaces a file it did not write. Run `$ship <issue number, link or prompt>` in Codex. Codex waits for you with `plan-review wait`, which wakes the model about every 4 minutes while you are away, so a long absence uses some of your quota. To use your own file for `implementer`, `test-reviewer` or `code-reviewer`, put it in `.codex/agents/<name>.toml` (or `~/.codex/agents/<name>.toml`) and list the role in `replace` (see [Your own agent files](#your-own-agent-files)). Codex reads a project's `.codex/agents` only when you have trusted the project. `plan-review upgrade` installs the newest wheel and writes the files again.
 
 ### opencode
 
-plan-review also runs in [opencode](https://opencode.ai) through the `/plan-review-ship` command. Install the `plan-review` command from the newest release's wheel (the link is in the [root README](../../README.md#opencode)), then run `plan-review install opencode`: it writes the command to `~/.config/opencode/commands/` and four agents (`plan-review-<role>`) to `~/.config/opencode/agents/`, or under `$XDG_CONFIG_HOME/opencode/` when that is set. It never replaces a file it did not write, and leaves the Codex folders alone. Run `/plan-review-ship <issue number, link or prompt>` in opencode. opencode stops a shell command after 2 minutes, so the agent waits for you with `plan-review wait --timeout 100`, which wakes the model about every 100 seconds while you are away: a long absence uses more of your quota than in Codex. To override an agent for one project, put `.opencode/agents/<name>.md` in it. `plan-review upgrade` installs the newest wheel and writes the files again, for each tool whose files are in place.
+plan-review also runs in [opencode](https://opencode.ai) through the `/plan-review-ship` command. Install the `plan-review` command from the newest release's wheel (the link is in the [root README](../../README.md#opencode)), then run `plan-review install opencode`: it writes the command to `~/.config/opencode/commands/` and five agents (`plan-review-<role>`) to `~/.config/opencode/agents/`, or under `$XDG_CONFIG_HOME/opencode/` when that is set. It never replaces a file it did not write, and leaves the Codex folders alone. Run `/plan-review-ship <issue number, link or prompt>` in opencode. opencode stops a shell command after 2 minutes, so the agent waits for you with `plan-review wait --timeout 100`, which wakes the model about every 100 seconds while you are away: a long absence uses more of your quota than in Codex. To use your own file for `implementer`, `test-reviewer` or `code-reviewer`, put it in `.opencode/agents/<name>.md` (or `~/.config/opencode/agents/<name>.md`) and list the role in `replace` (see [Your own agent files](#your-own-agent-files)). `plan-review upgrade` installs the newest wheel and writes the files again, for each tool whose files are in place.
 
 ### Upgrade
 
@@ -53,13 +53,17 @@ plan-review stop 42              # stop that detached viewer
 plan-review wait 42 --timeout 240   # the next thing the owner did, as one JSON line, or {"type":"timeout"}
 plan-review install codex        # write the Codex ship skill and agents into your home folders
 plan-review install opencode     # write the opencode command and agents into ~/.config/opencode
-plan-review config               # this project's pipeline settings, defaults filled in
+plan-review config --harness claude-code   # the settings in force and which file each came from, checked for that tool (without --harness: every tool)
+plan-review launch architect --harness claude-code   # how /ship starts that agent: the agent, its model and effort, as JSON
 plan-review prefs grill          # the grill mode in force (page or chat); exit 3 if none is chosen
-plan-review prefs grill page     # record the owner's choice (page or chat) in .plan-review/work/preferences.json
+plan-review prefs grill page     # save your choice (page or chat) in your own config.json (--project: in this project's)
 plan-review grill post 42 turn.json   # add the agent's next turn (replies, decisions, next round, done) to grill.json
 plan-review grill pending 42     # JSON {confirmed, pending}: what the owner did that is not answered yet
 plan-review grill decisions 42   # write .plan-review/work/42/decisions.md from the confirmed grill
 plan-review grill schema         # the JSON Schema of a turn
+plan-review grill answer 42 answers.json   # the chat grill: record the owner's answers (a JSON list) in grill.json
+plan-review grill confirm 42     # the chat grill: record that the owner confirmed
+plan-review grill reopen 42 "what is missing"   # the chat grill: record the owner's "not yet"
 plan-review threads 42           # open comment threads, as JSON (for the agent)
 plan-review reply 42 t-1a2b3c4d "Because ..."   # answer a thread as the agent
 plan-review status 42 "Answering questions"     # tell the owner what the agent is doing (--done when finished, --clear to remove)
@@ -206,38 +210,65 @@ Use as much or as little of the rest as you like.
 
 One command takes an issue, or a plain prompt, to a reviewed commit. The input can be a GitHub issue (`42`, `#42` or its link), a Jira or Linear link or a bare key such as `PROJ-123` (read through the connector Claude Code has for that tracker), or any other text, which is a prompt. Only the GitHub and prompt inputs are proven end to end. `/ship` reads the issue once, with its comments, into `.plan-review/work/<id>/issue.md` (a prompt is written there exactly as given); the agents read that file and never call a tracker. The run id `<id>` names the work folder: `42`, `PROJ-123`, or `<prompt name>-<date>`.
 
-0. **Settle decisions (optional).** Anything already decided can go in `.plan-review/work/<id>/decisions.md`: notes, a doc, the outcome of any discussion. The architect treats it as settled. With `/ship <input> --grill`, `/ship` first grills the input with Matt Pocock's [`grilling`](https://github.com/mattpocock/skills) skill, if you have it, and saves the outcome there. There are two ways to be asked. The **page grill** puts each round on a `/grill` page of the same `plan-review serve`: each question is a set of radio buttons, the choices (the first is the recommendation) plus **Other**. Picking one opens a single text box under it: optional for a choice (a few words of note), required for Other (your own option, a question or a comment), and the text moves along when you switch options. You submit the round at once. A choice closes its question. An Other keeps it open: the agent either settles it with a decision (your text becomes the answer) or replies, and you pick again; after three replies the agent has to settle it, and the box says so. Answered questions are tidy rows with a tick, the answer in bold and your note in grey, under a heading for each round. The decisions pile up in a collapsible column beside the rounds (grouped by topic, with each why; replaced ones behind 'Show replaced'; open or closed is remembered in the browser). The agent's banner stays at the top of the window. At the end the agent asks 'Is this the shared understanding?': **Yes** confirms at once, **No** asks what is missing and reopens the grill. The agent's side goes through `plan-review grill post`, and `plan-review grill decisions` writes `decisions.md`. The **chat grill** asks in the chat, as before. The mode is `--grill=page` or `--grill=chat`; for a plain `--grill`, the `grill` setting in `.plan-review/config.json`, else your recorded preference (`plan-review prefs grill page|chat`); if neither exists `/ship` asks once and records the answer. If `serve` cannot start, the chat grill is the fallback. A confirmed grill is not asked again when you run `/ship` again.
+0. **Settle decisions (optional).** Anything already decided can go in `.plan-review/work/<id>/decisions.md`: notes, a doc, the outcome of any discussion. The architect treats it as settled. With `/ship <input> --grill`, `/ship` first grills the input with the **grill explorer**, an agent whose instructions are Matt Pocock's [`grilling`](https://github.com/mattpocock/skills) skill (MIT), copied word for word, plus a section of ours on how a round is delivered. A fresh explorer runs each round, reads everything from `grill.json` (the questions, your answers, the decisions) and its `grill-notes.md` (the facts earlier rounds looked up), posts the next round and ends; it works the same in Claude Code, Codex and opencode, and saves the outcome in `decisions.md`. There are two ways to be asked. The **page grill** puts each round on a `/grill` page of the same `plan-review serve`: each question is a set of radio buttons, the choices (the first is the recommendation) plus **Other**. Picking one opens a single text box under it: optional for a choice (a few words of note), required for Other (your own option, a question or a comment), and the text moves along when you switch options. You submit the round at once. A choice closes its question. An Other keeps it open: the agent either settles it with a decision (your text becomes the answer) or replies, and you pick again; after three replies the agent has to settle it, and the box says so. Answered questions are tidy rows with a tick, the answer in bold and your note in grey, under a heading for each round. The decisions pile up in a collapsible column beside the rounds (grouped by topic, with each why; replaced ones behind 'Show replaced'; open or closed is remembered in the browser). The agent's banner stays at the top of the window. At the end the agent asks 'Is this the shared understanding?': **Yes** confirms at once, **No** asks what is missing and reopens the grill. The agent's side goes through `plan-review grill post`, and `plan-review grill decisions` writes `decisions.md`. The **chat grill** asks in the chat; `/ship` records your answers, your confirmation and your "not yet" in the same `grill.json` with `plan-review grill answer`, `confirm` and `reopen`, so both ways keep everything in one place. The mode is `--grill=page` or `--grill=chat`; for a plain `--grill`, the `grill` setting in the project's `.plan-review/config.json`, else in your own `config.json` (`plan-review prefs grill page|chat`); if neither exists `/ship` asks once and saves the answer in yours. If `serve` cannot start, the chat grill carries on from the same `grill.json`. A confirmed grill is not asked again when you run `/ship` again.
 1. **Plan.** The `architect` writes `.plan-review/work/<id>/plan.json`. For a prompt run it also writes the `acceptance_criteria`, which you approve with the plan; they open as the first tab.
 2. **Review.** The viewer opens. Your comments and replies are drafts until you press **Submit review**; the submitted review wakes the agent through the `/events` socket: questions are answered in the thread, change requests go back to the architect, the page updates live, and a banner shows what the agent is doing (or offers Resend if it hears nothing). Approve when no draft is left unsent and every thread is resolved.
 3. **Branch.** Named by `plan-review branch` and recorded in `plan.json`; the viewer shows it the next time it opens. A prompt run's branch is its id.
-4. **Implement and review the tests.** `implementer` ⇄ `test-reviewer` until `VERDICT: PASS`.
-5. **Review the code.** `implementer` ⇄ `code-reviewer` until `VERDICT: PASS`. Each loop stops and asks you after `max_review_rounds`, and a review that changed files (detected by `plan-review tree-hash` before and after) is discarded.
-6. **Hand back.** You get a summary. The agent commits only after your OK, referencing the issue without a closing keyword (`Refs #42`, or `PROJ-123`; nothing for a prompt) unless your CLAUDE.md says otherwise. Nothing is written to the tracker, and nothing is pushed or merged unless you ask.
+4. **Implement and review.** The `implementer` builds the plan, then each review stage of the **workflow** runs in order (by default `test-reviewer`, then `code-reviewer`; see below). A stage with several reviewers runs them at the same time, and their findings go to the implementer in one combined fix round, after which the whole stage runs again; that counts as one round. Each stage stops and asks you after `max_review_rounds`, and a review that changed files (detected by `plan-review tree-hash` before and after) is discarded.
+5. **Hand back.** You get a summary. The agent commits only after your OK, referencing the issue without a closing keyword (`Refs #42`, or `PROJ-123`; nothing for a prompt) unless your CLAUDE.md says otherwise. Nothing is written to the tracker, and nothing is pushed or merged unless you ask.
 
 Every pass or fail decision goes through `plan-review verdict` and `tree-hash`, not the agent's own reading.
 
 ## The agents
 
-The plugin ships four subagents. Claude Code lists them as `plan-review:<name>`.
+The plugin ships five subagents. Claude Code lists them as `plan-review:<name>`; the other tools prefix them `plan-review-`.
 
-| Agent | Model | Can edit files? | Job |
+| Agent | Claude Code default | Can edit files? | Job |
 |---|---|---|---|
-| `architect` | Opus | writes only `plan.json` | Reads `issue.md`, `decisions.md` (if any), the project's rules and code; writes or revises `.plan-review/work/<id>/plan.json` and validates it. In revise mode it keeps element ids stable so comment threads stay attached. |
-| `implementer` | Sonnet | yes | Works through the plan's `tests` in order with strict TDD (red for the right reason, minimal green, refactor), runs the checks, and writes `impl-report.md` with the evidence of each red run. Fixes review findings in later rounds. Never commits. |
-| `test-reviewer` | Opus | no | Checks the plan's tests exist, one behaviour per test, the red evidence, no untested code, edge cases. Ends with `VERDICT: PASS` or `VERDICT: FINDINGS`. |
-| `code-reviewer` | Opus | no | Checks correctness, scope against the issue and plan, the project's rules, docs, and runs every configured check. Same verdict line. |
+| `grill-explorer` | Opus, high | writes only its turn and notes | Runs one round of the grill and ends (see step 0 above). A fresh one each round. |
+| `architect` | Opus, high | writes only `plan.json` | Reads `issue.md`, `decisions.md` (if any), the project's rules and code; writes or revises `.plan-review/work/<id>/plan.json` and validates it. In revise mode it keeps element ids stable so comment threads stay attached. |
+| `implementer` | Sonnet | yes | Works through the plan's `tests` in order with strict TDD when `tdd` is on (red for the right reason, minimal green, refactor), runs the checks, and writes `impl-report.md` with the evidence of each red run. Fixes review findings in later rounds, all review files at once. Never commits. |
+| `test-reviewer` | Opus, high | no | Checks the plan's tests exist, one behaviour per test, the red evidence (skipped when `tdd` is off), no untested code, edge cases, and, only if you turn it on, does **mutation testing** (below). Ends with `VERDICT: PASS` or `VERDICT: FINDINGS`. |
+| `code-reviewer` | Opus, high | no | Checks correctness, scope against the issue and plan, the project's rules, docs, and runs every configured check. Same verdict line. |
+
+In Codex and opencode no model or effort is set by default: each agent follows your session, as before. Set them in the config (below).
 
 No agent can start other agents. The reviewers have no edit tools; because they keep Bash to run tests, the orchestrator also compares the working tree before and after each review and discards a review that changed anything.
 
-**Your own copies.** The agents and the `/ship` skill are generated from `workflow/` (see [CONTRIBUTING.md](../../CONTRIBUTING.md)). To commit the agents in a project and adapt them in Claude Code, copy the generated files in: `cp <clone>/plugins/plan-review/agents/*.md .claude/agents/`. `/ship` then uses the project's `architect`, `implementer`, `test-reviewer` and `code-reviewer` in place of the plugin's, role by role, for any role whose file exists. Copy them again after you upgrade: copies from 0.1.7 still call `gh` and expect an issue number, and copies from before 0.2.0 write the plan to `.claude/work/<id>/`, where `/ship` no longer looks. Keep each file's frontmatter `name` the same as its file name, and keep the reviewers' last-line verdict format, because `/ship` reads it with `plan-review verdict`.
+**Mutation testing (optional, off by default).** It checks that the tests would notice a broken line. With the `mutation` setting unset, the test reviewer only reads the tests: it makes no copy of your project and no breaks. To turn it on, set `mutation` in `config.json`:
+
+- `"agent"`: the test reviewer breaks lines by hand (flips a condition, changes a constant), at most 20 breaks and about 10 minutes, and says if it stopped early.
+- any other string: the command of your own tool, which the reviewer runs with the same 10-minute limit and reports the surviving breaks it lists on changed lines. The tool has to be installed in your project, and many can be told to test only some files to stay fast. Examples: `uv run mutmut run` (Python), `npx stryker run` (JavaScript, TypeScript), `dotnet stryker` (C#), `mvn org.pitest:pitest-maven:mutationCoverage` (Java), `cargo mutants` (Rust). A tool that exits with an error code is the normal result when some breaks survive; if the command can't start at all, the reviewer says so in one line and breaks lines by hand.
+
+When it is on, the work happens on a throwaway copy of your project in the system temp folder (never in your project), only on the lines this change added or changed. Each break that no test caught is a finding.
+
+### Your own agent files
+
+The agents and the `/ship` skill are generated from `workflow/` (see [CONTRIBUTING.md](../../CONTRIBUTING.md)). The `grill-explorer` and the `architect` are always plan-review's own: they must write `grill.json`, `decisions.md` and `plan.json` exactly the way plan-review reads them, so a file of the same name is not used (`plan-review config` says so in one line). plan-review's own `implementer`, `test-reviewer` and `code-reviewer` also always run, **unless** you list the role in `replace` for that tool. Then your file runs instead, looked up in the project's agents folder first and then in your own (user) folder:
+
+| Tool | Project folder | Your own folder | Suffix |
+|---|---|---|---|
+| Claude Code | `.claude/agents/` | `~/.claude/agents/` | `.md` |
+| Codex | `.codex/agents/` | `$CODEX_HOME/agents/` (default `~/.codex/agents/`) | `.toml` |
+| opencode | `.opencode/agent/` and `.opencode/agents/` | the same two under `~/.config/opencode/` (or `$XDG_CONFIG_HOME/opencode/`) | `.md` |
+
+```json
+{ "harness": { "claude-code": { "replace": ["code-reviewer"] } } }
+```
+
+`replace` is per tool because the files are per tool. A role you list that has no file in either folder is an error, and a project file named like a role but not listed is not used: `/ship` says so in one line and how to turn it on. To copy plan-review's own agent as a starting point, `cp <clone>/plugins/plan-review/agents/*.md .claude/agents/`; keep the file's frontmatter `name` the same as its file name, and keep the reviewers' last-line verdict format, because `/ship` reads it with `plan-review verdict`. When both your file and the config set a model, the config wins, except in Codex, where an agent file's own `model` or `model_reasoning_effort` wins over what `/ship` passes (`/ship` warns once). Codex also reads a project's `.codex/agents` only in a trusted project.
+
+A **custom reviewer** is any other agent file you add to those folders: name it in `agents` and put it in the workflow. Its review goes to `review-<name>.md` in the run's folder and must end with the same verdict line.
 
 Every project-specific rule comes from the project itself: its `CLAUDE.md` (or `AGENTS.md`) and `.plan-review/config.json`.
 
-## Project settings (`.plan-review/config.json`)
+## Settings (`config.json`)
 
-**Moving from 0.1.x.** Settings, runs and your recorded grill mode used to live under `.claude/`. plan-review 0.2.0 reads the old settings (`.claude/pipeline.json`) and the old grill mode (`.claude/work/preferences.json`) when the new file does not exist, and prints one line on stderr saying how to move it. It never writes or moves anything there. Runs in `.claude/work/` are not read: finish a run before you upgrade, or move its folder to `.plan-review/work/` by hand. Replies saved by older versions still load, and the page shows them as Agent.
+There is one settings file, `config.json`, at two levels: yours, in `~/.plan-review/config.json` (`%APPDATA%\plan-review\config.json` on Windows), and the project's, in `.plan-review/config.json`. They are merged setting by setting: the project's wins over yours, and yours over the built-in defaults. Objects merge key by key (so `viewer`, and one agent's `model` and `effort`, merge field by field); a list (`workflow`, `replace`, `checks`, `review_rules`) is replaced whole, so a project's `"replace": []` turns off your list. Each file is checked on its own, and a mistake names the file.
 
-All fields are optional. `plan-review config` prints the resolved settings, and reports mistakes such as unknown keys. See [`examples/config.json`](examples/config.json):
+**Moving from earlier versions.** Settings, runs and your recorded grill mode used to live under `.claude/`. plan-review still reads the old settings (`.claude/pipeline.json`) when `.plan-review/config.json` doesn't exist, and prints one line on stderr saying how to move it. Your page-or-chat choice used to live in `preferences.json`, which is gone: the first `plan-review config` (that is, the first `/ship`) moves it into the project's `.plan-review/config.json` as `grill` and deletes the file (nothing is moved if the config already sets `grill`). A very old `.claude/work/preferences.json` is only copied, never changed or deleted. Runs in `.claude/work/` are not read: finish a run before you upgrade, or move its folder to `.plan-review/work/` by hand. Replies saved by older versions still load, and the page shows them as Agent.
+
+All fields are optional. `plan-review config --harness <tool>` prints the settings in force, with the workflow and each agent's model and effort, and which file each came from, and reports mistakes before any agent starts. See [`examples/config.json`](examples/config.json):
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -245,5 +276,33 @@ All fields are optional. `plan-review config` prints the resolved settings, and 
 | `review_rules` | `[]` | extra rules the code reviewer enforces, in plain words |
 | `branch` | `"{issue}-{slug}"` | the branch name for an issue; must contain `{issue}`, which is the run id (`42`, `PROJ-123`). A prompt run's branch is just its id |
 | `viewer.open` | `"browser"` | `"none"` to only print the viewer's URL |
-| `grill` | none | `"page"` or `"chat"`: where `/ship --grill` asks its questions; unset means your recorded preference, else it asks once |
+| `grill` | none | `"page"` or `"chat"`: where `/ship --grill` asks its questions; unset means it asks once and saves your answer in your own `config.json` |
 | `max_review_rounds` | `3` | review rounds before the orchestrator stops and asks you |
+| `tdd` | `true` | `false`: the implementer need not write tests first, and the test reviewer skips the "did each test fail first" check |
+| `mutation` | none (off) | turns on mutation testing: `"agent"` (the test reviewer breaks lines by hand) or the command of your own tool (see above); unset: no mutation testing |
+| `agents` | `{}` | custom agents by name, e.g. `{"security-reviewer": {"kind": "reviewer"}}`; only reviewers for now. The name can't be `workflow`, `replace` or a plan-review agent's |
+| `harness` | `{}` | one section per tool (`claude-code`, `codex`, `opencode`), below |
+
+### The workflow and each agent's model and effort
+
+A `harness` section holds the tool's `workflow`, its `replace` list, and, under each agent's name, its `model` and `effort`, in that tool's own words:
+
+```json
+{
+  "harness": {
+    "claude-code": {
+      "workflow": ["implementer", ["test-reviewer", "security-reviewer"], "code-reviewer"],
+      "architect": { "model": "opus", "effort": "high" },
+      "implementer": { "model": "sonnet" }
+    }
+  }
+}
+```
+
+The `workflow` lists the agents that run after the architect, in order, by name only: what each takes and gives is fixed by its kind (the implementer writes the code; a reviewer reads it and ends with `VERDICT: PASS` or `VERDICT: FINDINGS`). A list inside it is a group that runs at the same time; if the findings of a group are fixed, that is one combined round and the whole group runs again. Leave an agent out and it doesn't run: no `test-reviewer` means no test review, and no `implementer` means the main session writes the code itself, following the implementer's instructions. The `grill-explorer` and `architect` are required and always run first, so they can't be listed; the implementer can't be in a group, must come first, and no name may be listed twice. A workflow that breaks a rule, an agent file that is missing, or a model or effort the tool doesn't take is reported by `plan-review config` before anything starts. If a model or effort is still refused when an agent starts (for example a model you have no access to), `/ship` starts it on your session's model and says so in one line.
+
+| Tool | Defaults | Models | Effort |
+|---|---|---|---|
+| Claude Code | `grill-explorer`, `architect`, `test-reviewer`, `code-reviewer`: `opus`, `high`; `implementer`: `sonnet` | `opus`, `sonnet`, `haiku`, `fable` | `low`, `medium`, `high`, `xhigh`, `max` |
+| Codex | none: follows your session | any model Codex lists, e.g. `"model": "gpt-5.5"` | its own names, e.g. `"effort": "high"` (passed as `reasoning_effort`) |
+| opencode | none: follows your session | `provider/model`, e.g. `anthropic/claude-opus-4-5` | the model's variant, e.g. `"effort": "high"`; needs a `model` |

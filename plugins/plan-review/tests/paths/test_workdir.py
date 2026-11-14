@@ -3,7 +3,7 @@
 from datetime import date
 from pathlib import Path
 
-from plan_review.paths.workdir import ensure_work_dir, new_prompt_work_dir
+from plan_review.paths.workdir import config_file, ensure_work_dir, new_prompt_work_dir
 
 
 def test_creates_the_issues_work_folder(tmp_path: Path) -> None:
@@ -63,3 +63,21 @@ def test_the_projects_own_gitignore_is_untouched(tmp_path: Path) -> None:
     ensure_work_dir(tmp_path, "42")
 
     assert ignore.read_bytes() == b"node_modules/\r\n"
+
+
+def test_config_file_makes_git_ignore_the_project_config(tmp_path: Path) -> None:
+    path = config_file(tmp_path)
+
+    assert path == tmp_path / ".plan-review" / "config.json"
+    assert (tmp_path / ".plan-review").is_dir()
+    assert (tmp_path / ".plan-review" / ".gitignore").read_text() == "config.json\n.gitignore\n"
+
+
+def test_config_file_leaves_an_existing_gitignore_byte_for_byte(tmp_path: Path) -> None:
+    ignore = tmp_path / ".plan-review" / ".gitignore"
+    ignore.parent.mkdir()
+    ignore.write_bytes(b"mine\r\n")
+
+    config_file(tmp_path)
+
+    assert ignore.read_bytes() == b"mine\r\n"

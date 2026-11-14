@@ -1,18 +1,27 @@
-"""`config` and `prefs`: the project's settings and the owner's saved choices."""
+"""`config`, `launch` and `prefs`: the settings in force and the owner's saved choices."""
 
+import json
 import sys
 from pathlib import Path
 
-from plan_review.paths.workdir import preferences_file
-from plan_review.settings.migration import config_source
-from plan_review.settings.pipeline_config import PipelineConfig, PipelineConfigError, load_pipeline
-from plan_review.settings.prefs import GrillMode, PreferencesError, chosen_grill_mode, record
+from plan_review.harness.adapters import all_adapters
+from plan_review.paths.workdir import config_file, config_path
+from plan_review.settings.migration import move_grill_preference
+from plan_review.settings.pipeline_config import PipelineConfig, PipelineConfigError
+from plan_review.settings.prefs import GrillMode, save_grill_mode
+from plan_review.settings.reader import ConfigReader
+from plan_review.settings.user_folder import user_config_dir
+
+
+def reader() -> ConfigReader:
+    """The merged settings: the user's config.json under the project's."""
+    return ConfigReader.load(Path(), user_config_dir(), {h.key: h.rules for h in all_adapters()})
 
 
 def pipeline_settings() -> tuple[PipelineConfig, str | None]:
-    """The project's settings, and a hint to show when they came from an old file."""
-    source = config_source(Path())
-    return load_pipeline(source.path), source.move_hint
+    """The settings in force, and a hint to show when they came from an old file."""
+    merged = reader()
+    return merged.config, merged.move_hint
 
 
 def print_hint(line: str | None) -> None:
@@ -20,38 +29,66 @@ def print_hint(line: str | None) -> None:
         print(line, file=sys.stderr)
 
 
-def config() -> int:
+def _scope(harness: str | None) -> list[str]:
+    return [harness] if harness is not None else [h.key for h in all_adapters()]
+
+
+def config(harness: str | None) -> int:
+    root = Path()
+    if config_path(root).is_file():
+        config_file(root)  # git ignores the project's own settings
+    print_hint(move_grill_preference(root))
     try:
-        settings, hint = pipeline_settings()
+        merged = reader()
+        problems = [line for key in _scope(harness) for line in merged.problems(key)]
+        if problems:
+            raise PipelineConfigError(problems)
     except PipelineConfigError as error:
         print("\n".join(error.errors), file=sys.stderr)
         return 1
-    print(settings.model_dump_json(indent=2))
-    print_hint(hint)
+    print(json.dumps(merged.report(harness), indent=2))
+    for key in _scope(harness):
+        for line in merged.warnings(key):
+            print(line, file=sys.stderr)
+    print_hint(merged.move_hint)
     return 0
 
 
-def prefs(setting: str, value: str | None) -> int:
+def launch(name: str, harness: str) -> int:
+    try:
+        start = reader().launch(harness, name)
+    except PipelineConfigError as error:
+        print("\n".join(error.errors), file=sys.stderr)
+        return 1
+    print(json.dumps(start.to_json(), indent=2))
+    return 0
+
+
+def prefs(setting: str, value: str | None, project: bool) -> int:
     assert setting == "grill"
     if value is not None:
         if value not in ("page", "chat"):
             print(f"plan-review prefs grill: give page or chat, not '{value}'", file=sys.stderr)
             return 2
         mode: GrillMode = "page" if value == "page" else "chat"
-        record(preferences_file(Path()), mode)
+        target = config_file(Path()) if project else user_config_dir() / "config.json"
+        try:
+            save_grill_mode(target, mode)
+        except PipelineConfigError as error:
+            print("\n".join(error.errors), file=sys.stderr)
+            return 1
         return 0
     try:
-        choice = chosen_grill_mode(Path())
-    except (PipelineConfigError, PreferencesError) as error:
+        merged = reader()
+    except PipelineConfigError as error:
         print("\n".join(error.errors), file=sys.stderr)
         return 1
-    for hint in choice.hints:
-        print_hint(hint)
-    if choice.mode is None:
+    print_hint(merged.move_hint)
+    if merged.config.grill is None:
         print(
             "no grill mode chosen: ask the owner, then `plan-review prefs grill <mode>`",
             file=sys.stderr,
         )
         return 3
-    print(choice.mode)
+    print(merged.config.grill)
     return 0

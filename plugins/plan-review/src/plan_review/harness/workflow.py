@@ -1,4 +1,4 @@
-"""The /ship workflow and the four agents, as written once in `workflow/`.
+"""The /ship workflow and the five agents, as written once in `workflow/`.
 
 The text is tied to no CLI: where a CLI needs its own words, it holds a `{{slot}}` that
 the CLI's adapter fills in.
@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-AGENT_NAMES = ("architect", "implementer", "test-reviewer", "code-reviewer")
+AGENT_NAMES = ("grill-explorer", "architect", "implementer", "test-reviewer", "code-reviewer")
 _SLOT = re.compile(r"\{\{(\w+)\}\}")
 
 

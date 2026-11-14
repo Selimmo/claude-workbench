@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import IO
 
 import pytest
-from conftest import PACKAGE_VERSION, PLUGIN, WindowsStylePath, version_of
+from conftest import PACKAGE_VERSION, PLUGIN, WindowsStylePath, git, version_of
 from fastapi import FastAPI
 
 from plan_review.cli import main, runtime
@@ -25,9 +25,11 @@ from plan_review.events.status import StatusStore
 from plan_review.grill.drafts import GrillDraftStore
 from plan_review.grill.state import SubmittedAnswer
 from plan_review.grill.store import GrillStore
+from plan_review.harness.adapters import all_adapters
 from plan_review.plan.plan_file import PlanFileError, load_plan
 from plan_review.review.threads import ThreadStore
-from plan_review.settings.pipeline_config import PipelineConfigError, load_pipeline
+from plan_review.settings.pipeline_config import PipelineConfigError
+from plan_review.settings.reader import ConfigReader
 
 
 def test_version_flag_prints_version_and_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
@@ -415,7 +417,7 @@ def test_config_prints_the_resolved_pipeline_settings(
 
     exit_code = main(["config"])
 
-    config = json.loads(capsys.readouterr().out)
+    config = json.loads(capsys.readouterr().out)["settings"]
     assert exit_code == 0
     assert config["checks"] == [{"name": "all", "run": "./check.sh"}]
     assert config["max_review_rounds"] == 3
@@ -521,14 +523,16 @@ def test_a_plan_path_is_reported_with_forward_slashes(tmp_path: Path) -> None:
     assert error.value.errors == [f"{(tmp_path / 'plan.json').as_posix()}: file not found"]
 
 
-def test_a_pipeline_path_is_reported_with_forward_slashes(tmp_path: Path) -> None:
-    bad = WindowsStylePath(tmp_path / "pipeline.json")
-    bad.write_text('{"viewer": 3}')
+def test_a_config_path_is_reported_with_forward_slashes(tmp_path: Path) -> None:
+    user = WindowsStylePath(tmp_path / "user")
+    user.mkdir()
+    (user / "config.json").write_text('{"viewer": 3}')
+    rules = {h.key: h.rules for h in all_adapters()}
 
     with pytest.raises(PipelineConfigError) as error:
-        load_pipeline(bad)
+        ConfigReader.load(tmp_path, user, rules)
 
-    assert error.value.errors[0].startswith(f"{(tmp_path / 'pipeline.json').as_posix()}: ")
+    assert error.value.errors[0].startswith(f"{(tmp_path / 'user' / 'config.json').as_posix()}: ")
 
 
 def key_project(project: Path) -> Path:
@@ -706,44 +710,6 @@ def test_cli_messages_use_the_label(project: Path, capsys: pytest.CaptureFixture
         "no .plan-review/work/99/ for #99: is this the project root?",
         "no thread 't-nope' for #7",
     ]
-
-
-def test_prefs_command_sets_and_prints_the_grill_mode(
-    project: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    assert main(["prefs", "grill"]) == 3
-    assert "no grill mode chosen" in capsys.readouterr().err
-
-    assert main(["prefs", "grill", "chat"]) == 0
-    assert json.loads((project / ".plan-review" / "work" / "preferences.json").read_text()) == {
-        "grill": "chat"
-    }
-    capsys.readouterr()
-
-    assert main(["prefs", "grill"]) == 0
-    assert capsys.readouterr().out == "chat\n"
-
-    write_pipeline(project, {"grill": "page"})  # the team's setting wins
-    assert main(["prefs", "grill"]) == 0
-    assert capsys.readouterr().out == "page\n"
-
-    assert main(["prefs", "grill", "tab"]) == 2
-    assert "page or chat" in capsys.readouterr().err
-
-    write_pipeline(project, {"grill": "tab"})
-    assert main(["prefs", "grill"]) == 1
-    assert "grill: Input should be 'page' or 'chat'" in capsys.readouterr().err
-
-
-@pytest.mark.parametrize("content", ["{bad", '{"grill": "pagex"}'])
-def test_prefs_grill_with_an_unreadable_preferences_file_exits_1(
-    project: Path, capsys: pytest.CaptureFixture[str], content: str
-) -> None:
-    (project / ".plan-review" / "work" / "preferences.json").write_text(content)
-    assert main(["prefs", "grill"]) == 1
-    err = capsys.readouterr().err
-    assert "preferences.json" in err
-    assert "Traceback" not in err
 
 
 def write_turn(project: Path, turn: object, name: str = "turn.json") -> Path:
@@ -1125,7 +1091,7 @@ def test_config_reads_the_new_file(project: Path, capsys: pytest.CaptureFixture[
     assert main(["config"]) == 0
 
     out, err = capsys.readouterr()
-    assert json.loads(out)["max_review_rounds"] == 5
+    assert json.loads(out)["settings"]["max_review_rounds"] == 5
     assert err == ""
 
 
@@ -1137,7 +1103,7 @@ def test_config_with_only_the_old_file_keeps_stdout_clean_and_hints_on_stderr(
     assert main(["config"]) == 0
 
     out, err = capsys.readouterr()
-    assert json.loads(out)["max_review_rounds"] == 4
+    assert json.loads(out)["settings"]["max_review_rounds"] == 4
     assert len(err.splitlines()) == 1
     assert ".claude/pipeline.json" in err
     assert ".plan-review/config.json" in err
@@ -1221,23 +1187,6 @@ def test_serve_prints_its_url_line_before_the_hint(
     assert len(lines) == 2
 
 
-def test_prefs_grill_reads_the_old_file_when_it_is_the_only_one(
-    project: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    old = project / ".claude" / "work" / "preferences.json"
-    old.parent.mkdir(parents=True)
-    old.write_text('{"grill": "chat"}')
-    before = snapshot(project)
-
-    assert main(["prefs", "grill"]) == 0
-
-    out, err = capsys.readouterr()
-    assert out == "chat\n"
-    assert len(err.splitlines()) == 1
-    assert "plan-review prefs grill" in err
-    assert snapshot(project) == before
-
-
 def test_prefs_grill_from_the_old_config_hints_on_stderr(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1249,37 +1198,6 @@ def test_prefs_grill_from_the_old_config_hints_on_stderr(
     assert out == "page\n"
     assert ".claude/pipeline.json" in err
     assert ".plan-review/config.json" in err
-
-
-def test_a_broken_old_preferences_file_is_reported_under_its_own_name(
-    project: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    old = project / ".claude" / "work" / "preferences.json"
-    old.parent.mkdir(parents=True)
-    old.write_text("{bad")
-
-    assert main(["prefs", "grill"]) == 1
-
-    assert ".claude/work/preferences.json" in capsys.readouterr().err
-
-
-def test_prefs_grill_set_writes_the_new_file_and_leaves_the_old_one(
-    project: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    old = project / ".claude" / "work" / "preferences.json"
-    old.parent.mkdir(parents=True)
-    old.write_text('{"grill": "chat"}')
-
-    assert main(["prefs", "grill", "page"]) == 0
-    capsys.readouterr()
-
-    assert old.read_text() == '{"grill": "chat"}'
-    assert json.loads((project / ".plan-review" / "work" / "preferences.json").read_text()) == {
-        "grill": "page"
-    }
-    assert main(["prefs", "grill"]) == 0
-    out, err = capsys.readouterr()
-    assert (out, err) == ("page\n", "")
 
 
 def test_an_old_run_folder_is_left_alone(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -1368,3 +1286,355 @@ def test_a_socket_that_cannot_be_bound_is_closed(monkeypatch: pytest.MonkeyPatch
         viewer._bind_local(70000)  # pyright: ignore[reportPrivateUsage]
 
     assert made[0].fileno() == -1
+
+
+# --- one config file at two levels: config, launch, prefs ---------------------------------------
+
+CLAUDE = "claude-code"
+
+
+def write_user_config(folder: Path, config: object) -> Path:
+    path = folder / "config.json"
+    path.write_text(json.dumps(config))
+    return path
+
+
+def test_config_moves_the_grill_choice_and_says_so_on_stderr(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    prefs = project / ".plan-review" / "work" / "preferences.json"
+    prefs.write_text('{"grill": "page"}')
+
+    assert main(["config"]) == 0
+
+    out, err = capsys.readouterr()
+    report = json.loads(out)
+    assert report["settings"]["grill"] == "page"
+    assert report["from"]["grill"] == ".plan-review/config.json"
+    assert "moved the grill choice" in err
+    assert not prefs.exists()
+
+
+def test_config_shows_the_workflow_and_settings_in_force_and_where_each_came_from(
+    project: Path, user_config_folder: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    user = write_user_config(
+        user_config_folder, {"harness": {CLAUDE: {"architect": {"model": "sonnet"}}}}
+    )
+    write_pipeline(
+        project,
+        {
+            "harness": {
+                CLAUDE: {
+                    "workflow": ["implementer", "code-reviewer"],
+                    "code-reviewer": {"effort": "low"},
+                }
+            }
+        },
+    )
+
+    assert main(["config", "--harness", CLAUDE]) == 0
+
+    report = json.loads(capsys.readouterr().out)
+    harness = report["settings"]["harness"]
+    assert list(harness) == [CLAUDE]
+    assert harness[CLAUDE]["workflow"] == ["implementer", "code-reviewer"]
+    assert harness[CLAUDE]["architect"] == {"model": "sonnet", "effort": "high"}
+    assert harness[CLAUDE]["code-reviewer"] == {"model": "opus", "effort": "low"}
+    assert report["from"][f"harness.{CLAUDE}.architect.model"] == user.as_posix()
+    assert report["from"][f"harness.{CLAUDE}.architect.effort"] == "built-in"
+    assert report["from"][f"harness.{CLAUDE}.workflow"] == ".plan-review/config.json"
+
+
+def test_config_without_a_harness_shows_every_tool(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["config"]) == 0
+
+    harness = json.loads(capsys.readouterr().out)["settings"]["harness"]
+    assert list(harness) == ["claude-code", "codex", "opencode"]
+    assert harness["codex"]["workflow"] == ["implementer", "test-reviewer", "code-reviewer"]
+
+
+def test_config_with_a_bad_workflow_exits_1_and_names_every_problem(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    workflow = ["architect", ["implementer", "code-reviewer"]]
+    write_pipeline(project, {"harness": {CLAUDE: {"workflow": workflow}}})
+
+    assert main(["config", "--harness", CLAUDE]) == 1
+
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert len(err.splitlines()) == 2
+    assert all(f"harness.{CLAUDE}.workflow" in line for line in err.splitlines())
+
+
+def test_config_prints_warnings_on_stderr_and_keeps_stdout_json(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    agents = project / ".claude" / "agents"
+    agents.mkdir(parents=True)
+    (agents / "architect.md").write_text("mine")
+
+    assert main(["config", "--harness", CLAUDE]) == 0
+
+    out, err = capsys.readouterr()
+    json.loads(out)
+    assert ".claude/agents/architect.md is not used" in err
+
+
+def test_launch_prints_what_ship_passes_to_the_tool(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_pipeline(project, {"harness": {CLAUDE: {"architect": {"model": "sonnet"}}}})
+
+    assert main(["launch", "architect", "--harness", CLAUDE]) == 0
+    claude = json.loads(capsys.readouterr().out)
+    assert main(["launch", "architect", "--harness", "codex"]) == 0
+    codex = json.loads(capsys.readouterr().out)
+
+    assert (claude["agent"], claude["model"], claude["effort"]) == (
+        "plan-review:architect",
+        "sonnet",
+        "high",
+    )
+    assert (codex["agent"], codex["model"], codex["effort"]) == (
+        "plan-review-architect",
+        None,
+        None,
+    )
+
+
+def test_launch_over_a_broken_config_exits_1_with_nothing_on_stdout(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_pipeline(project, {"harness": {CLAUDE: {"replace": ["architect"]}}})
+
+    assert main(["launch", "code-reviewer", "--harness", CLAUDE]) == 1
+
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert "architect" in err
+
+
+def test_config_for_one_tool_ignores_a_broken_section_of_another(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_pipeline(project, {"harness": {"codex": {"workflow": ["architect"]}}})
+    unused = project / ".codex" / "agents" / "code-reviewer.toml"
+    unused.parent.mkdir(parents=True)
+    unused.write_text("x")  # a codex-only warning: not used, since replace is unset
+
+    assert main(["config", "--harness", CLAUDE]) == 0
+
+    out, err = capsys.readouterr()
+    json.loads(out)
+    assert "codex" not in err
+
+
+def test_launch_of_a_removed_agent_exits_1(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_pipeline(project, {"harness": {CLAUDE: {"workflow": ["implementer", "code-reviewer"]}}})
+
+    assert main(["launch", "test-reviewer", "--harness", CLAUDE]) == 1
+
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert err.splitlines() == [f"test-reviewer is not in the workflow of {CLAUDE}"]
+
+
+def test_prefs_grill_saves_to_the_user_file_by_default(
+    project: Path, user_config_folder: Path
+) -> None:
+    assert main(["prefs", "grill", "page"]) == 0
+
+    assert json.loads((user_config_folder / "config.json").read_text()) == {"grill": "page"}
+    assert not (project / ".plan-review" / "config.json").exists()
+    assert not (project / ".plan-review" / "work" / "preferences.json").exists()
+
+
+def test_prefs_grill_project_saves_to_the_project_file(project: Path) -> None:
+    assert main(["prefs", "grill", "chat", "--project"]) == 0
+
+    saved = json.loads((project / ".plan-review" / "config.json").read_text())
+    assert saved == {"grill": "chat"}
+
+
+def test_prefs_grill_with_a_wrong_value_exits_2(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["prefs", "grill", "tab"]) == 2
+    assert "page or chat" in capsys.readouterr().err
+
+
+def test_prefs_grill_prints_the_project_choice_over_the_users(
+    project: Path, user_config_folder: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["prefs", "grill"]) == 3
+    assert "no grill mode chosen" in capsys.readouterr().err
+
+    write_user_config(user_config_folder, {"grill": "page"})
+    assert main(["prefs", "grill"]) == 0
+    assert capsys.readouterr().out == "page\n"
+
+    write_pipeline(project, {"grill": "chat"})
+    assert main(["prefs", "grill"]) == 0
+    assert capsys.readouterr().out == "chat\n"
+
+    write_pipeline(project, {"grill": "tab"})
+    assert main(["prefs", "grill"]) == 1
+    assert "grill: Input should be 'page' or 'chat'" in capsys.readouterr().err
+
+
+def test_prefs_grill_with_a_mode_over_a_broken_user_config_exits_1_and_keeps_the_file(
+    project: Path, user_config_folder: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    broken = user_config_folder / "config.json"
+    broken.write_text("{bad")
+
+    assert main(["prefs", "grill", "page"]) == 1
+    assert broken.read_text() == "{bad"
+    assert broken.as_posix() in capsys.readouterr().err
+
+
+def test_preferences_json_is_no_longer_read(project: Path) -> None:
+    (project / ".plan-review" / "work" / "preferences.json").write_text('{"grill": "page"}')
+
+    assert main(["prefs", "grill"]) == 3
+
+
+def test_serve_and_branch_follow_the_user_file(
+    project: Path,
+    server: FakeServer,
+    user_config_folder: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_user_config(
+        user_config_folder, {"viewer": {"open": "none"}, "branch": "u/{issue}-{slug}"}
+    )
+
+    assert main(["serve", "7"], runtime=server.runtime) == 0
+    assert main(["branch", "7"]) == 0
+
+    assert server.opened == []
+    assert capsys.readouterr().out.splitlines()[-1].startswith("u/7-")
+
+
+def git_status(repo: Path) -> str:
+    return git(repo, "status", "--porcelain")
+
+
+def git_repo(tmp_path: Path, name: str) -> Path:
+    repo = tmp_path / name
+    repo.mkdir()
+    git(repo, "init", "--quiet")
+    (repo / "README.md").write_text("x\n")
+    work = repo / ".plan-review" / "work"
+    work.mkdir(parents=True)
+    (work / ".gitignore").write_text("*\n")
+    git(repo, "add", "README.md")
+    git(repo, "commit", "--quiet", "-m", "start")
+    return repo
+
+
+def test_after_the_move_git_has_nothing_to_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    moved = git_repo(tmp_path, "moved")
+    (moved / ".plan-review" / "work" / "preferences.json").write_text('{"grill": "page"}')
+    monkeypatch.chdir(moved)
+    assert main(["config"]) == 0
+    saved = git_repo(tmp_path, "saved")
+    monkeypatch.chdir(saved)
+    assert main(["prefs", "grill", "chat", "--project"]) == 0
+
+    assert (moved / ".plan-review" / "config.json").is_file()
+    assert (saved / ".plan-review" / "config.json").is_file()
+    assert git_status(moved) == ""
+    assert git_status(saved) == ""
+
+
+def test_a_hand_written_project_config_is_ignored_after_config_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = git_repo(tmp_path, "hand")
+    (repo / ".plan-review" / "config.json").write_text('{"branch": "x-{issue}"}')
+    assert git_status(repo) != ""
+    monkeypatch.chdir(repo)
+
+    assert main(["config"]) == 0
+
+    assert git_status(repo) == ""
+
+
+def test_a_committed_project_config_stays_tracked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = git_repo(tmp_path, "committed")
+    config = repo / ".plan-review" / "config.json"
+    config.write_text('{"branch": "x-{issue}"}')
+    git(repo, "add", "-f", ".plan-review/config.json")
+    git(repo, "commit", "--quiet", "-m", "share the config")
+    (repo / ".plan-review" / "work" / "preferences.json").write_text('{"grill": "page"}')
+    monkeypatch.chdir(repo)
+
+    assert main(["config"]) == 0
+
+    assert json.loads(config.read_text()) == {"branch": "x-{issue}", "grill": "page"}
+    assert git_status(repo) == "M .plan-review/config.json"
+
+
+def answers_file(project: Path, answers: object) -> Path:
+    path = project / "answers.json"
+    path.write_text(json.dumps(answers))
+    return path
+
+
+def test_the_chat_grill_records_answers_confirm_and_reopen_in_grill_json(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    main(["grill", "post", "7", str(write_turn(project, FIRST_TURN))])
+    done = str(write_turn(project, {"done": True}, "done.json"))
+    store = grill_store(project)
+
+    bad = answers_file(project, [{"question_id": "nope", "kind": "choice", "choice_id": "a"}])
+    assert main(["grill", "answer", "7", str(bad)]) == 1
+    assert "nope" in capsys.readouterr().err
+
+    good = answers_file(project, [{"question_id": "q1", "kind": "choice", "choice_id": "b"}])
+    assert main(["grill", "answer", "7", str(good)]) == 0
+    assert [a.kind for a in store.get().log] == ["answers"]
+
+    main(["grill", "post", "7", done])
+    assert main(["grill", "reopen", "7", "what about cost?"]) == 0
+    main(["grill", "post", "7", done])
+    assert main(["grill", "confirm", "7"]) == 0
+
+    state = store.get()
+    assert [a.kind for a in state.log] == ["answers", "reopen", "confirm"]
+    assert state.log[1].text == "what about cost?"
+    assert state.confirmed_at is not None
+    capsys.readouterr()
+    assert main(["grill", "decisions", "7"]) == 0
+
+
+def test_grill_answer_with_a_file_of_the_wrong_shape_exits_1_naming_the_file(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    main(["grill", "post", "7", str(write_turn(project, FIRST_TURN))])
+    wrong = project / "wrong.json"
+    wrong.write_text('{"not": "a list"}')
+
+    assert main(["grill", "answer", "7", str(wrong)]) == 1
+    assert "wrong.json" in capsys.readouterr().err
+
+
+def test_grill_answer_without_a_file_exits_2(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    main(["grill", "post", "7", str(write_turn(project, FIRST_TURN))])
+
+    assert main(["grill", "answer", "7", str(project / "nope.json")]) == 2
+    assert "nope.json: file not found" in capsys.readouterr().err

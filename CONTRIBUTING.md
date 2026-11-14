@@ -71,8 +71,8 @@ claude-workbench/
         │                               #   shipped-paths lists what the zip holds, build-inputs what
         │                               #   its viewer page is built from
         ├── README.md                   # commands, plan.json, agents, config.json
-        ├── workflow/                   # the /ship workflow and the four agents, written once (edit these)
-        ├── agents/                     # GENERATED from workflow/: architect, implementer, test-reviewer, code-reviewer
+        ├── workflow/                   # the /ship workflow and the five agents, written once (edit these)
+        ├── agents/                     # GENERATED from workflow/: grill-explorer, architect, implementer, test-reviewer, code-reviewer
         ├── skills/ship/SKILL.md        # GENERATED from workflow/: /plan-review:ship, the orchestrator
         ├── examples/                   # plan.json, config.json, grill samples, and demo/ (the README GIFs' inputs)
         ├── src/plan_review/            # only __init__.py at the root; every module lives in a folder (cli/ holds the entry point)
@@ -81,13 +81,13 @@ claude-workbench/
         │   │   ├── runtime.py          # Runtime: what a command takes from outside (work folder, date, server, browser), so tests hand in fakes
         │   │   ├── viewer.py           # serve, stop, viewer-process
         │   │   ├── agent.py            # wait, status, reply, threads
-        │   │   ├── grill.py            # grill post, pending, decisions, schema
+        │   │   ├── grill.py            # grill post, pending, decisions, schema, answer, confirm, reopen
         │   │   ├── pipeline.py         # init, schema, validate, branch, verdict, tree-hash
-        │   │   ├── settings.py         # config, prefs
+        │   │   ├── settings.py         # config, launch, prefs
         │   │   └── setup.py            # install, upgrade
         │   ├── utils/                  # generic helpers: safe file saving, JSON files, text checks (imports no other folder)
         │   ├── paths/                  # run ids, the work folder, and RunPaths (every file a run keeps)
-        │   ├── settings/               # preferences, pipeline config, migration of old files
+        │   ├── settings/               # the config reader (user and project config.json, merged and checked), the steps of a workflow, migration
         │   ├── plan/                   # the plan.json format
         │   │   ├── model.py            # Plan, Issue and the rest of the format (`plan-review schema`)
         │   │   ├── plan_file.py        # PlanFileError, load_plan, record_branch

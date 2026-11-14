@@ -51,7 +51,7 @@ def test_the_adapters_package_names_no_tool() -> None:
 def write_workflow(root: Path) -> None:
     (root / "workflow" / "agents").mkdir(parents=True)
     (root / "workflow" / "ship.md").write_text("---\nname: ship\ndescription: S\n---\n\n# Ship\n")
-    for name in ("architect", "implementer", "test-reviewer", "code-reviewer"):
+    for name in ("grill-explorer", "architect", "implementer", "test-reviewer", "code-reviewer"):
         (root / "workflow" / "agents" / f"{name}.md").write_text(
             f"---\nname: {name}\ndescription: D\n---\n\nRules: {{{{rules_file}}}}\n"
         )

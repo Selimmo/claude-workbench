@@ -8,6 +8,7 @@ from plan_review.harness.distribution import SelfInstall, ToolInstall
 from plan_review.harness.waiting import WAITING_TEXTS, WaitingStyle
 from plan_review.harness.wording import Wording
 from plan_review.harness.workflow import Workflow
+from plan_review.settings.agent_rules import AgentRules
 
 
 @dataclass(frozen=True)
@@ -20,11 +21,12 @@ class Harness:
     agent_files: AgentFiles
     distribution: SelfInstall | ToolInstall
     waiting: WaitingStyle
+    rules: AgentRules
 
     def slots(self) -> dict[str, str]:
-        """The Wording fields plus the waiting texts: the `{{slot}}` values the workflow needs."""
+        """The Wording fields, the waiting texts and the tool's key: the workflow's `{{slot}}`s."""
         waiting = {name: getattr(self.waiting, name) for name in WAITING_TEXTS}
-        return {**asdict(self.wording), **waiting}
+        return {**asdict(self.wording), **waiting, "harness": self.key}
 
     def files(self, workflow: Workflow) -> dict[PurePosixPath, str]:
         return self.agent_files.files(workflow, self.slots())

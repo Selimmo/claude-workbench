@@ -48,7 +48,7 @@ pkg="$UV_TOOL_DIR/plan-review/lib/site-packages/plan_review/harness/adapters/cod
 mkdir -p "$pkg/skills/ship/agents" "$pkg/agents"
 echo "skill $version" > "$pkg/skills/ship/SKILL.md"
 echo "policy $version" > "$pkg/skills/ship/agents/openai.yaml"
-for role in architect implementer test-reviewer code-reviewer; do
+for role in grill-explorer architect implementer test-reviewer code-reviewer; do
   echo "agent $version" > "$pkg/agents/plan-review-$role.toml"
 done
 cat > "$UV_TOOL_BIN_DIR/plan-review" <<FAKE
@@ -60,7 +60,7 @@ case "\\$1" in
     mkdir -p "\\$HOME/.agents/skills/ship/agents" "\\$CODEX_HOME/agents"
     cp "\\$pkg/skills/ship/SKILL.md" "\\$HOME/.agents/skills/ship/SKILL.md"
     cp "\\$pkg/skills/ship/agents/openai.yaml" "\\$HOME/.agents/skills/ship/agents/openai.yaml"
-    for role in architect implementer test-reviewer code-reviewer; do
+    for role in grill-explorer architect implementer test-reviewer code-reviewer; do
       [ -e "$FAKES/lose-\\$role" ] || cp "\\$pkg/agents/plan-review-\\$role.toml" "\\$CODEX_HOME/agents/"
     done ;;
   upgrade)
@@ -129,6 +129,18 @@ def test_prove_codex_fails_when_an_agent_file_is_missing(fakes: Path, tmp_path: 
     assert "plan-review-implementer.toml is missing" in result.stderr
 
 
+def test_prove_codex_fails_when_the_grill_explorer_file_is_missing(
+    fakes: Path, tmp_path: Path
+) -> None:
+    only_release(fakes, "plan-review--v0.3.0")
+    (fakes / "lose-grill-explorer").write_text("")
+
+    result = prove(tmp_path / "proof")
+
+    assert result.returncode == 1
+    assert "plan-review-grill-explorer.toml is missing" in result.stderr
+
+
 def test_prove_codex_fails_when_the_installed_version_is_wrong(fakes: Path, tmp_path: Path) -> None:
     only_release(fakes, "plan-review--v0.3.0")
     uv = fakes / "bin" / "uv"
@@ -152,7 +164,7 @@ def test_prove_codex_upgrades_from_the_previous_release(fakes: Path, tmp_path: P
         "plan_review-0.3.1-py3-none-any.whl",  # then its own upgrade
     ]
     assert result.stdout.strip().splitlines()[-1] == (
-        "ok: plan-review 0.3.1, with the ship skill and the four agents"
+        "ok: plan-review 0.3.1, with the ship skill and the five agents"
     )
 
 

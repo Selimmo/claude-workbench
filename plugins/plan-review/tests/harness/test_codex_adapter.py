@@ -18,7 +18,7 @@ from plan_review.harness.distribution import releases, wheel
 from plan_review.harness.workflow import load_workflow
 
 FILES = PLUGIN / "src" / "plan_review" / "harness" / "adapters" / "codex_files"
-ROLES = ["architect", "implementer", "test-reviewer", "code-reviewer"]
+ROLES = ["grill-explorer", "architect", "implementer", "test-reviewer", "code-reviewer"]
 
 
 def generated() -> dict[PurePosixPath, str]:
@@ -140,7 +140,10 @@ def test_codex_ship_names_nothing_from_claude_code() -> None:
 
 
 def test_codex_project_override_is_documented_to_the_skill() -> None:
-    assert ".codex/agents/<name>.toml" in skill()
+    step_0 = skill().split("## 0. Preconditions", 1)[1].split("## 1.", 1)[0]
+
+    assert ".codex/agents/<name>.toml` in the project, or `~/.codex/agents/<name>.toml" in step_0
+    assert "`replace`" in step_0
     assert "plan-review-architect" in skill()
 
 
@@ -157,7 +160,7 @@ def test_generator_writes_every_adapter() -> None:
     assert "skills/ship/SKILL.md" in names
     assert "src/plan_review/harness/adapters/codex_files/skills/ship/SKILL.md" in names
     assert "src/plan_review/harness/adapters/opencode_files/commands/plan-review-ship.md" in names
-    assert len(expected) == 1 + 4 + 1 + 1 + 4 + 1 + 4
+    assert len(expected) == 1 + 5 + 1 + 1 + 5 + 1 + 5
 
 
 def test_a_changed_codex_file_is_reported_stale(tmp_path: Path) -> None:
