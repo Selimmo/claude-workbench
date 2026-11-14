@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { App } from './App'
 import example from '../../examples/plan.json'
 import old from '../../tests/fixtures/plan-0.1.11.json'
+import type { Member, Plan } from './plan'
 import { FakeServer, draft, message, thread } from './test/fakeServer'
 
 let server: FakeServer
@@ -180,22 +181,131 @@ async function openDetails() {
   return screen.getByRole('dialog', { name: 'Details of Orchestrator' })
 }
 
+/** The example plan with its first class's members changed by `edit`. */
+function planWith(id: string, edit: (members: Member[]) => void) {
+  const plan = structuredClone(example) as Plan
+  const cls = plan.classes.find((c) => c.id === id)
+  if (!cls) throw new Error(`no class ${id}`)
+  edit(cls.members)
+  return plan
+}
+
+const memberLines = (details: HTMLElement) => [...details.querySelectorAll('li.member-line')]
+
 test('clicking a class opens its details beside it, closed by Esc', async () => {
   const details = await openDetails()
 
-  const rows = within(details)
-    .getAllByRole('listitem')
-    .map((row) => row.textContent)
-  expect(rows).toContainEqual(expect.stringContaining('give_hint() -> AsyncIterator[str]'))
-  expect(rows.find((r) => r?.includes('give_hint()'))).toContain('new')
-  expect(rows.find((r) => r?.includes('parse_command'))).toContain('removed')
-  expect(rows.find((r) => r?.includes('on_event'))).toContain('changed')
   expect(details).toHaveTextContent('Asks the HintPolicy')
-  expect(rows.find((r) => r?.includes('on_event'))).toContain('Handles RequestHint')
+  expect(details.querySelector('p.details-note')).toHaveTextContent('Asks the HintPolicy')
 
   fireEvent.keyDown(details, { key: 'Escape' })
 
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+test('the popup puts members in a green, orange and red box, with no tag on each line', async () => {
+  const details = await openDetails()
+
+  const boxes = within(details).getAllByRole('list')
+  expect(boxes.map((b) => b.getAttribute('aria-label'))).toEqual([
+    'New members, 2',
+    'Changed members, 1',
+    'Removed members, 1',
+  ])
+  expect(boxes.map((b) => b.getAttribute('data-status'))).toEqual(['added', 'modified', 'removed'])
+  expect(within(boxes[0]).getAllByRole('listitem')).toHaveLength(2)
+  for (const line of memberLines(details)) {
+    expect(line.textContent).not.toMatch(/\b(new|changed|removed)\b/i)
+    expect(line.querySelector('.badge')).toBeNull()
+  }
+  // Orchestrator has no unchanged members, so there is nothing to fold away.
+  expect(within(details).queryByRole('button', { name: /Show \d+ unchanged/ })).toBeNull()
+})
+
+test("a removed member's name is crossed out and can still be commented on", async () => {
+  const details = await openDetails()
+  const removed = within(details).getByRole('list', { name: 'Removed members, 1' })
+
+  expect(removed.querySelector('s')).toHaveTextContent('parse_command')
+  fireEvent.click(within(removed).getByRole('button', { name: 'parse_command' }))
+  expect(removed).toHaveTextContent('parse_command(text: str) -> Command | None')
+  expect(
+    within(removed).getByRole('button', { name: 'Comment on class:Orchestrator.parse_command' }),
+  ).toBeInTheDocument()
+})
+
+test('unchanged members are folded behind Show N unchanged', async () => {
+  server.plan = planWith('class:Orchestrator', (members) => {
+    for (const name of ['alpha', 'beta'])
+      members.push({
+        id: `class:Orchestrator.${name}`,
+        name,
+        kind: 'property',
+        signature: `${name}: int`,
+        status: 'unchanged',
+      })
+  })
+  const details = await openDetails()
+
+  expect(details).not.toHaveTextContent('alpha')
+  fireEvent.click(within(details).getByRole('button', { name: 'Show 2 unchanged' }))
+
+  const list = within(details).getByRole('list', { name: 'Unchanged members, 2' })
+  expect(list).not.toHaveAttribute('data-status')
+  expect(list).toHaveTextContent('alpha')
+  expect(list).toHaveTextContent('beta')
+  expect(within(details).queryByRole('button', { name: /Show 2 unchanged/ })).toBeNull()
+})
+
+test('a class whose members are all unchanged shows only the Show N unchanged button', async () => {
+  await open()
+  await screen.findByText('HintPolicy')
+
+  fireEvent.click(element('class:LLMClient'))
+
+  const details = screen.getByRole('dialog', { name: 'Details of LLMClient: Protocol' })
+  expect(within(details).getByRole('button', { name: 'Show 1 unchanged' })).toBeInTheDocument()
+  expect(details).not.toHaveTextContent('stream')
+})
+
+test('clicking a method line shows its full signature, one at a time', async () => {
+  const details = await openDetails()
+  const giveHint = within(details).getByRole('button', { name: 'give_hint' })
+  const onEvent = within(details).getByRole('button', { name: 'on_event' })
+  const signature = (text: string) => screen.queryByText(text)
+
+  expect(giveHint).toHaveAttribute('aria-expanded', 'false')
+  expect(signature('give_hint() -> AsyncIterator[str]')).toBeNull()
+
+  fireEvent.click(giveHint)
+  expect(giveHint).toHaveAttribute('aria-expanded', 'true')
+  expect(signature('give_hint() -> AsyncIterator[str]')?.tagName).toBe('CODE')
+  expect(signature('give_hint() -> AsyncIterator[str]')).toHaveClass('member-signature')
+
+  fireEvent.click(onEvent)
+  expect(signature('on_event(event: ClientEvent) -> None')).toBeInTheDocument()
+  expect(signature('give_hint() -> AsyncIterator[str]')).toBeNull()
+  expect(giveHint).toHaveAttribute('aria-expanded', 'false')
+
+  fireEvent.click(onEvent)
+  expect(signature('on_event(event: ClientEvent) -> None')).toBeNull()
+})
+
+test('a field line shows its type and has nothing to open', async () => {
+  const details = await openDetails()
+
+  const line = within(details).getByText('hints_given').closest('li') as HTMLElement
+  expect(line).toHaveTextContent('hints_given: int')
+  expect(line.querySelector('code.member-type')).toHaveTextContent(': int')
+  expect(line.querySelector('[aria-expanded]')).toBeNull()
+})
+
+test("the description is the line's main text, under the name", async () => {
+  const details = await openDetails()
+
+  const line = within(details).getByRole('button', { name: 'on_event' }).closest('li')
+  expect(line?.querySelector('p.member-note')).toHaveTextContent('Handles RequestHint by asking')
+  expect(line).not.toHaveTextContent('ClientEvent')
 })
 
 test('the details popup takes focus, so Esc closes it from the page', async () => {
@@ -213,46 +323,95 @@ test("a second box's details popup also takes focus", async () => {
   expect(details).toContainElement(document.activeElement as HTMLElement)
 })
 
-test('the details popup names the kind and the bases', async () => {
+test('the popup title shows the name coloured by status, the parents in grey, and no status tag', async () => {
   await open()
   await screen.findByText('HintPolicy')
 
   fireEvent.click(element('class:HintLevel'))
 
   const details = screen.getByRole('dialog', { name: 'Details of HintLevel: Enum' })
-  expect(within(details).getByText('enum')).toBeInTheDocument()
+  const heading = within(details).getByRole('heading', { level: 2 })
+  expect(heading).toHaveAttribute('data-status', 'added')
+  expect(heading.querySelector('strong')).toHaveTextContent('HintLevel')
+  expect(heading.querySelector('.bases')).toHaveTextContent('Enum')
+  const top = details.querySelector('.card-top') as HTMLElement
+  expect(within(top).getByText('enum')).toBeInTheDocument()
+  expect(top.textContent).not.toMatch(/added|new/i)
 })
 
-test("the details popup's Comment buttons comment on the class or on a member", async () => {
+test('each comment icon is a focusable button that comments on its class or member', async () => {
   const details = await openDetails()
 
-  fireEvent.click(within(details).getByRole('button', { name: 'Comment on class:Orchestrator' }))
-  expect(screen.getByRole('dialog', { name: 'New comment on class:Orchestrator' })).toBeVisible()
-  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-
-  fireEvent.click(element('class:Orchestrator.parse_command'))
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Comment on class:Orchestrator.parse_command' }),
-  )
-  const composer = screen.getByRole('dialog', {
-    name: 'New comment on class:Orchestrator.parse_command',
+  const classIcon = within(details).getByRole('button', { name: 'Comment on class:Orchestrator' })
+  const icon = within(details).getByRole('button', {
+    name: 'Comment on class:Orchestrator.on_event',
   })
-  write(composer, 'Keep it?')
+  for (const button of [classIcon, icon]) {
+    expect(button.textContent).toBe('')
+    expect(button).not.toHaveAttribute('hidden')
+    expect(button).not.toHaveAttribute('tabindex', '-1')
+  }
+  fireEvent.click(icon)
+  const composer = screen.getByRole('dialog', {
+    name: 'New comment on class:Orchestrator.on_event',
+  })
+  write(composer, 'Why?')
   fireEvent.click(within(composer).getByRole('button', { name: 'Add to review' }))
 
   await vi.waitFor(() =>
     expect(posted('/api/drafts')).toEqual([
-      { anchor: 'class:Orchestrator.parse_command', text: 'Keep it?' },
+      { anchor: 'class:Orchestrator.on_event', text: 'Why?' },
     ]),
   )
 })
 
-test('an approved plan still opens the details popup, without Comment buttons', async () => {
+test('an approved plan opens the popup without comment icons', async () => {
   server.approved = true
   const details = await openDetails()
 
   expect(within(details).queryByRole('button', { name: /^Comment/ })).not.toBeInTheDocument()
-  expect(details).toHaveTextContent('give_hint()')
+  expect(details).toHaveTextContent('give_hint')
+})
+
+test('an existing thread on a member still opens from its pin after the redesign', async () => {
+  server.threads = [thread('t-9', 'class:Orchestrator.on_event', 'Why?', 'Because.')]
+  await open()
+
+  fireEvent.click(await screen.findByRole('button', { name: /on class:Orchestrator.on_event/ }))
+
+  expect(
+    screen.getByRole('dialog', { name: 'Thread on class:Orchestrator.on_event' }),
+  ).toBeInTheDocument()
+})
+
+test('the popup, the thread card and the new-comment box keep the top line outside the scrolling part', async () => {
+  const classes = (card: HTMLElement) => [...card.children].map((c) => c.className)
+  server.threads = nextLevelThread()
+  const details = await openDetails()
+
+  expect(classes(details)).toEqual(['card-top', 'card-body'])
+  const popupTop = details.querySelector('.card-top') as HTMLElement
+  const body = details.querySelector('.card-body') as HTMLElement
+  expect(within(popupTop).getByRole('button', { name: 'Close' })).toBeInTheDocument()
+  expect(
+    within(popupTop).getByRole('button', { name: 'Comment on class:Orchestrator' }),
+  ).toBeInTheDocument()
+  expect(within(body).getByRole('list', { name: 'New members, 2' })).toBeInTheDocument()
+
+  fireEvent.click(await screen.findByRole('button', { name: /on class:HintPolicy.next_level/ }))
+  const card = screen.getByRole('dialog', { name: 'Thread on class:HintPolicy.next_level' })
+  expect(classes(card)).toEqual(['card-top', 'card-body'])
+  expect(
+    within(card.querySelector('.card-body') as HTMLElement).getByText('Why None?'),
+  ).toBeVisible()
+  fireEvent.click(within(card).getByRole('button', { name: 'Close' }))
+
+  fireEvent.click(element('rel:orch-policy'))
+  const composer = screen.getByRole('dialog', { name: 'New comment on rel:orch-policy' })
+  expect(classes(composer)).toEqual(['card-top', 'card-body'])
+  expect(
+    within(composer.querySelector('.card-body') as HTMLElement).getByRole('textbox'),
+  ).toBeInTheDocument()
 })
 
 test("a comment on the other side's class is listed beside the diagram", async () => {
@@ -929,4 +1088,47 @@ test('the page reloads what it missed after a reconnect', async () => {
   ).toBeInTheDocument()
   expect(fetched('/api/plan')).toBeGreaterThan(plans)
   expect(fetched('/api/threads')).toBeGreaterThan(lists)
+})
+
+test('backticks show as code in a thread message, a draft reply, the review panel and the thread list', async () => {
+  server.threads = [
+    thread('t-1', 'class:HintPolicy.next_level', 'Why `None`?', 'It means `no hints`.'),
+  ]
+  server.drafts = [
+    draft('d-1', 'class:HintPolicy.next_level', 'Rename `next_level`', 't-1'),
+    draft('d-2', 'risk:1', 'Too `vague`'),
+  ]
+  await open()
+
+  const panel = await screen.findByRole('region', { name: 'Your review' })
+  expect(within(panel).getByText('next_level', { selector: 'code.inline-code' })).toBeVisible()
+  expect(within(panel).getByText('vague', { selector: 'code.inline-code' })).toBeVisible()
+  fireEvent.click(await screen.findByRole('button', { name: /on class:HintPolicy.next_level/ }))
+  const card = screen.getByRole('dialog', { name: 'Thread on class:HintPolicy.next_level' })
+  for (const code of ['None', 'no hints', 'next_level'])
+    expect(within(card).getByText(code, { selector: 'code.inline-code' })).toBeVisible()
+  expect(card.textContent).not.toContain('`')
+  expect(panel.textContent).not.toContain('`')
+})
+
+test('backticks show as code in the thread list beside the diagram', async () => {
+  server.threads = [thread('t-1', 'class:HintPolicy', 'Why `None`?')]
+  await openFront()
+
+  const list = await screen.findByRole('region', { name: 'Comments on the other side' })
+  expect(within(list).getByText('None', { selector: 'code.inline-code' })).toBeVisible()
+  expect(list.textContent).not.toContain('`')
+})
+
+test('backticks show as code in the hover preview of a pin', async () => {
+  server.threads = [thread('t-1', 'class:HintPolicy.next_level', 'Is `None` ok?')]
+  await open()
+
+  fireEvent.mouseEnter(
+    await screen.findByRole('button', { name: /on class:HintPolicy.next_level/ }),
+  )
+
+  const tip = screen.getByRole('tooltip')
+  expect(within(tip).getByText('None', { selector: 'code.inline-code' })).toBeVisible()
+  expect(tip.textContent).not.toContain('`')
 })

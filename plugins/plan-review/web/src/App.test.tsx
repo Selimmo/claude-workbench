@@ -430,3 +430,52 @@ test('a test target on the other side flips the switch and outlines it', async (
     expect(element('class:HintPolicy.max_hints')).toHaveAttribute('data-focused', 'true'),
   )
 })
+
+/** A plan with a backticked `x` in each piece of written text the tabs show. */
+function backticked() {
+  const plan = structuredClone(promptExample) as typeof promptExample & Record<string, never>
+  const mark = (text: string) => `${text} \`x\``
+  plan.summary = mark(plan.summary)
+  plan.acceptance_criteria = plan.acceptance_criteria.map(mark)
+  for (const file of plan.files) file.reason = mark(file.reason)
+  for (const test of plan.tests) test.behaviour = mark(test.behaviour)
+  for (const risk of plan.risks) {
+    risk.text = mark(risk.text)
+    if ('mitigation' in risk) risk.mitigation = mark(String(risk.mitigation))
+  }
+  return plan
+}
+
+test('backticks show as code on the plan page', async () => {
+  const server = new FakeServer()
+  server.plan = backticked()
+  server.install()
+  render(<App />)
+  await screen.findByRole('tablist')
+
+  expect(document.querySelector('[data-clamped] code.inline-code')).toHaveTextContent('x')
+  for (const tab of ['Acceptance criteria', 'Files', 'Tests', 'Risks & open questions']) {
+    fireEvent.click(screen.getByRole('tab', { name: tab }))
+    const panel = screen.getByRole('tabpanel')
+    expect(panel.querySelector('code.inline-code')).toHaveTextContent('x')
+    expect(panel.textContent).not.toContain('`')
+  }
+  expect(document.querySelector('.summary')?.textContent).not.toContain('`')
+})
+
+test('labels drawn in the diagrams keep their backticks', async () => {
+  const server = new FakeServer()
+  const plan = structuredClone(example)
+  plan.flows[0].steps![0].label = 'call `request_hint`'
+  server.plan = plan
+  server.install()
+  render(<App />)
+  await screen.findByRole('tablist')
+
+  fireEvent.click(screen.getByRole('tab', { name: 'Flows' }))
+
+  expect(document.querySelector('[data-element-id="flow:hint/1"]')).toHaveTextContent(
+    'call `request_hint`',
+  )
+  expect(document.querySelector('.viewport .inline-code')).toBeNull()
+})

@@ -420,3 +420,10 @@ def test_grill_runs_through_a_fresh_grill_explorer_each_round() -> None:
         assert f"plan-review {command}" in step_1
     assert "plan-review grill decisions ID" in step_1
     assert "a new explorer" in step_1
+
+
+def test_ship_tells_the_orchestrator_to_put_code_and_paths_in_backticks_in_replies() -> None:
+    text = (Path(__file__).parents[1] / "workflow" / "ship.md").read_text("utf-8")
+
+    assert "code and file paths" in text and "in backticks" in text
+    assert text.index("code and file paths") > text.index("plan-review reply")

@@ -260,3 +260,28 @@ def test_the_test_reviewer_runs_the_configured_mutation_tool_on_the_copy() -> No
         "any other string",
     ):
         assert needle in text, needle
+
+
+def test_the_architect_and_the_grill_explorer_put_code_and_paths_in_backticks() -> None:
+    architect = source("architect").lower()
+    ours = SOURCE.read_text("utf-8").split(OURS, 1)[1].lower()
+
+    assert "code and file paths" in architect and "in backticks" in architect
+    assert "code and file paths" in ours and "in backticks" in ours
+
+
+def test_the_architect_writes_notes_in_plain_words_for_the_owner() -> None:
+    text = source("architect")
+
+    for needle in (
+        "read by the owner",
+        "one or two plain sentences",
+        "at most 300 characters",
+        "plan-review validate",
+        "No CSS, selectors",
+        "The summary is plain words too",
+        "may stay one short paragraph",
+        "ARIA",
+        "files",
+    ):
+        assert needle in text, needle

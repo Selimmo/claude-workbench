@@ -47,41 +47,43 @@ export function Composer({ anchor, draft, onSaved, onClose, onDirty }: Props) {
           ×
         </button>
       </div>
-      <textarea
-        aria-label="Comment"
-        placeholder="Your comment…"
-        autoFocus
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value)
-          onDirty?.(e.target.value !== (draft?.text ?? ''))
-        }}
-      />
-      {error && <p className="error">{error}</p>}
-      <div className="actions">
-        {draft ? (
-          <>
+      <div className="card-body">
+        <textarea
+          aria-label="Comment"
+          placeholder="Your comment…"
+          autoFocus
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value)
+            onDirty?.(e.target.value !== (draft?.text ?? ''))
+          }}
+        />
+        {error && <p className="error">{error}</p>}
+        <div className="actions">
+          {draft ? (
+            <>
+              <button
+                disabled={!text.trim()}
+                onClick={() => void act(() => editDraft(draft.id, text))}
+              >
+                Save draft
+              </button>
+              <button onClick={() => void act(() => discardDraft(draft.id))}>Discard draft</button>
+            </>
+          ) : (
             <button
               disabled={!text.trim()}
-              onClick={() => void act(() => editDraft(draft.id, text))}
+              onClick={() => void act(() => draftComment(anchor, text))}
             >
-              Save draft
+              Add to review
             </button>
-            <button onClick={() => void act(() => discardDraft(draft.id))}>Discard draft</button>
-          </>
-        ) : (
-          <button
-            disabled={!text.trim()}
-            onClick={() => void act(() => draftComment(anchor, text))}
-          >
-            Add to review
-          </button>
+          )}
+          <button onClick={onClose}>Cancel</button>
+        </div>
+        {!draft && (
+          <p className="hint">Saved as a draft. The agent sees it when you submit the review.</p>
         )}
-        <button onClick={onClose}>Cancel</button>
       </div>
-      {!draft && (
-        <p className="hint">Saved as a draft. The agent sees it when you submit the review.</p>
-      )}
     </div>
   )
 }

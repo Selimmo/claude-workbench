@@ -29,6 +29,8 @@ Run `plan-review schema` for the exact format. In short:
 
 - **issue**: `{"id": "<id>", "kind": "issue" | "prompt", "title": ..., "url": ...}`. Use kind `prompt` when `issue.md` is a plain prompt (no tracker issue), and leave `url` out then.
 - **summary**: one paragraph: what changes and why.
+- **Backticks**: put all code and file paths in `note`s, the summary, reasons, behaviours, risks and criteria in backticks; the viewer shows them as code.
+- **Plain notes**: class and member `note`s and the `summary` are read by the owner, so write each note as one or two plain sentences on what the owner will see or what the thing does, at most 300 characters (`plan-review validate` refuses longer ones). No CSS, selectors, `var(--...)` variables, element tags or ARIA attributes. Exact looks and code details go in the `files` reasons and the `tests` behaviours. The summary is plain words too, for the owner with no CSS or code jargon; it may stay one short paragraph.
 - **acceptance_criteria**: for a `prompt` run it is required: the observable outcomes that make the prompt done, which the owner approves with the plan and the code reviewer checks the result against. For an issue run leave it out; the issue has its own criteria. Criteria are numbered by position (`criterion:1`, ...) and the owner's comments attach to those numbers: in revise mode append new criteria and keep existing ones in place.
 - **classes** and **relations**: the classes, protocols, components and modules the change adds, modifies or removes. The viewer draws one side at a time and each box lists only member names, so:
   - Give every class a `side`: `front` (what runs in the browser) or `back`. A relation never joins a front class to a back class.

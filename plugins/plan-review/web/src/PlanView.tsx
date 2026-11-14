@@ -18,6 +18,7 @@ import { HEADER_ANCHORS, threadsFor } from './threadGroups'
 import type { Live } from './useLive'
 import { useMarkElements, useMarkRevised } from './useMarkRevised'
 import { type TabId, issueLabel, tabOf, tabsFor } from './viewModels'
+import { Prose } from './Prose'
 
 /** Rows in a list scroll into view; diagram elements are already in the fitted view. */
 const scrollToRow = (element: HTMLElement) =>
@@ -87,7 +88,7 @@ export function PlanView({ plan, live }: { plan: Plan; live: Live }) {
       <div className="summary">
         {/* Clamped to two lines by default so the diagrams keep the height. */}
         <p data-element-id={HEADER_ANCHORS.summary} data-clamped={!fullSummary}>
-          {plan.summary}
+          <Prose text={plan.summary} />
         </p>
         <button className="link" onClick={() => setFullSummary((full) => !full)}>
           {fullSummary ? 'Less' : 'More'}

@@ -584,3 +584,33 @@ def test_both_example_plans_have_the_new_shape() -> None:
     assert shape_problems(issue_plan) == []
     assert shape_problems(prompt_plan) == []
     assert {c.side for c in issue_plan.classes} == {"front", "back"}
+
+
+LONG_NOTE_LINE = (
+    "class:X: note is 301 characters; the limit is 300. "
+    "Write one or two plain sentences and move exact details to files or tests"
+)
+
+
+def test_shape_problems_refuses_a_class_note_over_300_characters() -> None:
+    assert problems([new_class("X", note="a" * 301)]) == [LONG_NOTE_LINE]
+    assert problems([new_class("X", note="a" * 300)]) == []
+
+
+def test_shape_problems_refuses_a_member_note_over_300_characters() -> None:
+    cls = new_class("X")
+    cls["members"][0]["note"] = "b" * 400
+
+    [line] = problems([cls])
+
+    assert line.startswith("class:X.go: note is 400 characters; the limit is 300")
+    assert problems([new_class("Y", note="short")]) == []
+
+
+def test_a_plan_with_a_long_note_still_loads(tmp_path: Path) -> None:
+    path = tmp_path / "plan.json"
+    path.write_text(json.dumps(minimal(classes=[new_class("X", note="c" * 1418)])))
+
+    plan = load_plan(path)
+
+    assert shape_problems(plan) != []
