@@ -4,7 +4,7 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
-### Unreleased
+### 0.7.0
 
 - **A clearer class popup** ([#65](https://github.com/Selimmo/claude-workbench/issues/65)). The class name is bold and coloured by its status, with its parents in small grey text. Members sit in a green (new), orange (changed) and red (removed) box, fields before methods, each as a bold name with its description below; fields show their type, methods open to their full signature, removed names are crossed out and unchanged members fold behind **Show N unchanged**. **Comment** becomes a speech-bubble icon on hover or Tab. The popup, thread card and new-comment box share one set of sizes, and a tall one scrolls its body under a fixed top line.
 - Text in `backticks` shows as a code chip everywhere written text appears in the viewer (not in diagram labels); the architect, grill explorer and orchestrator are told to put code and file paths in backticks.
