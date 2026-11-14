@@ -14,8 +14,21 @@ from fastapi import FastAPI
 from plan_review.events import waiter
 from plan_review.events.event_log import EventLog
 from plan_review.paths import workdir
+from plan_review.paths.project_root import project_root
+from plan_review.settings.user_folder import user_config_dir
 
 STATIC_DIR = Path(__file__).parent.parent / "static"  # the built viewer page
+
+
+def project() -> Path:
+    """The folder every command reads `.plan-review/` from: the project root, found from here.
+
+    Run from the root itself it stays the relative `Path()`, so the paths commands print are the
+    same short ones as before; from a subfolder it is the root's absolute path.
+    """
+    here = Path.cwd().resolve()
+    root = project_root(here, user_config_dir())
+    return Path() if root == here else root
 
 
 class ServerStop:

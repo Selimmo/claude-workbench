@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-from plan_review.cli.runtime import Runtime
+from plan_review.cli.runtime import Runtime, project
 from plan_review.cli.settings import pipeline_settings, print_hint
 from plan_review.paths.run_id import InvalidRunId, check_run_id, label
 from plan_review.paths.run_paths import RunPaths
@@ -28,10 +28,10 @@ def init(run_id: str | None, prompt: str | None, *, runtime: Runtime) -> int:
         except InvalidRunId as error:
             print(error, file=sys.stderr)
             return 2
-        print(new_prompt_work_dir(Path(), prompt, today).as_posix())
+        print(new_prompt_work_dir(project(), prompt, today).as_posix())
         return 0
     assert run_id is not None
-    print(runtime.ensure_work_dir(Path(), run_id).as_posix())
+    print(runtime.ensure_work_dir(project(), run_id).as_posix())
     return 0
 
 
@@ -55,7 +55,7 @@ def validate(file: Path) -> int:
 
 
 def branch(run_id: str, *, runtime: Runtime) -> int:
-    plan_file = RunPaths(runtime.work_dir(Path(), run_id)).plan
+    plan_file = RunPaths(runtime.work_dir(project(), run_id)).plan
     try:
         plan = load_plan(plan_file)
         if plan.branch:  # already named (and maybe created): never name it again

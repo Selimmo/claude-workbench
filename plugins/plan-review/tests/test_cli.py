@@ -1668,3 +1668,43 @@ def test_grill_answer_without_a_file_exits_2(
 
     assert main(["grill", "answer", "7", str(project / "nope.json")]) == 2
     assert "nope.json: file not found" in capsys.readouterr().err
+
+
+def test_config_from_a_subfolder_reads_the_projects_settings(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (project / ".git").mkdir()
+    write_pipeline(project, {"max_review_rounds": 5, "mutation": "agent"})
+    sub = project / "plugins" / "tool"
+    sub.mkdir(parents=True)
+    monkeypatch.chdir(sub)
+
+    assert main(["config"]) == 0
+
+    settings = json.loads(capsys.readouterr().out)["settings"]
+    assert settings["max_review_rounds"] == 5
+    assert settings["mutation"] == "agent"
+
+
+def test_config_says_which_project_folder_it_read(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["config"]) == 0
+
+    assert json.loads(capsys.readouterr().out)["project"] == project.resolve().as_posix()
+
+
+def test_init_from_a_subfolder_creates_the_run_at_the_project_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / ".git").mkdir()
+    sub = tmp_path / "src"
+    sub.mkdir()
+    monkeypatch.chdir(sub)
+
+    assert main(["init", "42"]) == 0
+
+    work = tmp_path.resolve() / ".plan-review" / "work" / "42"
+    assert work.is_dir()
+    assert not (sub / ".plan-review").exists()
+    assert capsys.readouterr().out == f"{work.as_posix()}\n"

@@ -17,7 +17,7 @@ You are the code reviewer in an issue → plan → TDD → review pipeline. The 
 - The approved plan: `.plan-review/work/<id>/plan.json`.
 - The implementer's report: `.plan-review/work/<id>/impl-report.md`.
 - The change: `git diff` against the branch point (`git merge-base HEAD <default branch>`) plus untracked files from `git status`.
-- The project's rules: `CLAUDE.md` (or `AGENTS.md`); `plan-review config --harness claude-code` gives the check commands (`settings.checks`) and extra rules (`settings.review_rules`).
+- The project's rules: `CLAUDE.md` (or `AGENTS.md`); `plan-review config --harness claude-code` gives the check commands (`settings.checks`) and extra rules (`settings.review_rules`). Run plan-review commands from the project root (the folder with `.plan-review/`), or check that its output names that folder as `project`.
 
 ## What to check
 

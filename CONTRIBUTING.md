@@ -55,10 +55,20 @@ uv run --with mutmut mutmut results        # the breaks no test caught
 uv run --with mutmut mutmut show <name>    # what one of them changed
 ```
 
-It works in its own `mutants/` folder, which git ignores. Some tests are left out of its runs (see `setup.cfg`): they need a git repo, start a fresh `plan-review` in its own environment, or read the source files, which mutmut rewrites. To have the test-reviewer run it on a throwaway copy during `/ship`, put this in your `.plan-review/config.json`:
+It works in its own `mutants/` folder, which git ignores. Some tests are left out of its runs (see `setup.cfg`): they need a git repo, start a fresh `plan-review` in its own environment, or read the source files, which mutmut rewrites.
+
+**Mutation testing the viewer with StrykerJS.** mutmut only covers Python. The viewer's TypeScript is covered by StrykerJS (settings in `plugins/plan-review/web/stryker.config.json`, not shipped). `scripts/mutate-web.sh` runs it on only the web source files the branch touched: committed since it left `main`, changed but not committed, or new, leaving tests out. With none, it skips Stryker. One file takes about half a minute:
+
+```bash
+cd plugins/plan-review
+scripts/mutate-web.sh                       # the touched files
+(cd web && npx stryker run --mutate src/codeSpans.ts)   # or name files yourself
+```
+
+Stryker changes the files in place (some tests read `examples/` outside `web/`, which its usual sandbox copy breaks) and puts them back when it ends, so run it on a clean tree or a copy. To have the test-reviewer run both tools on a throwaway copy during `/ship`, put this in your `.plan-review/config.json` (`;`, not `&&`: mutmut exits with an error when some breaks survive, and Stryker should still run):
 
 ```json
-"mutation": "cd plugins/plan-review && npm --prefix web run build && uv run --with mutmut mutmut run --max-children 8"
+"mutation": "cd plugins/plan-review && npm --prefix web run build && uv run --with mutmut mutmut run --max-children 8; scripts/mutate-web.sh"
 ```
 
 Changing anything that ships in the plugin's zip (including `plugins/plan-review/README.md`) means bumping its version; see [Version guard](RELEASING.md#version-guard). Add a line for it to [CHANGELOG.md](CHANGELOG.md).

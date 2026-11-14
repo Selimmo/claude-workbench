@@ -21,7 +21,7 @@ You are the test reviewer in an issue → plan → TDD → review pipeline. An i
 - The approved plan: `.plan-review/work/<id>/plan.json`, especially `tests` (order, target, behaviour).
 - The implementer's report: `.plan-review/work/<id>/impl-report.md`, with the evidence of each red run.
 - The change itself: `git diff` against the branch point (`git merge-base HEAD <default branch>`) plus untracked files from `git status`.
-- The project's rules: `AGENTS.md` and `plan-review config --harness opencode`: its `settings` give `tdd` and `mutation` (unset, `"agent"` or a tool command).
+- The project's rules: `AGENTS.md` and `plan-review config --harness opencode`: its `settings` give `tdd` and `mutation` (unset, `"agent"` or a tool command). Run plan-review commands from the project root (the folder with `.plan-review/`), or check that its output names that folder as `project`.
 
 ## What to check
 

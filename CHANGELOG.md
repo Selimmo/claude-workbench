@@ -4,6 +4,11 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
+### Unreleased
+
+- **Mutation testing for the viewer** ([#100](https://github.com/Selimmo/claude-workbench/issues/100)), for working on plan-review itself. StrykerJS now covers the viewer's TypeScript, on only the web source files a branch touched (`scripts/mutate-web.sh`); this repo's `mutation` command runs mutmut and then Stryker. Nothing changes for projects that use plan-review.
+- **Settings are found from any folder in the project** ([#99](https://github.com/Selimmo/claude-workbench/issues/99)). Every command now reads `.plan-review/` from the project root, the nearest folder upwards that has it (not above the git root), so running one from a subfolder no longer falls back to the built-in defaults. `plan-review config` names the folder it read as `project`, and the implementer and reviewers are told to run plan-review from the project root.
+
 ### 0.7.0
 
 - **A clearer class popup** ([#65](https://github.com/Selimmo/claude-workbench/issues/65)). The class name is bold and coloured by its status, with its parents in small grey text. Members sit in a green (new), orange (changed) and red (removed) box, fields before methods, each as a bold name with its description below; fields show their type, methods open to their full signature, removed names are crossed out and unchanged members fold behind **Show N unchanged**. **Comment** becomes a speech-bubble icon on hover or Tab. The popup, thread card and new-comment box share one set of sizes, and a tall one scrolls its body under a fixed top line.

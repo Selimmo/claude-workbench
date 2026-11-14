@@ -285,3 +285,8 @@ def test_the_architect_writes_notes_in_plain_words_for_the_owner() -> None:
         "files",
     ):
         assert needle in text, needle
+
+
+@pytest.mark.parametrize("name", ["implementer", "test-reviewer", "code-reviewer"])
+def test_the_agents_run_plan_review_from_the_project_root(name: str) -> None:
+    assert "from the project root" in source(name), name

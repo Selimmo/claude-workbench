@@ -2,8 +2,8 @@
 
 import json
 import sys
-from pathlib import Path
 
+from plan_review.cli.runtime import project as project_folder
 from plan_review.harness.adapters import all_adapters
 from plan_review.paths.workdir import config_file, config_path
 from plan_review.settings.migration import move_grill_preference
@@ -15,7 +15,9 @@ from plan_review.settings.user_folder import user_config_dir
 
 def reader() -> ConfigReader:
     """The merged settings: the user's config.json under the project's."""
-    return ConfigReader.load(Path(), user_config_dir(), {h.key: h.rules for h in all_adapters()})
+    return ConfigReader.load(
+        project_folder(), user_config_dir(), {h.key: h.rules for h in all_adapters()}
+    )
 
 
 def pipeline_settings() -> tuple[PipelineConfig, str | None]:
@@ -34,7 +36,7 @@ def _scope(harness: str | None) -> list[str]:
 
 
 def config(harness: str | None) -> int:
-    root = Path()
+    root = project_folder()
     if config_path(root).is_file():
         config_file(root)  # git ignores the project's own settings
     print_hint(move_grill_preference(root))
@@ -46,7 +48,8 @@ def config(harness: str | None) -> int:
     except PipelineConfigError as error:
         print("\n".join(error.errors), file=sys.stderr)
         return 1
-    print(json.dumps(merged.report(harness), indent=2))
+    report = {"project": root.resolve().as_posix(), **merged.report(harness)}
+    print(json.dumps(report, indent=2))
     for key in _scope(harness):
         for line in merged.warnings(key):
             print(line, file=sys.stderr)
@@ -71,7 +74,7 @@ def prefs(setting: str, value: str | None, project: bool) -> int:
             print(f"plan-review prefs grill: give page or chat, not '{value}'", file=sys.stderr)
             return 2
         mode: GrillMode = "page" if value == "page" else "chat"
-        target = config_file(Path()) if project else user_config_dir() / "config.json"
+        target = config_file(project_folder()) if project else user_config_dir() / "config.json"
         try:
             save_grill_mode(target, mode)
         except PipelineConfigError as error:
