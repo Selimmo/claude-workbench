@@ -22,3 +22,6 @@ plugins/*/src/*/static/
 
 # Local before/after demo plans, kept out of the repo
 plugins/plan-review/examples/before-after/
+
+# mutmut sandbox (mutation testing)
+plugins/plan-review/mutants/

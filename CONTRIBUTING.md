@@ -45,6 +45,22 @@ cp plugins/plan-review/examples/grill.json .plan-review/work/grill-demo/grill.js
 uv run --project plugins/plan-review plan-review serve grill-demo
 ```
 
+**Mutation testing with mutmut.** mutmut's settings are in `plugins/plan-review/setup.cfg` (not shipped). It breaks lines of `src/plan_review/` one at a time and runs the tests that cover each line. A whole run takes about 4 to 5 minutes. Build the viewer page first, because one test serves it:
+
+```bash
+cd plugins/plan-review
+npm --prefix web run build
+uv run --with mutmut mutmut run --max-children 8
+uv run --with mutmut mutmut results        # the breaks no test caught
+uv run --with mutmut mutmut show <name>    # what one of them changed
+```
+
+It works in its own `mutants/` folder, which git ignores. Some tests are left out of its runs (see `setup.cfg`): they need a git repo, start a fresh `plan-review` in its own environment, or read the source files, which mutmut rewrites. To have the test-reviewer run it on a throwaway copy during `/ship`, put this in your `.plan-review/config.json`:
+
+```json
+"mutation": "cd plugins/plan-review && npm --prefix web run build && uv run --with mutmut mutmut run --max-children 8"
+```
+
 Changing anything that ships in the plugin's zip (including `plugins/plan-review/README.md`) means bumping its version; see [Version guard](RELEASING.md#version-guard). Add a line for it to [CHANGELOG.md](CHANGELOG.md).
 
 ## Project structure
