@@ -85,12 +85,16 @@ HARNESS = Harness(
         start_agent=(
             'with `spawn_agent`: `agent_type` is the `agent` value, `fork_turns` is `"none"` '
             "(a forked agent keeps your model, whatever you pass), `model` is the `model` value "
-            "and `reasoning_effort` is the `effort` value."
+            "and `reasoning_effort` is the `effort` value. `task_name` is required: use only "
+            "lowercase letters, digits and underscores, for example the agent's name with its "
+            "dashes turned into underscores (`code_reviewer`). A refusal about `task_name` or "
+            "`agent_name` is not a model or effort refusal: fix the name and start the agent "
+            "again with the same `model` and `effort`, without the session-model fallback."
         ),
         start_together=(
-            "spawn every agent of the group in one step, then call `wait_agent(targets=[...])` "
-            "with all of them, again and again, until every one is final: it returns as soon as "
-            "any one finishes"
+            "send all `spawn_agent` calls of the group in one single turn, before any wait, then "
+            "call `wait_agent` (it takes only `timeout_ms`) again and again until every one is "
+            "final: it returns as soon as any one finishes"
         ),
         unknown_agent=(
             "tell the owner that Codex reads `.codex/agents` only in a trusted project, which may "

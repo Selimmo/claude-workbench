@@ -303,7 +303,16 @@ def test_the_generated_texts_name_their_tool_for_config_and_launch(key: str) -> 
 
 START_AGENT = {
     "claude-code": ["Agent tool", "`subagent_type`", "`model`", "`effort`"],
-    "codex": ["`spawn_agent`", "`agent_type`", '`fork_turns` is `"none"`', "`reasoning_effort`"],
+    "codex": [
+        "`spawn_agent`",
+        "`agent_type`",
+        '`fork_turns` is `"none"`',
+        "`reasoning_effort`",
+        "`task_name`",
+        "lowercase letters, digits and underscores",
+        "`code_reviewer`",
+        "not a model or effort refusal",
+    ],
     "opencode": ["`subagent` tool", "`agent`", "`<model>#<effort>`"],
 }
 
@@ -319,7 +328,12 @@ def test_each_ship_starts_an_agent_with_its_tools_model_and_effort_parameters(ke
 
 TOGETHER = {
     "claude-code": ["one Agent call per reviewer", "in the same message"],
-    "codex": ["`wait_agent(targets=[...])`", "until every one is final"],
+    "codex": [
+        "`wait_agent`",
+        "`timeout_ms`",
+        "until every one is final",
+        "all `spawn_agent` calls of the group in one single turn, before any wait",
+    ],
     "opencode": ["one `subagent` call per agent", "in the same message"],
 }
 
