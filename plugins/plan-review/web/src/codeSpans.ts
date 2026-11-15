@@ -16,8 +16,9 @@ export function codeSpans(text: string): Span[] {
   let rest = text
   for (;;) {
     const open = rest.indexOf('`')
-    const close = open < 0 ? -1 : rest.indexOf('`', open + 1)
-    if (close < 0) break
+    // With no opening backtick there is none to find from the start either: close is -1.
+    const close = rest.indexOf('`', open + 1)
+    if (close === -1) break
     add(false, rest.slice(0, open))
     if (close === open + 1) add(false, '``')
     else add(true, rest.slice(open + 1, close))

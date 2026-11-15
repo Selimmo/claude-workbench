@@ -51,14 +51,14 @@ test('a thread shows as a pin on its element, counting its messages', async () =
   await open()
 
   expect(
-    await screen.findByRole('button', { name: '2 messages on class:HintPolicy.next_level' }),
+    await screen.findByRole('button', { name: '2 messages on HintPolicy › next_level' }),
   ).toBeInTheDocument()
 })
 
 test("hovering a pin previews the thread's first message", async () => {
   server.threads = nextLevelThread()
   await open()
-  const pin = await screen.findByRole('button', { name: /on class:HintPolicy.next_level/ })
+  const pin = await screen.findByRole('button', { name: /on HintPolicy › next_level/ })
 
   fireEvent.mouseEnter(pin)
 
@@ -69,9 +69,9 @@ test('clicking a pin opens the whole thread', async () => {
   server.threads = nextLevelThread()
   await open()
 
-  fireEvent.click(await screen.findByRole('button', { name: /on class:HintPolicy.next_level/ }))
+  fireEvent.click(await screen.findByRole('button', { name: /on HintPolicy › next_level/ }))
 
-  const card = screen.getByRole('dialog', { name: 'Thread on class:HintPolicy.next_level' })
+  const card = screen.getByRole('dialog', { name: 'Thread on HintPolicy › next_level' })
   expect(
     within(card)
       .getAllByRole('listitem')
@@ -85,7 +85,7 @@ test('a thread shows Agent for old and new replies, styled the same', async () =
   server.threads = [mixed]
   await open()
 
-  fireEvent.click(await screen.findByRole('button', { name: /on class:HintPolicy.next_level/ }))
+  fireEvent.click(await screen.findByRole('button', { name: /on HintPolicy › next_level/ }))
 
   const rows = within(screen.getByRole('dialog')).getAllByRole('listitem')
   expect(rows.map((m) => m.textContent)).toEqual([
@@ -107,7 +107,7 @@ test('the composer and the review panel say the agent sees the comments on submi
   await screen.findByText('HintPolicy')
 
   fireEvent.click(element('rel:orch-policy'))
-  const composer = screen.getByRole('dialog', { name: 'New comment on rel:orch-policy' })
+  const composer = screen.getByRole('dialog', { name: 'New comment on Orchestrator → HintPolicy' })
   expect(within(composer).getByText(/The agent sees it when you submit the review/)).toBeVisible()
   write(composer, 'Keep it?')
   fireEvent.click(within(composer).getByRole('button', { name: 'Add to review' }))
@@ -121,7 +121,7 @@ test('the composer and the review panel say the agent sees the comments on submi
 test("a thread card's × closes it", async () => {
   server.threads = nextLevelThread()
   await open()
-  fireEvent.click(await screen.findByRole('button', { name: /on class:HintPolicy.next_level/ }))
+  fireEvent.click(await screen.findByRole('button', { name: /on HintPolicy › next_level/ }))
 
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' }))
 
@@ -133,7 +133,7 @@ test('clicking any element opens a composer whose comment is saved as a draft, n
   await screen.findByText('HintPolicy')
 
   fireEvent.click(element('rel:orch-policy'))
-  const composer = screen.getByRole('dialog', { name: 'New comment on rel:orch-policy' })
+  const composer = screen.getByRole('dialog', { name: 'New comment on Orchestrator → HintPolicy' })
   write(composer, 'Keep it?')
   fireEvent.click(within(composer).getByRole('button', { name: 'Add to review' }))
 
@@ -150,7 +150,7 @@ test('on an old plan a click on a class box still opens a comment box', async ()
 
   fireEvent.click(element('class:HintPolicy'))
 
-  expect(screen.getByRole('dialog', { name: 'New comment on class:HintPolicy' })).toBeVisible()
+  expect(screen.getByRole('dialog', { name: 'New comment on HintPolicy' })).toBeVisible()
 })
 
 test('a plan where only some classes have a side is drawn like an old plan', async () => {
@@ -169,7 +169,7 @@ test('a plan where only some classes have a side is drawn like an old plan', asy
   expect(screen.queryByRole('group', { name: 'Choose a side' })).not.toBeInTheDocument()
   expect(element('class:HintPolicy.next_level')).toHaveTextContent('next_level(given: int)')
   expect(
-    await screen.findByRole('button', { name: /on class:Orchestrator.on_event/ }),
+    await screen.findByRole('button', { name: /on Orchestrator › on_event/ }),
   ).toBeInTheDocument()
   expect(screen.queryByText(/Comments on the other side/)).not.toBeInTheDocument()
 })
@@ -353,7 +353,7 @@ test('each comment icon is a focusable button that comments on its class or memb
   }
   fireEvent.click(icon)
   const composer = screen.getByRole('dialog', {
-    name: 'New comment on class:Orchestrator.on_event',
+    name: 'New comment on Orchestrator › on_event',
   })
   write(composer, 'Why?')
   fireEvent.click(within(composer).getByRole('button', { name: 'Add to review' }))
@@ -377,10 +377,10 @@ test('an existing thread on a member still opens from its pin after the redesign
   server.threads = [thread('t-9', 'class:Orchestrator.on_event', 'Why?', 'Because.')]
   await open()
 
-  fireEvent.click(await screen.findByRole('button', { name: /on class:Orchestrator.on_event/ }))
+  fireEvent.click(await screen.findByRole('button', { name: /on Orchestrator › on_event/ }))
 
   expect(
-    screen.getByRole('dialog', { name: 'Thread on class:Orchestrator.on_event' }),
+    screen.getByRole('dialog', { name: 'Thread on Orchestrator › on_event' }),
   ).toBeInTheDocument()
 })
 
@@ -398,8 +398,8 @@ test('the popup, the thread card and the new-comment box keep the top line outsi
   ).toBeInTheDocument()
   expect(within(body).getByRole('list', { name: 'New members, 2' })).toBeInTheDocument()
 
-  fireEvent.click(await screen.findByRole('button', { name: /on class:HintPolicy.next_level/ }))
-  const card = screen.getByRole('dialog', { name: 'Thread on class:HintPolicy.next_level' })
+  fireEvent.click(await screen.findByRole('button', { name: /on HintPolicy › next_level/ }))
+  const card = screen.getByRole('dialog', { name: 'Thread on HintPolicy › next_level' })
   expect(classes(card)).toEqual(['card-top', 'card-body'])
   expect(
     within(card.querySelector('.card-body') as HTMLElement).getByText('Why None?'),
@@ -407,7 +407,7 @@ test('the popup, the thread card and the new-comment box keep the top line outsi
   fireEvent.click(within(card).getByRole('button', { name: 'Close' }))
 
   fireEvent.click(element('rel:orch-policy'))
-  const composer = screen.getByRole('dialog', { name: 'New comment on rel:orch-policy' })
+  const composer = screen.getByRole('dialog', { name: 'New comment on Orchestrator → HintPolicy' })
   expect(classes(composer)).toEqual(['card-top', 'card-body'])
   expect(
     within(composer.querySelector('.card-body') as HTMLElement).getByRole('textbox'),
@@ -422,8 +422,31 @@ test("a comment on the other side's class is listed beside the diagram", async (
   expect(screen.queryByRole('button', { name: /messages? on class:HintPolicy/ })).toBeNull()
   fireEvent.click(within(list).getByRole('button', { name: /Why a policy/ }))
 
-  expect(screen.getByRole('dialog', { name: 'Thread on class:HintPolicy' })).toBeVisible()
+  expect(screen.getByRole('dialog', { name: 'Thread on HintPolicy' })).toBeVisible()
 })
+
+const NAMES: Record<string, string> = {
+  'rel:orch-policy': 'Orchestrator → HintPolicy',
+  'rel:orch-llm': 'Orchestrator → LLMClient',
+  'arch:agent': 'Agent worker',
+  'arch:agent-ollama': 'Agent worker → Ollama (HTTP)',
+  'flow:hint/orch': 'Candidate requests a hint › Orchestrator',
+  'flow:hint/5': "Candidate requests a hint › chat '/hint'",
+  'file:commands': 'backend/src/app/core/commands.py',
+  'test:1': 'Test › test_first_hint_is_a_nudge',
+  'risk:1': 'Risk › Small local models may give away the full solution even at NUDGE level.',
+  'risk:3': "Question › Should hints count against the candidate's score?",
+  'flow:level/check': 'Choosing the hint level › hints_given < max_hints?',
+  'flow:level/e2': 'hints_given < max_hints? → Give next level (yes)',
+  'tab:classes': 'Tab › Classes',
+  'header:title': 'Title',
+  'header:summary': 'Summary',
+  'class:Orchestrator': 'Orchestrator',
+  'class:Orchestrator.on_event': 'Orchestrator › on_event',
+  'class:Orchestrator.parse_command': 'Orchestrator › parse_command',
+  'class:HintPolicy.next_level': 'HintPolicy › next_level',
+  'class:HintPolicy': 'HintPolicy',
+}
 
 test.each([
   ['a relation arrow', 'classes', 'rel:orch-policy'],
@@ -454,7 +477,7 @@ test.each([
 
   fireEvent.click(element(id))
 
-  expect(screen.getByRole('dialog', { name: `New comment on ${id}` })).toBeInTheDocument()
+  expect(screen.getByRole('dialog', { name: `New comment on ${NAMES[id]}` })).toBeInTheDocument()
 })
 
 test('the issue title is commentable', async () => {
@@ -462,7 +485,7 @@ test('the issue title is commentable', async () => {
 
   fireEvent.click(screen.getByRole('heading', { name: /^#42 / }))
 
-  expect(screen.queryByRole('dialog', { name: 'New comment on header:title' })).toBeInTheDocument()
+  expect(screen.queryByRole('dialog', { name: 'New comment on Title' })).toBeInTheDocument()
 })
 
 test('the summary is commentable', async () => {
@@ -470,9 +493,7 @@ test('the summary is commentable', async () => {
 
   fireEvent.click(screen.getByText(/Add a Hint button to the client/))
 
-  expect(
-    screen.queryByRole('dialog', { name: 'New comment on header:summary' }),
-  ).toBeInTheDocument()
+  expect(screen.queryByRole('dialog', { name: 'New comment on Summary' })).toBeInTheDocument()
 })
 
 test('a button inside an element does its own job instead of opening a composer', async () => {
@@ -518,7 +539,9 @@ test('a pending draft can be edited from the review panel', async () => {
   const review = await screen.findByRole('region', { name: 'Your review' })
 
   fireEvent.click(within(review).getAllByRole('button', { name: 'Edit' })[0])
-  const editor = screen.getByRole('dialog', { name: 'Draft on risk:1' })
+  const editor = screen.getByRole('dialog', {
+    name: 'Draft on Risk › Small local models may give away the full solution even at NUDGE level.',
+  })
   write(editor, 'Too vague: name the failure')
   fireEvent.click(within(editor).getByRole('button', { name: 'Save draft' }))
 
@@ -554,13 +577,15 @@ test('editing a reply draft from the panel opens it as a draft reply', async () 
 
   fireEvent.click(within(review).getByRole('button', { name: 'Edit' }))
 
-  expect(screen.getByRole('dialog')).toHaveAccessibleName('Draft reply on risk:1')
+  expect(screen.getByRole('dialog')).toHaveAccessibleName(
+    'Draft reply on Risk › Small local models may give away the full solution even at NUDGE level.',
+  )
 })
 
 test('a draft opened from its pin can be discarded there', async () => {
   server.drafts = [draft('d-1', 'class:HintPolicy', 'Split it?')]
   await open()
-  fireEvent.click(await screen.findByRole('button', { name: 'Draft on class:HintPolicy' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Draft on HintPolicy' }))
 
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Discard draft' }))
 
@@ -574,10 +599,14 @@ test('drafts on one element get pins side by side, not on top of each other', as
   server.drafts = [draft('d-1', 'risk:1', 'One'), draft('d-2', 'risk:1', 'Two')]
   await open()
   fireEvent.click(screen.getByRole('tab', { name: 'Risks & open questions' }))
-  await screen.findAllByRole('button', { name: 'Draft on risk:1' })
+  await screen.findAllByRole('button', {
+    name: 'Draft on Risk › Small local models may give away the full solution even at NUDGE level.',
+  })
 
   const lefts = screen
-    .getAllByRole('button', { name: 'Draft on risk:1' })
+    .getAllByRole('button', {
+      name: 'Draft on Risk › Small local models may give away the full solution even at NUDGE level.',
+    })
     .map((pin) => (pin.parentElement as HTMLElement).style.left)
   expect(new Set(lefts).size).toBe(2)
 })
@@ -599,11 +628,9 @@ test('a draft on an element shows as a draft pin that opens it for editing', asy
   server.drafts = [draft('d-1', 'class:HintPolicy', 'Split it?')]
   await open()
 
-  fireEvent.click(await screen.findByRole('button', { name: 'Draft on class:HintPolicy' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Draft on HintPolicy' }))
 
-  expect(screen.getByRole('dialog', { name: 'Draft on class:HintPolicy' })).toHaveTextContent(
-    'Split it?',
-  )
+  expect(screen.getByRole('dialog', { name: 'Draft on HintPolicy' })).toHaveTextContent('Split it?')
 })
 
 test('Submit review sends every draft at once, and they become threads', async () => {
@@ -620,7 +647,7 @@ test('Submit review sends every draft at once, and they become threads', async (
 })
 
 async function replyInThread(text: string) {
-  fireEvent.click(await screen.findByRole('button', { name: '1 message on class:HintPolicy' }))
+  fireEvent.click(await screen.findByRole('button', { name: '1 message on HintPolicy' }))
   const card = screen.getByRole('dialog')
   write(card, text)
   fireEvent.click(within(card).getByRole('button', { name: 'Add reply to review' }))
@@ -651,18 +678,18 @@ test('a draft reply can be edited from its thread', async () => {
   server.threads = [thread('t-1', 'class:HintPolicy', 'Rename?')]
   server.drafts = [draft('d-1', 'class:HintPolicy', 'Never mind', 't-1')]
   await open()
-  fireEvent.click(await screen.findByRole('button', { name: '1 message on class:HintPolicy' }))
+  fireEvent.click(await screen.findByRole('button', { name: '1 message on HintPolicy' }))
 
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Edit' }))
 
-  expect(screen.getByRole('dialog')).toHaveAccessibleName('Draft reply on class:HintPolicy')
+  expect(screen.getByRole('dialog')).toHaveAccessibleName('Draft reply on HintPolicy')
 })
 
 test('a draft reply can be discarded from its thread', async () => {
   server.threads = [thread('t-1', 'class:HintPolicy', 'Rename?')]
   server.drafts = [draft('d-1', 'class:HintPolicy', 'Never mind', 't-1')]
   await open()
-  fireEvent.click(await screen.findByRole('button', { name: '1 message on class:HintPolicy' }))
+  fireEvent.click(await screen.findByRole('button', { name: '1 message on HintPolicy' }))
 
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Discard' }))
 
@@ -674,7 +701,7 @@ test('a draft reply can be discarded from its thread', async () => {
 test('resolving a thread takes effect at once', async () => {
   server.threads = [thread('t-1', 'class:HintPolicy', 'Rename?', 'Yes.')]
   await open()
-  fireEvent.click(await screen.findByRole('button', { name: '2 messages on class:HintPolicy' }))
+  fireEvent.click(await screen.findByRole('button', { name: '2 messages on HintPolicy' }))
 
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Resolve' }))
 
@@ -685,7 +712,7 @@ test('resolving a thread takes effect at once', async () => {
 test('reopening a resolved thread takes effect at once', async () => {
   server.threads = [{ ...thread('t-1', 'class:HintPolicy', 'Rename?', 'Yes.'), resolved: true }]
   await open()
-  fireEvent.click(await screen.findByRole('button', { name: '2 messages on class:HintPolicy' }))
+  fireEvent.click(await screen.findByRole('button', { name: '2 messages on HintPolicy' }))
 
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reopen' }))
 
@@ -698,7 +725,7 @@ test('the tab itself can be commented on', async () => {
 
   fireEvent.click(screen.getByRole('button', { name: 'Comment on this tab' }))
 
-  expect(screen.getByRole('dialog', { name: 'New comment on tab:classes' })).toBeInTheDocument()
+  expect(screen.getByRole('dialog', { name: 'New comment on Tab › Classes' })).toBeInTheDocument()
 })
 
 test('threads on the tab itself are listed beside it', async () => {
@@ -714,7 +741,7 @@ test('orphaned threads are listed on every tab', async () => {
   await open()
 
   const panel = await screen.findByRole('region', { name: 'Orphaned comments' })
-  expect(panel).toHaveTextContent('class:Gone')
+  expect(within(panel).getByText('Gone')).toHaveAttribute('title', 'class:Gone')
   fireEvent.click(screen.getByRole('tab', { name: 'Files' }))
   expect(screen.getByRole('region', { name: 'Orphaned comments' })).toBeInTheDocument()
 })
@@ -722,13 +749,13 @@ test('orphaned threads are listed on every tab', async () => {
 test("the agent's reply, pushed by the server, appears without a reload", async () => {
   server.threads = [thread('t-1', 'class:HintPolicy', 'Rename?')]
   await open()
-  await screen.findByRole('button', { name: '1 message on class:HintPolicy' })
+  await screen.findByRole('button', { name: '1 message on HintPolicy' })
 
   server.threads = [thread('t-1', 'class:HintPolicy', 'Rename?', 'Yes: HintRules.')]
   await act(async () => server.push({ type: 'threads_changed' }))
 
   expect(
-    await screen.findByRole('button', { name: '2 messages on class:HintPolicy' }),
+    await screen.findByRole('button', { name: '2 messages on HintPolicy' }),
   ).toBeInTheDocument()
 })
 
@@ -799,7 +826,7 @@ test('clicking another element while writing keeps the comment being written', a
   fireEvent.click(element('rel:orch-llm'))
 
   const composer = screen.getByRole('dialog')
-  expect(composer).toHaveAccessibleName('New comment on rel:orch-policy')
+  expect(composer).toHaveAccessibleName('New comment on Orchestrator → HintPolicy')
   expect(within(composer).getByRole('textbox')).toHaveValue('Half a thought')
 })
 
@@ -841,7 +868,7 @@ test('once a composer with text is cancelled, clicking an element comments again
 
   fireEvent.click(element('rel:orch-llm'))
 
-  expect(screen.getByRole('dialog')).toHaveAccessibleName('New comment on rel:orch-llm')
+  expect(screen.getByRole('dialog')).toHaveAccessibleName('New comment on Orchestrator → LLMClient')
 })
 
 test('arrows have a wide invisible click target', async () => {
@@ -896,7 +923,9 @@ test('a press that barely moves is still a click that comments', async () => {
   fireEvent.pointerUp(card, { clientX: 102, clientY: 101, pointerId: 1 })
   fireEvent.click(card)
 
-  expect(screen.getByRole('dialog')).toHaveAccessibleName('New comment on rel:orch-policy')
+  expect(screen.getByRole('dialog')).toHaveAccessibleName(
+    'New comment on Orchestrator → HintPolicy',
+  )
 })
 
 test('a click that ends a text selection does not open a composer', async () => {
@@ -911,13 +940,13 @@ test('a click that ends a text selection does not open a composer', async () => 
 test('clicking another element while editing a draft keeps the edit', async () => {
   server.drafts = [draft('d-1', 'class:HintPolicy', 'Split it?')]
   await open()
-  fireEvent.click(await screen.findByRole('button', { name: 'Draft on class:HintPolicy' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Draft on HintPolicy' }))
   write(screen.getByRole('dialog'), 'Split it into two?')
 
   fireEvent.click(element('rel:orch-llm'))
 
   const editor = screen.getByRole('dialog')
-  expect(editor).toHaveAccessibleName('Draft on class:HintPolicy')
+  expect(editor).toHaveAccessibleName('Draft on HintPolicy')
   expect(within(editor).getByRole('textbox')).toHaveValue('Split it into two?')
 })
 
@@ -930,7 +959,7 @@ test('text typed back to what the composer opened with does not hold the next cl
 
   fireEvent.click(element('rel:orch-llm'))
 
-  expect(screen.getByRole('dialog')).toHaveAccessibleName('New comment on rel:orch-llm')
+  expect(screen.getByRole('dialog')).toHaveAccessibleName('New comment on Orchestrator → LLMClient')
 })
 
 async function writingOnAnArrow() {
@@ -941,7 +970,7 @@ async function writingOnAnArrow() {
 
 function stillWriting() {
   const composer = screen.getByRole('dialog')
-  expect(composer).toHaveAccessibleName('New comment on rel:orch-policy')
+  expect(composer).toHaveAccessibleName('New comment on Orchestrator → HintPolicy')
   expect(within(composer).getByRole('textbox')).toHaveValue('Half a thought')
 }
 
@@ -950,7 +979,7 @@ test('opening a thread from its pin while writing keeps the comment being writte
   await open()
   await writingOnAnArrow()
 
-  fireEvent.click(await screen.findByRole('button', { name: '1 message on class:Orchestrator' }))
+  fireEvent.click(await screen.findByRole('button', { name: '1 message on Orchestrator' }))
 
   stillWriting()
 })
@@ -1003,7 +1032,7 @@ test('adding a comment while drafts.json is broken shows the same named message'
 
   fireEvent.click(element('rel:orch-policy'))
   const composer = screen.getByRole('dialog', {
-    name: 'New comment on rel:orch-policy',
+    name: 'New comment on Orchestrator → HintPolicy',
   })
   write(composer, 'Keep it?')
   fireEvent.click(within(composer).getByRole('button', { name: 'Add to review' }))
@@ -1050,13 +1079,13 @@ test('a banner line goes away once the file is fixed and the server pushes a cha
 test('the Resolve button appears only after the agent replied', async () => {
   server.threads = [thread('t-1', 'class:HintPolicy', 'Rename?')]
   await open()
-  fireEvent.click(await screen.findByRole('button', { name: '1 message on class:HintPolicy' }))
+  fireEvent.click(await screen.findByRole('button', { name: '1 message on HintPolicy' }))
   expect(within(screen.getByRole('dialog')).queryByRole('button', { name: 'Resolve' })).toBeNull()
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' }))
 
   server.threads = [thread('t-1', 'class:HintPolicy', 'Rename?', 'Yes.')]
   server.push({ type: 'threads_changed' })
-  fireEvent.click(await screen.findByRole('button', { name: '2 messages on class:HintPolicy' }))
+  fireEvent.click(await screen.findByRole('button', { name: '2 messages on HintPolicy' }))
   expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Resolve' })).toBeVisible()
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' }))
 
@@ -1064,14 +1093,14 @@ test('the Resolve button appears only after the agent replied', async () => {
     { ...thread('t-1', 'class:HintPolicy', 'Rename?', 'Yes.', 'Hm'), resolved: true },
   ]
   server.push({ type: 'threads_changed' })
-  fireEvent.click(await screen.findByRole('button', { name: '3 messages on class:HintPolicy' }))
+  fireEvent.click(await screen.findByRole('button', { name: '3 messages on HintPolicy' }))
   expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reopen' })).toBeVisible()
 })
 
 test('the page reloads what it missed after a reconnect', async () => {
   server.threads = [thread('t-1', 'class:HintPolicy', 'Rename?')]
   await open()
-  await screen.findByRole('button', { name: '1 message on class:HintPolicy' })
+  await screen.findByRole('button', { name: '1 message on HintPolicy' })
   const fetched = (url: string) => server.calls.filter((c) => c.url === url).length
   const plans = fetched('/api/plan')
   const lists = fetched('/api/threads')
@@ -1080,11 +1109,7 @@ test('the page reloads what it missed after a reconnect', async () => {
   server.dropSockets()
 
   expect(
-    await screen.findByRole(
-      'button',
-      { name: '2 messages on class:HintPolicy' },
-      { timeout: 3000 },
-    ),
+    await screen.findByRole('button', { name: '2 messages on HintPolicy' }, { timeout: 3000 }),
   ).toBeInTheDocument()
   expect(fetched('/api/plan')).toBeGreaterThan(plans)
   expect(fetched('/api/threads')).toBeGreaterThan(lists)
@@ -1103,8 +1128,8 @@ test('backticks show as code in a thread message, a draft reply, the review pane
   const panel = await screen.findByRole('region', { name: 'Your review' })
   expect(within(panel).getByText('next_level', { selector: 'code.inline-code' })).toBeVisible()
   expect(within(panel).getByText('vague', { selector: 'code.inline-code' })).toBeVisible()
-  fireEvent.click(await screen.findByRole('button', { name: /on class:HintPolicy.next_level/ }))
-  const card = screen.getByRole('dialog', { name: 'Thread on class:HintPolicy.next_level' })
+  fireEvent.click(await screen.findByRole('button', { name: /on HintPolicy › next_level/ }))
+  const card = screen.getByRole('dialog', { name: 'Thread on HintPolicy › next_level' })
   for (const code of ['None', 'no hints', 'next_level'])
     expect(within(card).getByText(code, { selector: 'code.inline-code' })).toBeVisible()
   expect(card.textContent).not.toContain('`')
@@ -1124,11 +1149,132 @@ test('backticks show as code in the hover preview of a pin', async () => {
   server.threads = [thread('t-1', 'class:HintPolicy.next_level', 'Is `None` ok?')]
   await open()
 
-  fireEvent.mouseEnter(
-    await screen.findByRole('button', { name: /on class:HintPolicy.next_level/ }),
-  )
+  fireEvent.mouseEnter(await screen.findByRole('button', { name: /on HintPolicy › next_level/ }))
 
   const tip = screen.getByRole('tooltip')
   expect(within(tip).getByText('None', { selector: 'code.inline-code' })).toBeVisible()
   expect(tip.textContent).not.toContain('`')
+})
+
+test.each([
+  ['flow:level/check', 'Choosing the hint level › hints_given < max_hints?'],
+  ['flow:level/e2', 'hints_given < max_hints? → Give next level (yes)'],
+])('an existing thread on %s still shows its pin on the flowchart shapes', async (id, name) => {
+  server.threads = [thread('t-flow', id, 'Is this right?', 'Yes.')]
+  await openFront()
+  fireEvent.click(screen.getByRole('tab', { name: 'Flows' }))
+  fireEvent.click(screen.getByRole('button', { name: /hint level/i }))
+  await vi.waitFor(() => element(id))
+
+  const pin = await screen.findByRole('button', { name: `2 messages on ${name}` })
+  fireEvent.click(pin)
+
+  expect(element(id)).toHaveClass(id.endsWith('check') ? 'flow-node' : 'edge')
+  expect(screen.getByRole('dialog', { name: `Thread on ${name}` })).toBeInTheDocument()
+})
+
+async function openLevelFlowchart() {
+  await openFront()
+  fireEvent.click(screen.getByRole('tab', { name: 'Flows' }))
+  fireEvent.click(screen.getByRole('button', { name: /hint level/i }))
+  await vi.waitFor(() => element('flow:level/check'))
+}
+
+const topOf = (dialog: HTMLElement) => dialog.querySelector('.card-top') as HTMLElement
+
+test('a new comment shows the readable name, whole up to 60 characters, with the id in grey underneath', async () => {
+  await openLevelFlowchart()
+
+  fireEvent.click(element('flow:level/check'))
+
+  const dialog = screen.getByRole('dialog', {
+    name: 'New comment on Choosing the hint level › hints_given < max_hints?',
+  })
+  const name = within(topOf(dialog)).getByText('Choosing the hint level › hints_given < max_hints?')
+  expect(name).toHaveAttribute('title', 'Choosing the hint level › hints_given < max_hints?')
+  const id = within(topOf(dialog)).getByText('flow:level/check')
+  expect(id.tagName).toBe('CODE')
+  expect(id.className).toBe('anchor-id')
+})
+
+test('a short name is shown whole in the new-comment box', async () => {
+  await open()
+  await vi.waitFor(() => element('rel:orch-policy'))
+
+  fireEvent.click(element('rel:orch-policy'))
+
+  const top = topOf(
+    screen.getByRole('dialog', { name: 'New comment on Orchestrator → HintPolicy' }),
+  )
+  expect(within(top).getByText('Orchestrator → HintPolicy')).toHaveAttribute(
+    'title',
+    'Orchestrator → HintPolicy',
+  )
+  expect(within(top).getByText('rel:orch-policy').tagName).toBe('CODE')
+})
+
+test('a saved thread and a draft edit box show the same readable name and the id underneath', async () => {
+  server.threads = nextLevelThread()
+  server.drafts = [draft('d-1', 'class:HintPolicy.next_level', 'Split it?')]
+  await open()
+
+  fireEvent.click(await screen.findByRole('button', { name: /^2 messages on / }))
+  const card = screen.getByRole('dialog', { name: 'Thread on HintPolicy › next_level' })
+
+  expect(within(topOf(card)).getByText('HintPolicy › next_level')).toBeInTheDocument()
+  expect(within(topOf(card)).getByText('class:HintPolicy.next_level').tagName).toBe('CODE')
+  fireEvent.click(within(card).getByRole('button', { name: 'Close' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Draft on HintPolicy › next_level' }))
+  const edit = screen.getByRole('dialog', { name: 'Draft on HintPolicy › next_level' })
+  expect(within(topOf(edit)).getByText('HintPolicy › next_level')).toBeInTheDocument()
+  expect(within(topOf(edit)).getByText('class:HintPolicy.next_level').tagName).toBe('CODE')
+})
+
+test('the side panel shows readable names with the id on hover, and no separate id line', async () => {
+  server.drafts = [draft('d-1', 'risk:1', 'Too vague')]
+  server.threads = [
+    thread('t-1', 'tab:classes', 'Too many classes'),
+    thread('t-2', 'class:HintPolicy', 'Why a policy?'),
+    { ...thread('t-3', 'flow:gone/step', 'Where did it go?'), orphaned: true },
+  ]
+  await openFront()
+
+  const rows = [
+    [
+      'Your review',
+      'Risk › Small local models may give away the full solution ev…',
+      'risk:1',
+      'Too vague',
+    ],
+    ['Comments on this tab', 'Tab › Classes', 'tab:classes', 'Too many classes'],
+    ['Comments on the other side', 'HintPolicy', 'class:HintPolicy', 'Why a policy?'],
+    ['Orphaned comments', 'gone › step', 'flow:gone/step', 'Where did it go?'],
+  ]
+  for (const [region, name, id, message] of rows) {
+    const panel = await screen.findByRole('region', { name: region })
+    const shown = within(panel).getByText(name)
+    expect(shown, region).toHaveAttribute('title', id)
+    // The thread lists are one button: the name, a space, then the message.
+    const gap = region === 'Your review' ? '' : ' '
+    expect(panel, region).toHaveTextContent(`${name}${gap}${message}`)
+    expect(panel.querySelector('code'), region).toBeNull()
+    expect(panel).not.toHaveTextContent(id)
+  }
+})
+
+test('opening a class popup focuses the popup, not the close button; Escape closes it, and × stays in the tab order after it', async () => {
+  await open()
+  await vi.waitFor(() => element('class:HintPolicy'))
+
+  fireEvent.click(element('class:HintPolicy'))
+
+  const popup = screen.getByRole('dialog', { name: /^Details of HintPolicy/ })
+  expect(popup).toHaveFocus()
+  expect(popup).toHaveAttribute('tabindex', '-1')
+  const close = screen.getByRole('button', { name: 'Close' })
+  expect(close).not.toHaveFocus()
+  expect(close).not.toHaveAttribute('tabindex', '-1')
+  expect(popup.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  fireEvent.keyDown(popup, { key: 'Escape' })
+  expect(screen.queryByRole('dialog', { name: /^Details of HintPolicy/ })).toBeNull()
 })

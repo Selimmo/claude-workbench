@@ -11,7 +11,7 @@ import {
   sideDiagram,
   sideOf,
 } from './diagram'
-import type { Plan } from './plan'
+import type { Flowchart, Plan } from './plan'
 
 const plan = example as Plan
 const oldPlan = old as Plan
@@ -70,8 +70,50 @@ test('flowchart diagram: a node per step, labelled edges', () => {
     subtitle: null,
     status: 'added',
     rows: [],
+    shape: 'decision',
   })
   expect(diagram.edges.map((e) => e.label)).toEqual([null, 'yes', 'no'])
+})
+
+test('flowchart diagram: each step gets its shape and each line its main mark', () => {
+  const chart = plan.flows[1]
+  if (chart.kind !== 'flowchart') throw new Error('example flow 2 is a flowchart')
+
+  const diagram = flowchartDiagram(chart)
+
+  expect(diagram.nodes.map((n) => n.shape)).toEqual(['start', 'decision', 'end', 'end'])
+  expect(diagram.edges.map((e) => e.main)).toEqual([true, true, false])
+})
+
+test('flowchart diagram: a step with no kind is an action, a line with no mark is not main', () => {
+  const chart: Flowchart = {
+    id: 'flow:x',
+    title: 'X',
+    kind: 'flowchart',
+    nodes: [
+      { id: 'a', name: 'A', status: 'added' },
+      { id: 'b', name: 'B', status: 'added', kind: null },
+    ],
+    edges: [{ id: 'e', from: 'a', to: 'b', status: 'added' }],
+  }
+
+  const diagram = flowchartDiagram(chart)
+
+  expect(diagram.nodes.map((n) => n.shape)).toEqual(['action', 'action'])
+  expect(diagram.edges[0].main).toBe(false)
+})
+
+test('class and architecture boxes and lines carry no shape and no main mark', () => {
+  const boxes = [
+    ...classDiagram(oldPlan).nodes,
+    ...sideDiagram(plan, 'back').nodes,
+    ...architectureDiagram(plan).nodes,
+  ]
+  const lines = [...classDiagram(oldPlan).edges, ...architectureDiagram(plan).edges]
+
+  expect(boxes.length).toBeGreaterThan(0)
+  for (const box of boxes) expect(box).not.toHaveProperty('shape')
+  for (const line of lines) expect(line).not.toHaveProperty('main')
 })
 
 const withClasses = (extra: Plan['classes']): Plan => ({

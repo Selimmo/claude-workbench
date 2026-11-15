@@ -1,12 +1,14 @@
 import { useState } from 'react'
 
 import { discardDraft, submitReview } from '../api'
+import type { AnchorName } from '../anchorNames'
 import type { Draft } from '../threads'
 import type { Note } from './Toast'
 import { Prose } from '../Prose'
 
 interface Props {
   drafts: Draft[]
+  nameOf: (anchor: string) => AnchorName
   onChanged: () => Promise<void>
   onEdit: (draft: Draft) => void
   /** Tells the owner how submitting went (the panel itself disappears on success). */
@@ -16,7 +18,7 @@ interface Props {
 const comments = (n: number) => `${n} comment${n === 1 ? '' : 's'}`
 
 /** The owner's pending review, like a pull request's: edit or discard, then submit it all. */
-export function ReviewPanel({ drafts, onChanged, onEdit, onNotify }: Props) {
+export function ReviewPanel({ drafts, nameOf, onChanged, onEdit, onNotify }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -60,7 +62,9 @@ export function ReviewPanel({ drafts, onChanged, onEdit, onNotify }: Props) {
       <ul>
         {drafts.map((d) => (
           <li key={d.id}>
-            <code>{d.anchor}</code>
+            <span className="anchor-name" title={d.anchor}>
+              {nameOf(d.anchor).short}
+            </span>
             {d.thread_id && <span className="kind"> reply</span>}
             <span className="text">
               <Prose text={d.text} />

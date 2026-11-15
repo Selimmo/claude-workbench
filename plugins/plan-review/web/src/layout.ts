@@ -11,9 +11,10 @@ import {
   ROOMY,
   type Spacing,
 } from './diagram'
-import { CHAR_WIDTH, TITLE_CHAR_WIDTH, estimate } from './measure'
+import { clipToOutline, flowNodeSize, tagSize, tagsCollide } from './flowShapes'
+import { CHAR_WIDTH, TITLE_CHAR_WIDTH, type Measure, estimate, wrapLabel } from './measure'
 
-export { CHAR_WIDTH, TITLE_CHAR_WIDTH }
+export { CHAR_WIDTH, TITLE_CHAR_WIDTH, wrapLabel }
 export const PADDING = 12
 /** Between the title and the subtitle on a card's header line (at least the CSS gap). */
 export const HEADER_GAP = 2 * CHAR_WIDTH
@@ -31,6 +32,8 @@ export interface Point {
 export interface LaidNode extends DiagramNode, Point {
   width: number
   height: number
+  /** Flowchart steps: the text, wrapped to fit the shape. */
+  lines?: string[]
 }
 
 export interface LaidEdge extends DiagramEdge {
@@ -65,31 +68,63 @@ export function nodeSize(
   }
 }
 
-/** Breaks a label at spaces so each line fits `maxWidth`; a word wider than that stays whole. */
-export function wrapLabel(text: string, maxWidth: number, measure: CardMeasure): string[] {
-  const lines: string[] = []
-  for (const word of text.split(' ')) {
-    const last = lines.length - 1
-    if (last >= 0 && measure(`${lines[last]} ${word}`, 'row') <= maxWidth) lines[last] += ` ${word}`
-    else lines.push(word)
-  }
-  return lines
+const elk = new ELK()
+
+interface Size {
+  width: number
+  height: number
 }
 
-const elk = new ELK()
+/** Tags are placed next to the step they leave; if two would collide, or one would cover a step,
+ * they go back to the middle of their line. */
+type TagPlacement = 'TAIL' | 'CENTER'
 
 export async function layoutDiagram(
   diagram: Diagram,
   direction: 'RIGHT' | 'DOWN' = 'RIGHT',
-  measure: CardMeasure = estimate,
+  measure: Measure = estimate,
   spacing: Spacing = ROOMY,
 ): Promise<LaidDiagram> {
+  if (!diagram.nodes.some((n) => n.shape)) return layoutOnce(diagram, direction, measure, spacing)
+  const tails = await layoutOnce(diagram, direction, measure, spacing, 'TAIL')
+  if (!tagsCollideIn(tails, measure)) return tails
+  return layoutOnce(diagram, direction, measure, spacing, 'CENTER')
+}
+
+function tagsCollideIn(laid: LaidDiagram, measure: Measure): boolean {
+  const tags = laid.edges.flatMap((e) =>
+    e.label && e.labelAt ? [{ ...e.labelAt, ...tagSize(e.label, measure) }] : [],
+  )
+  return tagsCollide(tags, laid.nodes)
+}
+
+async function layoutOnce(
+  diagram: Diagram,
+  direction: 'RIGHT' | 'DOWN',
+  measure: Measure,
+  spacing: Spacing,
+  tags?: TagPlacement,
+): Promise<LaidDiagram> {
+  const sizes = new Map<string, Size & { lines?: string[] }>(
+    diagram.nodes.map((n) => [n.id, n.shape ? flowNodeSize(n, measure) : nodeSize(n, measure)]),
+  )
   const wrapped = new Map(
     diagram.edges.map((e) => [
       e.id,
-      e.label ? wrapLabel(e.label, spacing.labelWidth, measure) : [],
+      !e.label
+        ? []
+        : tags
+          ? [e.label]
+          : wrapLabel(e.label, spacing.labelWidth, (t) => measure(t, 'row')),
     ]),
   )
+  const labelSize = (edge: DiagramEdge) =>
+    tags && edge.label
+      ? tagSize(edge.label, measure)
+      : {
+          width: Math.max(...(wrapped.get(edge.id) ?? []).map((l) => measure(l, 'row'))),
+          height: LABEL_LINE_HEIGHT * (wrapped.get(edge.id)?.length ?? 1),
+        }
   const input: ElkNode = {
     id: 'root',
     layoutOptions: {
@@ -100,7 +135,11 @@ export async function layoutDiagram(
       'elk.layered.spacing.nodeNodeBetweenLayers': String(spacing.betweenLayers),
       'elk.padding': '[top=20,left=20,bottom=20,right=20]',
     },
-    children: diagram.nodes.map((node) => ({ id: node.id, ...nodeSize(node, measure) })),
+    children: diagram.nodes.map((node) => ({
+      id: node.id,
+      width: sizes.get(node.id)?.width,
+      height: sizes.get(node.id)?.height,
+    })),
     edges: diagram.edges.map((edge) => ({
       id: edge.id,
       sources: [edge.source],
@@ -109,8 +148,8 @@ export async function layoutDiagram(
         ? [
             {
               text: edge.label,
-              width: Math.max(...(wrapped.get(edge.id) ?? []).map((l) => measure(l, 'row'))),
-              height: LABEL_LINE_HEIGHT * (wrapped.get(edge.id)?.length ?? 1),
+              ...labelSize(edge),
+              ...(tags ? { layoutOptions: { 'elk.edgeLabels.placement': tags } } : {}),
             },
           ]
         : [],
@@ -120,20 +159,33 @@ export async function layoutDiagram(
 
   const placed = new Map((graph.children ?? []).map((child) => [child.id, child]))
   const routed = new Map((graph.edges ?? []).map((edge) => [edge.id, edge]))
+  const nodes: LaidNode[] = diagram.nodes.map((node) => {
+    const p = placed.get(node.id)
+    const lines = node.shape ? sizes.get(node.id)?.lines : undefined
+    return {
+      ...node,
+      x: p?.x ?? 0,
+      y: p?.y ?? 0,
+      width: p?.width ?? 0,
+      height: p?.height ?? 0,
+      ...(lines ? { lines } : {}),
+    }
+  })
+  const byId = new Map(nodes.map((n) => [n.id, n]))
   return {
-    nodes: diagram.nodes.map((node) => {
-      const p = placed.get(node.id)
-      return { ...node, x: p?.x ?? 0, y: p?.y ?? 0, width: p?.width ?? 0, height: p?.height ?? 0 }
-    }),
+    nodes,
     edges: diagram.edges.map((edge) => {
       const route = routed.get(edge.id)
       const section = route?.sections?.[0]
       const label = route?.labels?.[0]
+      const points = section
+        ? [section.startPoint, ...(section.bendPoints ?? []), section.endPoint]
+        : []
+      const from = byId.get(edge.source)
+      const to = byId.get(edge.target)
       return {
         ...edge,
-        points: section
-          ? [section.startPoint, ...(section.bendPoints ?? []), section.endPoint]
-          : [],
+        points: from && to ? clipToOutline(points, from, to) : points,
         labelAt:
           label?.x !== undefined && label.y !== undefined ? { x: label.x, y: label.y } : null,
         labelLines: wrapped.get(edge.id) ?? [],

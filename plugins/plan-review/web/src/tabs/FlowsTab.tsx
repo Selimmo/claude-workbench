@@ -83,7 +83,9 @@ function SequenceView({ flow }: { flow: SequenceFlow }) {
 
 function FlowchartView({ flow }: { flow: Flowchart }) {
   const diagram = useMemo(() => flowchartDiagram(flow), [flow])
-  return <DiagramView diagram={diagram} direction="DOWN" empty="This flowchart is empty." />
+  return (
+    <DiagramView diagram={diagram} direction="DOWN" look="flow" empty="This flowchart is empty." />
+  )
 }
 
 /** One flow at a time, so each diagram gets the whole space; the picker switches. */

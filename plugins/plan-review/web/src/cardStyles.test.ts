@@ -97,3 +97,104 @@ test("the popup title's status only colours the class name, with no background o
     expect(title.get('border-left'), status).toBe('0')
   }
 })
+
+const THEMES = [':root', ":root:not([data-theme='light'])", ":root[data-theme='dark']"]
+
+test('the flowchart colours are set in every theme block', () => {
+  for (const theme of THEMES)
+    for (const name of ['--flow-fill', '--flow-line', '--tag-bg'])
+      expect(declared(theme).has(name), `${theme} ${name}`).toBe(true)
+})
+
+test('a flowchart step takes its outline and its tint from its status', () => {
+  for (const status of ['added', 'modified', 'removed']) {
+    const shape = declared(`.flow-node[data-status='${status}'] .shape`)
+    expect(shape.get('stroke'), status).toBe(`var(--${status})`)
+    expect(shape.get('fill'), status).toBe(`var(--${status}-bg)`)
+  }
+  const unchanged = declared(".flow-node[data-status='unchanged'] .shape")
+  expect(unchanged.get('stroke')).toBe('var(--flow-line)')
+  expect(unchanged.get('fill')).toBe('var(--flow-fill)')
+  expect(declared('.flow-node .shape').get('stroke-width')).toBe('2')
+  expect(declared(".flow-node[data-status='removed'] .shape").get('stroke-dasharray')).toBeTruthy()
+  expect(declared(".flow-node[data-status='removed'] text").get('text-decoration')).toBe(
+    'line-through',
+  )
+})
+
+test('flowchart text is 500 13px, tags are 600 11px on the tag colour, both in the measured family', () => {
+  const flow = declared('.flow-node text')
+  const tag = declared('.tag text')
+  expect([flow.get('font-weight'), flow.get('font-size')]).toEqual(['500', '13px'])
+  expect([tag.get('font-weight'), tag.get('font-size')]).toEqual(['600', '11px'])
+  // The family is inherited from :root, which is what measure.ts measures in.
+  for (const d of [flow, tag]) {
+    expect(d.has('font')).toBe(false)
+    expect(d.has('font-family')).toBe(false)
+  }
+  expect(declared('.tag rect').get('fill')).toBe('var(--tag-bg)')
+  expect(declared('.tag rect').get('stroke')).toBe('var(--muted)')
+})
+
+test('a main line is the accent colour and thicker than a plain one, and thicker still on hover', () => {
+  const plain = Number(declared('.edge .line').get('stroke-width'))
+  const main = declared(".edge[data-main='true'] .line")
+  const hover = declared(".commentable .edge[data-main='true']:hover .line")
+
+  expect(main.get('stroke')).toBe('var(--accent)')
+  expect(Number(main.get('stroke-width'))).toBeGreaterThan(plain)
+  expect(Number(hover.get('stroke-width'))).toBeGreaterThan(Number(main.get('stroke-width')))
+  expect(declared('marker.main path').get('fill')).toBe('var(--accent)')
+})
+
+test('a main line still shows when a test points at it or a revision changed it', () => {
+  const main = Number(declared(".edge[data-main='true'] .line").get('stroke-width'))
+  const focused = declared(".edge[data-main='true'][data-focused='true'] .line")
+  const revised = declared(".edge[data-main='true'][data-revised='true'] .line")
+
+  expect(focused.get('stroke')).toBe('var(--accent)')
+  expect(Number(focused.get('stroke-width'))).toBeGreaterThan(main)
+  expect(Number(revised.get('stroke-width'))).toBeGreaterThan(main)
+})
+
+test('the tag of a focused line keeps its thin border', () => {
+  const tag = declared("g[data-focused='true'] .tag rect")
+
+  expect(tag.get('stroke-width')).toBe('1')
+  expect(tag.get('stroke')).toBe('var(--muted)')
+})
+
+test('hovering, focusing or revising a step shows on its shape', () => {
+  expect(declared('.commentable .flow-node:hover .shape').get('stroke')).toBe('var(--accent)')
+  expect(declared(".flow-node[data-focused='true'] .shape").get('stroke')).toBe('var(--accent)')
+  expect(declared(".flow-node[data-revised='true'] .shape").has('stroke-width')).toBe(true)
+})
+
+test('the close button shows its focus ring only for the keyboard', () => {
+  expect(declared('button.icon').get('outline')).toBe('none')
+  expect(declared('button.icon:focus-visible').get('outline')).toMatch(/var\(--accent\)/)
+  expect(declared('button.icon:focus').has('outline')).toBe(false)
+  expect(declared('.class-details:focus').get('outline')).toBe('none')
+})
+
+function position(selector: string): number {
+  return rules().findIndex((r) => r.selectors.includes(selector))
+}
+
+test('a revised flowchart step is outlined in the accent colour', () => {
+  expect(declared(".flow-node[data-revised='true'] .shape").get('stroke')).toBe('var(--accent)')
+})
+
+test('a focused and revised step keeps the focused width', () => {
+  const revised = position(".flow-node[data-revised='true'] .shape")
+  const focused = position(".flow-node[data-focused='true'] .shape")
+  expect(revised).toBeGreaterThanOrEqual(0)
+  expect(focused).toBeGreaterThan(revised)
+})
+
+test('a focused and revised main line keeps the focused width', () => {
+  const revised = position(".edge[data-main='true'][data-revised='true'] .line")
+  const focused = position(".edge[data-main='true'][data-focused='true'] .line")
+  expect(revised).toBeGreaterThanOrEqual(0)
+  expect(focused).toBeGreaterThan(revised)
+})

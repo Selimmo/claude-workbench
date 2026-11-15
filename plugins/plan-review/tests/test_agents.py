@@ -105,6 +105,18 @@ def test_the_architect_writes_classes_in_the_new_shape() -> None:
     assert "old shape" in text or "written before" in text
 
 
+def test_architect_is_told_to_use_decisions_and_label_their_lines() -> None:
+    text = (AGENTS / "architect.md").read_text().lower()
+
+    assert "give each flowchart step a `kind`" in text
+    assert "`decision` for every yes/no or either/or step" in text
+    assert "label every line leaving it" in text
+    assert "refuses a decision with fewer than two lines" in text
+    assert "`start`" in text and "`end`" in text
+    assert "real steps with their own text" in text
+    assert "`main: true`" in text
+
+
 def test_the_implementer_may_not_edit_the_run_folder_except_its_report() -> None:
     text = body_of("implementer")
 

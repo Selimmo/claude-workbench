@@ -1101,6 +1101,46 @@ def test_schema_says_validate_requires_side_name_and_kind(
         assert "validate` requires it" in field["description"]
 
 
+def test_validate_fails_on_a_decision_problem(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    flow = {
+        "id": "flow:c",
+        "title": "C",
+        "kind": "flowchart",
+        "nodes": [
+            {"id": "flow:c/a", "name": "A?", "kind": "decision", "status": "added"},
+            {"id": "flow:c/b", "name": "B", "status": "added"},
+        ],
+        "edges": [
+            {
+                "id": "flow:c/e1",
+                "from": "flow:c/a",
+                "to": "flow:c/b",
+                "label": "yes",
+                "status": "added",
+            }
+        ],
+    }
+    path = write_plan(tmp_path, {**VALID_PLAN, "flows": [flow]})
+
+    assert main(["validate", path]) == 1
+
+    lines = capsys.readouterr().err.splitlines()
+    where = Path(path).as_posix()
+    assert lines == [f"{where}: flow:c/a: a decision needs at least two lines leaving it; it has 1"]
+
+
+def test_schema_describes_kind_and_main_on_flowcharts(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["schema"]) == 0
+
+    defs = json.loads(capsys.readouterr().out)["$defs"]
+    assert "decision" in defs["FlowNode"]["properties"]["kind"]["description"]
+    assert "main path" in defs["FlowLink"]["properties"]["main"]["description"]
+
+
 def write_old_config(project: Path, config: object) -> Path:
     old = project / ".claude" / "pipeline.json"
     old.parent.mkdir(exist_ok=True)

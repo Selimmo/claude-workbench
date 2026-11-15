@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { ClassDetails as Details, MemberGroup, MemberLine } from './diagram'
 import { Prose } from './Prose'
@@ -87,6 +87,9 @@ function MemberRow({ line, removed, open, onToggle, onComment }: RowProps) {
 export function ClassDetails({ details, onComment, onClose }: Props) {
   const [openMember, setOpenMember] = useState<string | null>(null)
   const [showUnchanged, setShowUnchanged] = useState(false)
+  const popup = useRef<HTMLDivElement>(null)
+  // The popup itself takes focus, so Esc works but no ring shows on the × after a mouse click.
+  useEffect(() => popup.current?.focus(), [])
   const rows = (lines: MemberLine[], removed: boolean) =>
     lines.map((line) => (
       <MemberRow
@@ -103,6 +106,8 @@ export function ClassDetails({ details, onComment, onClose }: Props) {
       role="dialog"
       aria-label={`Details of ${details.title}`}
       className="thread-card class-details"
+      ref={popup}
+      tabIndex={-1}
       onKeyDown={(e) => e.key === 'Escape' && onClose()}
     >
       <div className="card-top">
@@ -112,7 +117,7 @@ export function ClassDetails({ details, onComment, onClose }: Props) {
         </h2>
         <span className="kind">{details.kind}</span>
         {onComment && <CommentIcon anchor={details.id} onComment={onComment} />}
-        <button className="icon" aria-label="Close" autoFocus onClick={onClose}>
+        <button className="icon" aria-label="Close" onClick={onClose}>
           ×
         </button>
       </div>

@@ -462,26 +462,31 @@
         {
           "id": "flow:level/start",
           "name": "Hint requested",
+          "kind": "start",
           "status": "added"
         },
         {
           "id": "flow:level/check",
           "name": "hints_given < max_hints?",
+          "kind": "decision",
           "status": "added"
         },
         {
           "id": "flow:level/give",
           "name": "Give the next level",
+          "kind": "action",
           "status": "added"
         },
         {
           "id": "flow:level/penalty",
           "name": "Add to hint_penalty",
+          "kind": "end",
           "status": "added"
         },
         {
           "id": "flow:level/refuse",
           "name": "Say no hints are left",
+          "kind": "end",
           "status": "added"
         }
       ],
@@ -490,20 +495,23 @@
           "id": "flow:level/e1",
           "from": "flow:level/start",
           "to": "flow:level/check",
-          "status": "added"
+          "status": "added",
+          "main": true
         },
         {
           "id": "flow:level/e2",
           "from": "flow:level/check",
           "to": "flow:level/give",
           "label": "yes",
-          "status": "added"
+          "status": "added",
+          "main": true
         },
         {
           "id": "flow:level/e3",
           "from": "flow:level/give",
           "to": "flow:level/penalty",
-          "status": "added"
+          "status": "added",
+          "main": true
         },
         {
           "id": "flow:level/e4",
