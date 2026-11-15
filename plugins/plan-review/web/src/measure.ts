@@ -2,7 +2,7 @@
 // In the browser a canvas measures it in the real font; tests (jsdom has no canvas) use
 // estimates, which keeps layout deterministic there.
 
-export type TextKind = 'title' | 'subtitle' | 'row' | 'participant' | 'label'
+export type TextKind = 'title' | 'subtitle' | 'row' | 'participant' | 'label' | 'flow' | 'tag'
 export type Measure = (text: string, kind: TextKind) => number
 
 export const CHAR_WIDTH = 7.8 // px per character at the diagram's 13px monospace font
@@ -14,9 +14,26 @@ const ESTIMATE: Record<TextKind, number> = {
   row: CHAR_WIDTH,
   participant: 8.5, // semibold 13px
   label: 7.2, // 12px monospace
+  flow: 7.4, // medium 13px sans-serif
+  tag: 6.4, // semibold 11px sans-serif
 }
 
 export const estimate: Measure = (text, kind) => text.length * ESTIMATE[kind]
+
+/** Breaks text at spaces so each line fits `maxWidth`; a word wider than that stays whole. */
+export function wrapLabel(
+  text: string,
+  maxWidth: number,
+  width: (text: string) => number,
+): string[] {
+  const lines: string[] = []
+  for (const word of text.split(' ')) {
+    const last = lines.length - 1
+    if (last >= 0 && width(`${lines[last]} ${word}`) <= maxWidth) lines[last] += ` ${word}`
+    else lines.push(word)
+  }
+  return lines
+}
 
 const MONO = "ui-monospace, 'SF Mono', Menlo, monospace"
 
@@ -29,6 +46,8 @@ function fonts(): Record<TextKind, string> {
     row: `13px ${MONO}`,
     participant: `600 13px ${family}`,
     label: `12px ${MONO}`,
+    flow: `500 13px ${family}`,
+    tag: `600 11px ${family}`,
   }
 }
 

@@ -12,6 +12,9 @@
   --removed: #c92a2a;
   --removed-bg: #fdecec;
   --code-bg: #efefec;
+  --flow-fill: #f3f4f8;
+  --flow-line: #c9ccd6;
+  --tag-bg: #ffffff;
   --high: #c92a2a;
   --medium: #945800;
   --low: #6b6b70;
@@ -40,6 +43,9 @@
     --removed: #ff7b7b;
     --removed-bg: #3a1a1a;
     --code-bg: #2c2c31;
+    --flow-fill: #26262c;
+    --flow-line: #3a3a42;
+    --tag-bg: #1f1f22;
     --high: #ff7b7b;
     --medium: #f0b35a;
     --low: #9a9aa2;
@@ -62,6 +68,9 @@
   --removed: #ff7b7b;
   --removed-bg: #3a1a1a;
   --code-bg: #2c2c31;
+  --flow-fill: #26262c;
+  --flow-line: #3a3a42;
+  --tag-bg: #1f1f22;
   --high: #ff7b7b;
   --medium: #f0b35a;
   --low: #9a9aa2;
@@ -815,9 +824,10 @@ marker path {
   white-space: pre-wrap;
 }
 
-.review-panel li code {
+.review-panel li .anchor-name {
   font-size: 0.8rem;
   color: var(--muted);
+  font-weight: 600;
 }
 
 .hint {
@@ -969,6 +979,22 @@ marker path {
   color: var(--muted);
 }
 
+/* What a comment is on: its name in words, the raw id small and grey underneath. */
+.anchor-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.anchor-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.card-top .anchor-id {
+  font-size: var(--card-small);
+}
+
 /* The only part of a card that scrolls: the top line (name, comment icon, Close) stays in view. */
 .card-body {
   flex: 1 1 auto;
@@ -1005,9 +1031,21 @@ button.icon {
   font-size: 1.2rem;
   line-height: 1;
   border: none;
+  outline: none;
   background: none;
   color: var(--muted);
   cursor: pointer;
+}
+
+/* The ring is for the keyboard: a click on a class box must not leave one on the ×. */
+button.icon:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The popup holds focus itself when it opens (so Esc works); that is not a ring to show. */
+.class-details:focus {
+  outline: none;
 }
 
 .messages {
@@ -1831,4 +1869,98 @@ html {
   background: var(--code-bg);
   color: var(--text);
   overflow-wrap: anywhere;
+}
+
+/* Flowcharts: steps are SVG shapes. The status colours the outline and tints the inside. */
+.flow-node .shape {
+  stroke-width: 2;
+}
+
+.flow-node[data-status='added'] .shape {
+  stroke: var(--added);
+  fill: var(--added-bg);
+}
+
+.flow-node[data-status='modified'] .shape {
+  stroke: var(--modified);
+  fill: var(--modified-bg);
+}
+
+.flow-node[data-status='removed'] .shape {
+  stroke: var(--removed);
+  fill: var(--removed-bg);
+  stroke-dasharray: 5 4;
+}
+
+.flow-node[data-status='unchanged'] .shape {
+  stroke: var(--flow-line);
+  fill: var(--flow-fill);
+}
+
+.flow-node text {
+  font-weight: 500;
+  font-size: 13px;
+  fill: var(--text);
+}
+
+.flow-node[data-status='removed'] text {
+  text-decoration: line-through;
+}
+
+.commentable .flow-node:hover .shape {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+/* Revised rules come before the focused ones, so focus wins on an element that is both. */
+.flow-node[data-revised='true'] .shape {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.flow-node[data-focused='true'] .shape {
+  stroke: var(--accent);
+  stroke-width: 4;
+}
+
+/* The text of a line, in a small rounded tag. */
+.tag rect {
+  fill: var(--tag-bg);
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+.tag text {
+  font-weight: 600;
+  font-size: 11px;
+  fill: var(--muted);
+}
+
+/* The main path: thick and in the accent colour, whatever the status of the line. */
+.edge[data-main='true'] .line {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.commentable .edge[data-main='true']:hover .line {
+  stroke-width: 4.5;
+}
+
+.edge[data-main='true'][data-revised='true'] .line {
+  stroke-width: 4;
+}
+
+.edge[data-main='true'][data-focused='true'] .line {
+  stroke: var(--accent);
+  stroke-width: 4.5;
+}
+
+/* The text tag of a focused line keeps its thin border. */
+g[data-focused='true'] .tag rect {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+marker.main path {
+  fill: var(--accent);
 }

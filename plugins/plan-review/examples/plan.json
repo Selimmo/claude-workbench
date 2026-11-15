@@ -288,21 +288,25 @@
         {
           "id": "flow:level/start",
           "name": "Hint requested",
+          "kind": "start",
           "status": "added"
         },
         {
           "id": "flow:level/check",
           "name": "hints_given < max_hints?",
+          "kind": "decision",
           "status": "added"
         },
         {
           "id": "flow:level/give",
           "name": "Give next level",
+          "kind": "end",
           "status": "added"
         },
         {
           "id": "flow:level/refuse",
           "name": "Say no hints left",
+          "kind": "end",
           "status": "added"
         }
       ],
@@ -311,14 +315,16 @@
           "id": "flow:level/e1",
           "from": "flow:level/start",
           "to": "flow:level/check",
-          "status": "added"
+          "status": "added",
+          "main": true
         },
         {
           "id": "flow:level/e2",
           "from": "flow:level/check",
           "to": "flow:level/give",
           "label": "yes",
-          "status": "added"
+          "status": "added",
+          "main": true
         },
         {
           "id": "flow:level/e3",

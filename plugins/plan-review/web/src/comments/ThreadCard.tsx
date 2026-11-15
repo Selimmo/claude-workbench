@@ -1,11 +1,15 @@
 import { useState } from 'react'
 
 import { discardDraft, draftReply, setResolved } from '../api'
+import type { AnchorName } from '../anchorNames'
+import { AnchorTitle } from './AnchorTitle'
 import { authorLabel, canResolve, type Draft, type Thread } from '../threads'
 import { Prose } from '../Prose'
 
 interface Props {
   thread: Thread
+  /** How the thread's anchor reads to the owner. */
+  name: AnchorName
   /** The owner's unsent replies in this thread. */
   drafts: Draft[]
   onChanged: () => Promise<void>
@@ -14,7 +18,15 @@ interface Props {
   readOnly: boolean
 }
 
-export function ThreadCard({ thread, drafts, onChanged, onEditDraft, onClose, readOnly }: Props) {
+export function ThreadCard({
+  thread,
+  name,
+  drafts,
+  onChanged,
+  onEditDraft,
+  onClose,
+  readOnly,
+}: Props) {
   const [text, setText] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -31,13 +43,13 @@ export function ThreadCard({ thread, drafts, onChanged, onEditDraft, onClose, re
   return (
     <div
       role="dialog"
-      aria-label={`Thread on ${thread.anchor}`}
+      aria-label={`Thread on ${name.full}`}
       className="thread-card"
       data-resolved={thread.resolved}
       onKeyDown={(e) => e.key === 'Escape' && onClose()}
     >
       <div className="card-top">
-        <code>{thread.anchor}</code>
+        <AnchorTitle name={name} />
         <button className="icon" aria-label="Close" onClick={onClose}>
           ×
         </button>

@@ -40,6 +40,9 @@ Run `plan-review schema` for the exact format. In short:
   - Include only changed classes and the unchanged ones directly linked to them (they are drawn faded). An unchanged class linked to no changed class is left out.
   - When you revise a plan written before this shape (classes without `side`, members without `name`), bring its classes to the new shape and keep every id.
 - **flows**: one per runtime path the change adds or alters. Use `sequence` for messages between components, `flowchart` for decisions.
+  - Give each flowchart step a `kind`: `start`, `end`, `action` or `decision`. Use `decision` for every yes/no or either/or step and label every line leaving it (for example `yes` / `no`): `plan-review validate` refuses a decision with fewer than two lines leaving it, or a line leaving it with no label.
+  - Make the first step `start` and the last steps `end`. They are real steps with their own text, not empty Start / End boxes.
+  - Mark the lines of the main path with `main: true`, so the viewer draws it thicker and blue.
 - **architecture**: only when the change touches more than one process or service. Omit it otherwise.
 - **files**: every file added, modified or removed, including tests, config and docs (the README, if the project's rules require it).
 - **tests**: the TDD order. Each test is one behaviour, named for it, with `target` set to the id of the element it drives out. Order them so each builds on the last, simplest behaviour first. Every acceptance criterion (the issue's, or the plan's `acceptance_criteria`) must be covered by at least one test or one file change.

@@ -8,6 +8,7 @@ import {
 } from 'react'
 
 import { ClassDetails } from '../ClassDetails'
+import { type AnchorName, anchorName } from '../anchorNames'
 import { classDetails } from '../diagram'
 import type { Plan, Side } from '../plan'
 import { threadsFor } from '../threadGroups'
@@ -85,10 +86,12 @@ function ThreadList({
   title,
   threads,
   onOpen,
+  nameOf,
 }: {
   title: string
   threads: Thread[]
   onOpen: (id: string) => void
+  nameOf: (anchor: string) => AnchorName
 }) {
   if (threads.length === 0) return null
   return (
@@ -98,7 +101,10 @@ function ThreadList({
         {threads.map((t) => (
           <li key={t.id}>
             <button className="link" data-resolved={t.resolved} onClick={() => onOpen(t.id)}>
-              <code>{t.anchor}</code> <Prose text={t.messages[0]?.text ?? ''} />
+              <span className="anchor-name" title={t.anchor}>
+                {nameOf(t.anchor).short}
+              </span>{' '}
+              <Prose text={t.messages[0]?.text ?? ''} />
             </button>
           </li>
         ))}
@@ -120,6 +126,7 @@ export function CommentLayer(props: Props) {
   const writing = useRef(false)
   const groups = threadsFor(threads, plan, tab, side)
   const openThread = open?.kind === 'thread' ? threads.find((t) => t.id === open.id) : undefined
+  const nameOf = (anchor: string) => anchorName(plan, anchor)
   const newDrafts = drafts.filter((d) => d.thread_id === null)
 
   function onClick(event: MouseEvent) {
@@ -174,6 +181,7 @@ export function CommentLayer(props: Props) {
               {!readOnly && (
                 <ReviewPanel
                   drafts={drafts}
+                  nameOf={nameOf}
                   onChanged={refresh}
                   onEdit={editDraft}
                   onNotify={setNote}
@@ -183,16 +191,19 @@ export function CommentLayer(props: Props) {
                 title="Orphaned comments"
                 threads={groups.orphaned}
                 onOpen={(id) => setOpen({ kind: 'thread', id })}
+                nameOf={nameOf}
               />
               <ThreadList
                 title="Comments on the other side"
                 threads={groups.otherSide}
                 onOpen={(id) => setOpen({ kind: 'thread', id })}
+                nameOf={nameOf}
               />
               <ThreadList
                 title="Comments on this tab"
                 threads={groups.onTab}
                 onOpen={(id) => setOpen({ kind: 'thread', id })}
+                nameOf={nameOf}
               />
             </aside>
           )}
@@ -204,7 +215,7 @@ export function CommentLayer(props: Props) {
           key={t.id}
           anchor={t.anchor}
           badge={String(t.messages.length)}
-          label={`${t.messages.length} message${t.messages.length === 1 ? '' : 's'} on ${t.anchor}`}
+          label={`${t.messages.length} message${t.messages.length === 1 ? '' : 's'} on ${nameOf(t.anchor).full}`}
           preview={t.messages[0]?.text ?? ''}
           onOpen={() => setOpen({ kind: 'thread', id: t.id })}
         />
@@ -215,7 +226,7 @@ export function CommentLayer(props: Props) {
             key={d.id}
             anchor={d.anchor}
             badge="✎"
-            label={`Draft on ${d.anchor}`}
+            label={`Draft on ${nameOf(d.anchor).full}`}
             preview={d.text}
             draft
             // Beside any thread pin, and beside earlier drafts on the same element.
@@ -227,6 +238,7 @@ export function CommentLayer(props: Props) {
         <Floating anchor={openThread.anchor}>
           <ThreadCard
             thread={openThread}
+            name={nameOf(openThread.anchor)}
             drafts={drafts.filter((d) => d.thread_id === openThread.id)}
             onChanged={refresh}
             onEditDraft={editDraft}
@@ -249,6 +261,7 @@ export function CommentLayer(props: Props) {
           <Composer
             key={open.anchor}
             anchor={open.anchor}
+            name={nameOf(open.anchor)}
             onSaved={refresh}
             onClose={close}
             onDirty={onDirty}
@@ -260,6 +273,7 @@ export function CommentLayer(props: Props) {
           <Composer
             key={open.draft.id}
             anchor={open.draft.anchor}
+            name={nameOf(open.draft.anchor)}
             draft={open.draft}
             onSaved={refresh}
             onClose={close}

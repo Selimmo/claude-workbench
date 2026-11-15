@@ -1,6 +1,6 @@
 // A box-and-arrow diagram, independent of what it depicts: classes, architecture, flowcharts.
 
-import type { Edge, Flowchart, Member, Plan, PlanClass, Side, Status } from './plan'
+import type { Edge, FlowEdge, Flowchart, Member, Plan, PlanClass, Side, Status } from './plan'
 
 export interface DiagramRow {
   id: string
@@ -20,6 +20,8 @@ export interface DiagramNode {
   faded?: boolean
   /** A click opens the details popup, not the comment box. */
   details?: boolean
+  /** Flowchart steps only: the shape to draw. */
+  shape?: 'start' | 'end' | 'action' | 'decision'
 }
 
 export interface DiagramEdge {
@@ -28,6 +30,8 @@ export interface DiagramEdge {
   target: string
   label: string | null
   status: Status
+  /** Flowchart lines only: on the main path. */
+  main?: boolean
 }
 
 export interface Diagram {
@@ -80,8 +84,9 @@ export function flowchartDiagram(flow: Flowchart): Diagram {
       subtitle: null,
       status: n.status,
       rows: [],
+      shape: n.kind ?? 'action',
     })),
-    edges: flow.edges.map(edgeOf),
+    edges: flow.edges.map((e: FlowEdge) => ({ ...edgeOf(e), main: e.main ?? false })),
   }
 }
 

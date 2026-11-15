@@ -16,11 +16,16 @@ import {
   LABEL_LINE_HEIGHT,
   ROOMY,
   architectureDiagram,
+  classDiagram,
+  flowchartDiagram,
   type Diagram,
   type DiagramNode,
 } from './diagram'
 import example from '../../examples/plan.json'
 import type { Plan } from './plan'
+import ELK, { type ElkNode } from 'elkjs/lib/elk.bundled.js'
+import { flowNodeSize, tagSize } from './flowShapes'
+import { estimate } from './measure'
 
 const node = (rows: string[], title = 'T'): DiagramNode => ({
   id: 'n',
@@ -183,6 +188,22 @@ test('a long edge label is wrapped into lines', async () => {
   expect(edge.labelLines.join(' ')).toBe('one two three four five six')
 })
 
+test('a long edge label breaks into the exact lines that fit the label width', async () => {
+  const diagram: Diagram = {
+    nodes: [
+      { ...node([]), id: 'a' },
+      { ...node([]), id: 'b' },
+    ],
+    edges: [
+      { id: 'e', source: 'a', target: 'b', label: 'one two three four five six', status: 'added' },
+    ],
+  }
+
+  const [edge] = (await layoutDiagram(diagram, 'RIGHT', estimate, COMPACT)).edges
+
+  expect(edge.labelLines).toEqual(['one two three four', 'five six'])
+})
+
 test('the room an edge label takes between two boxes is that of its wrapped lines', async () => {
   const diagram: Diagram = {
     nodes: [
@@ -204,4 +225,168 @@ test('the room an edge label takes between two boxes is that of its wrapped line
   expect(bottom.y - (top.y + top.height) - 2 * COMPACT.betweenLayers).toBeCloseTo(
     down.edges[0].labelLines.length * LABEL_LINE_HEIGHT,
   )
+})
+
+const chart = (plan: Plan, id = 'flow:level') => {
+  const flow = plan.flows.find((f) => f.id === id)
+  if (flow?.kind !== 'flowchart') throw new Error(`no flowchart ${id}`)
+  return flowchartDiagram(flow)
+}
+
+interface Box {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+const overlap = (a: Box, b: Box) =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+
+test('flowchart steps are sized by their shape, and keep their wrapped lines', async () => {
+  const diagram = chart(example as Plan)
+
+  const laid = await layoutDiagram(diagram, 'DOWN', estimate)
+
+  for (const n of laid.nodes) {
+    const { width, height, lines } = flowNodeSize(n, estimate)
+    expect([n.width, n.height, n.lines]).toEqual([width, height, lines])
+  }
+})
+
+test('a flowchart is laid out with room for its tags: none overlap each other or a step', async () => {
+  const demo = (await import('../../examples/demo/plan.json')).default as Plan
+  for (const plan of [example as Plan, demo]) {
+    const laid = await layoutDiagram(chart(plan), 'DOWN', estimate)
+
+    const tags = laid.edges.flatMap((e) =>
+      e.label && e.labelAt ? [{ ...e.labelAt, ...tagSize(e.label, estimate) }] : [],
+    )
+    expect(tags.length).toBeGreaterThanOrEqual(2)
+    tags.forEach((tag, i) => {
+      for (const other of tags.slice(i + 1)) expect(overlap(tag, other)).toBe(false)
+      for (const n of laid.nodes) expect(overlap(tag, n)).toBe(false)
+    })
+  }
+})
+
+test('the lines leaving a decision start on the diamond, not in its empty corners', async () => {
+  const laid = await layoutDiagram(chart(example as Plan), 'DOWN', estimate)
+  const decision = laid.nodes.find((n) => n.shape === 'decision')
+  if (!decision) throw new Error('the example has a decision')
+
+  const leaving = laid.edges.filter((e) => e.source === decision.id)
+
+  expect(leaving.length).toBe(2)
+  for (const e of leaving) {
+    const { x, y } = e.points[0]
+    const reach =
+      Math.abs(x - (decision.x + decision.width / 2)) / (decision.width / 2) +
+      Math.abs(y - (decision.y + decision.height / 2)) / (decision.height / 2)
+    expect(reach).toBeCloseTo(1)
+  }
+})
+
+test('a tag is laid out as one line of its text', async () => {
+  const laid = await layoutDiagram(chart(example as Plan), 'DOWN', estimate)
+
+  expect(laid.edges.find((e) => e.label === 'yes')?.labelLines).toEqual(['yes'])
+})
+
+test('a diagram without shapes is laid out as before: card sizes, no wrapped lines', async () => {
+  const diagram = classDiagram(example as Plan)
+
+  const laid = await layoutDiagram(diagram, 'RIGHT', estimate)
+
+  for (const n of laid.nodes) {
+    expect({ width: n.width, height: n.height }).toEqual(nodeSize(n, estimate))
+    expect(n).not.toHaveProperty('lines')
+  }
+})
+
+const labelsOf = (graph: ElkNode) => graph.edges?.flatMap((e) => e.labels ?? []) ?? []
+
+const placementOf = (graph: ElkNode) =>
+  graph.edges
+    ?.flatMap((e) => e.labels ?? [])
+    .map((l) => l.layoutOptions?.['elk.edgeLabels.placement'])[0]
+
+/** Runs ELK for real and records how its tags were placed; `pile` then moves a TAIL layout's tags. */
+function watchElk(
+  placed: (string | undefined)[],
+  pile?: { x: number; y: number },
+  sizes: { width?: number; height?: number }[] = [],
+) {
+  const real = ELK.prototype.layout as (this: unknown, ...args: unknown[]) => Promise<ElkNode>
+  vi.spyOn(ELK.prototype, 'layout').mockImplementation(async function (
+    this: unknown,
+    ...args: unknown[]
+  ) {
+    const result = await real.apply(this, args)
+    const placement = placementOf(args[0] as ElkNode)
+    placed.push(placement)
+    sizes.push(...labelsOf(args[0] as ElkNode).map(({ width, height }) => ({ width, height })))
+    if (pile && placement === 'TAIL')
+      for (const edge of result.edges ?? [])
+        for (const label of edge.labels ?? []) Object.assign(label, pile)
+    return result
+  })
+}
+
+afterEach(() => vi.restoreAllMocks())
+
+test('tags are asked to sit next to the step they leave, and one layout is enough when they fit', async () => {
+  const placed: (string | undefined)[] = []
+  watchElk(placed)
+
+  await layoutDiagram(chart(example as Plan), 'DOWN', estimate)
+
+  expect(placed).toEqual(['TAIL'])
+})
+
+test.each([
+  ['over each other', { x: 5000, y: 5000 }],
+  ['over a step', { x: 0, y: 0 }],
+])('when tags collide %s, they go back to the middle of their lines', async (_, pile) => {
+  const placed: (string | undefined)[] = []
+  watchElk(placed, pile)
+
+  const laid = await layoutDiagram(chart(example as Plan), 'DOWN', estimate)
+
+  expect(placed).toEqual(['TAIL', 'CENTER'])
+  for (const e of laid.edges) if (e.labelAt) expect(e.labelAt).not.toEqual(pile)
+})
+
+test('a diagram without shapes asks ELK for no tag placement, once', async () => {
+  const placed: (string | undefined)[] = []
+  watchElk(placed)
+
+  await layoutDiagram(classDiagram(example as Plan), 'RIGHT', estimate)
+
+  expect(placed).toEqual([undefined])
+})
+
+test('the room ELK keeps for each tag is the size of the tag', async () => {
+  const sizes: { width?: number; height?: number }[] = []
+  watchElk([], undefined, sizes)
+  const diagram = chart(example as Plan)
+
+  await layoutDiagram(diagram, 'DOWN', estimate)
+
+  expect(sizes).toEqual(diagram.edges.flatMap((e) => (e.label ? [tagSize(e.label, estimate)] : [])))
+})
+
+test('a diagram where only some steps have a shape still gets tags beside their steps', async () => {
+  const placed: (string | undefined)[] = []
+  watchElk(placed)
+  const diagram = chart(example as Plan)
+  const mixed = {
+    ...diagram,
+    nodes: diagram.nodes.map((n, i) => (i === 0 ? { ...n, shape: undefined } : n)),
+  }
+
+  const laid = await layoutDiagram(mixed, 'DOWN', estimate)
+
+  expect(placed).toEqual(['TAIL'])
+  expect(laid.nodes[0]).toMatchObject(nodeSize(mixed.nodes[0], estimate))
+  expect(laid.nodes[1]).toMatchObject(flowNodeSize(mixed.nodes[1], estimate))
 })

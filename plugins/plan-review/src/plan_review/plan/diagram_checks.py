@@ -1,6 +1,6 @@
 """What the viewer can draw: the extra checks `plan-review validate` runs."""
 
-from plan_review.plan.model import Plan, PlanClass, Relation
+from plan_review.plan.model import Flowchart, Plan, PlanClass, Relation
 
 NOTE_LIMIT = 300
 
@@ -63,6 +63,25 @@ def _linked_to_changed(plan: Plan) -> set[str]:
     return linked
 
 
+def _decision_problems(flow: Flowchart) -> list[str]:
+    found: list[str] = []
+    for node in flow.nodes:
+        if node.kind != "decision":
+            continue
+        leaving = [e for e in flow.edges if e.source == node.id]
+        if len(leaving) < 2:
+            found.append(
+                f"{node.id}: a decision needs at least two lines leaving it; it has {len(leaving)}"
+            )
+        found += [
+            f"{node.id}: line {e.id} leaves the decision with no label; "
+            "label it (for example yes / no)"
+            for e in leaving
+            if e.label is None or not e.label.strip()
+        ]
+    return found
+
+
 def shape_problems(plan: Plan) -> list[str]:
     """What `plan-review validate` requires beyond what loading accepts: one line per
     problem, starting with the element id. Old plans load without these; the viewer
@@ -78,4 +97,7 @@ def shape_problems(plan: Plan) -> list[str]:
         for cls in plan.classes
         if cls.side and not _is_changed(cls) and cls.id not in linked
     ]
+    for flow in plan.flows:
+        if isinstance(flow, Flowchart):
+            found += _decision_problems(flow)
     return found

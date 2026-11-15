@@ -5,6 +5,7 @@ import promptExample from '../../examples/prompt-plan.json'
 import old from '../../tests/fixtures/plan-0.1.11.json'
 import { App } from './App'
 import { LABEL_LINE_HEIGHT } from './diagram'
+import type { Plan } from './plan'
 import { FakeServer } from './test/fakeServer'
 import { grill, question } from './test/grillData'
 
@@ -181,6 +182,99 @@ test('Flows draws one flow at a time, picked by title: sequences as messages, fl
   expect(element('flow:level/e2')).toHaveTextContent('yes')
 })
 
+async function openLevelFlowchart() {
+  await loaded()
+  fireEvent.click(screen.getByRole('tab', { name: 'Flows' }))
+  fireEvent.click(screen.getByRole('button', { name: /hint level/i }))
+  await screen.findByText('hints_given < max_hints?')
+}
+
+test('a flowchart is drawn as shapes: a diamond for the decision, pills for start and end', async () => {
+  await openLevelFlowchart()
+
+  const decision = element('flow:level/check')
+  expect(decision).toHaveClass('flow-node')
+  expect(decision).toHaveAttribute('data-shape', 'decision')
+  expect(decision).toHaveAttribute('data-status', 'added')
+  expect(decision.querySelector('polygon.shape')).not.toBeNull()
+  expect(decision).toHaveTextContent('hints_given < max_hints?')
+  for (const [id, shape] of [
+    ['flow:level/start', 'start'],
+    ['flow:level/refuse', 'end'],
+  ]) {
+    const step = element(id)
+    const rect = step.querySelector('rect.shape')
+    expect(step).toHaveAttribute('data-shape', shape)
+    expect(rect?.getAttribute('rx')).toBe(String(Number(rect?.getAttribute('height')) / 2))
+  }
+  expect(document.querySelector('.card')).toBeNull()
+})
+
+test('a step with no kind is drawn as a rounded rectangle', async () => {
+  const server = new FakeServer()
+  const plan = structuredClone(server.plan) as unknown as Plan
+  const chart = plan.flows.find((f) => f.id === 'flow:level')
+  if (chart?.kind !== 'flowchart') throw new Error('the example has the level flowchart')
+  delete chart.nodes.find((n) => n.id === 'flow:level/give')?.kind
+  server.plan = plan
+  server.install()
+  render(<App />)
+  await screen.findByRole('tablist')
+  fireEvent.click(screen.getByRole('tab', { name: 'Flows' }))
+  fireEvent.click(screen.getByRole('button', { name: /hint level/i }))
+  await screen.findByText('hints_given < max_hints?')
+
+  const action = element('flow:level/give')
+  expect(action).toHaveAttribute('data-shape', 'action')
+  expect(action.querySelector('rect.shape')?.getAttribute('rx')).toBe('8')
+})
+
+test("each line of a step's text is its own tspan, centred in the shape", async () => {
+  await openLevelFlowchart()
+
+  const text = element('flow:level/give').querySelector('text')
+  expect(text?.getAttribute('text-anchor')).toBe('middle')
+  expect([...(text?.querySelectorAll('tspan') ?? [])].map((t) => t.textContent)).toEqual([
+    'Give next level',
+  ])
+})
+
+test("a flowchart line's text sits in a rounded tag", async () => {
+  await openLevelFlowchart()
+
+  const tag = element('flow:level/e2').querySelector('g.tag')
+  expect(tag).toHaveTextContent('yes')
+  const rect = tag?.querySelector('rect')
+  expect(rect?.getAttribute('rx')).toBe(String(Number(rect?.getAttribute('height')) / 2))
+})
+
+test('main lines are marked and get the accent arrowhead, others do not', async () => {
+  await openLevelFlowchart()
+
+  for (const id of ['flow:level/e1', 'flow:level/e2']) {
+    expect(element(id)).toHaveAttribute('data-main', 'true')
+    expect(element(id).querySelector('path.line')).toHaveAttribute('marker-end', 'url(#arrow-main)')
+  }
+  expect(element('flow:level/e3')).not.toHaveAttribute('data-main')
+  expect(element('flow:level/e3').querySelector('path.line')).toHaveAttribute(
+    'marker-end',
+    'url(#arrow)',
+  )
+  expect(document.querySelector('marker#arrow-main')).not.toBeNull()
+})
+
+test('the Classes and Architecture tabs still draw cards', async () => {
+  await loaded()
+  await vi.waitFor(() => expect(document.querySelector('.card')).not.toBeNull())
+  expect(document.querySelector('.flow-node')).toBeNull()
+
+  fireEvent.click(screen.getByRole('tab', { name: 'Architecture' }))
+
+  await screen.findByText('Ollama')
+  expect(document.querySelector('.card')).not.toBeNull()
+  expect(document.querySelector('.flow-node, .tag')).toBeNull()
+})
+
 test('the summary starts clamped to two lines; More shows all of it', async () => {
   await loaded()
   const summary = element('header:summary')
@@ -267,7 +361,9 @@ test('a prompt plan opens on its acceptance criteria, each one commentable', asy
     'criterion:4',
   ])
   fireEvent.click(rows[1])
-  expect(screen.getByRole('dialog')).toHaveAccessibleName('New comment on criterion:2')
+  expect(screen.getByRole('dialog')).toHaveAccessibleName(
+    `New comment on Criterion 2 › ${promptExample.acceptance_criteria[1]}`,
+  )
 })
 
 test('an issue plan still starts on Classes, with no criteria tab', async () => {

@@ -52,12 +52,22 @@ export interface SequenceFlow {
   steps: (Edge & { label: string })[]
 }
 
+export interface FlowNode extends Node {
+  /** Absent means an action. */
+  kind?: 'start' | 'end' | 'action' | 'decision' | null
+}
+
+export interface FlowEdge extends Edge {
+  /** On the main path: drawn thicker and blue. */
+  main?: boolean
+}
+
 export interface Flowchart {
   id: string
   title: string
   kind: 'flowchart'
-  nodes: Node[]
-  edges: Edge[]
+  nodes: FlowNode[]
+  edges: FlowEdge[]
 }
 
 export type Flow = SequenceFlow | Flowchart

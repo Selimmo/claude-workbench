@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from plan_review.plan.diagram_checks import shape_problems
-from plan_review.plan.model import Plan
+from plan_review.plan.model import Flowchart, Plan
 from plan_review.plan.plan_file import PlanFileError, load_plan, record_branch
 
 ISSUE = {"id": "7", "kind": "issue", "title": "Add hints"}
@@ -150,6 +150,69 @@ def test_flowchart_flow_has_nodes_and_edges() -> None:
     assert chart.kind == "flowchart"
     assert [n.name for n in chart.nodes] == ["Answer received", "Score answer"]
     assert chart.edges[0].label is None
+
+
+def flowchart_with(
+    node_extra: dict[str, Any] | None = None, edge_extra: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    nodes = [dict(n) for n in GRADING_FLOWCHART["nodes"]]
+    edges = [dict(e) for e in GRADING_FLOWCHART["edges"]]
+    nodes[0].update(node_extra or {})
+    edges[0].update(edge_extra or {})
+    return {**GRADING_FLOWCHART, "nodes": nodes, "edges": edges}
+
+
+@pytest.mark.parametrize("kind", ["start", "end", "action", "decision"])
+def test_a_flowchart_node_may_have_a_kind(kind: str) -> None:
+    plan = Plan.model_validate(minimal(flows=[flowchart_with({"kind": kind})]))
+
+    assert plan.flows[0].nodes[0].kind == kind  # type: ignore[union-attr]
+
+
+def test_a_flowchart_node_with_a_kind_that_does_not_exist_is_rejected_naming_the_field() -> None:
+    with pytest.raises(ValidationError, match="kind"):
+        Plan.model_validate(minimal(flows=[flowchart_with({"kind": "diamond"})]))
+
+
+def test_a_flowchart_node_without_a_kind_still_loads() -> None:
+    plan = Plan.model_validate(minimal(flows=[GRADING_FLOWCHART]))
+    assert plan.flows[0].nodes[0].kind is None  # type: ignore[union-attr]
+
+    here = Path(__file__).parents[2]
+    old = [
+        here / "tests" / "fixtures" / "plan-0.1.11.json",
+        *(here / "examples" / "before-after").glob("*.json"),
+    ]
+    assert old
+    for path in old:
+        load_plan(path)
+
+
+def test_a_sequence_participant_may_not_have_a_kind() -> None:
+    participants = [{**p, "kind": "start"} for p in HINT_SEQUENCE["participants"]]
+    bad = {**HINT_SEQUENCE, "participants": participants}
+
+    with pytest.raises(ValidationError, match="kind"):
+        Plan.model_validate(minimal(flows=[bad]))
+
+
+def test_a_flowchart_line_may_be_marked_main() -> None:
+    plan = Plan.model_validate(
+        minimal(flows=[flowchart_with(edge_extra={"main": True, "label": "ok"})])
+    )
+    edge = plan.flows[0].edges[0]  # type: ignore[union-attr]
+    assert edge.main is True
+    assert edge.label == "ok"
+
+    plain = Plan.model_validate(minimal(flows=[GRADING_FLOWCHART])).flows[0].edges[0]  # type: ignore[union-attr]
+    assert plain.main is False
+
+
+def test_an_architecture_line_may_not_be_marked_main() -> None:
+    edges = [{**ARCHITECTURE["edges"][0], "main": True}]
+
+    with pytest.raises(ValidationError, match="main"):
+        Plan.model_validate(minimal(architecture={**ARCHITECTURE, "edges": edges}))
 
 
 def test_sequence_step_to_unknown_participant_is_rejected() -> None:
@@ -614,3 +677,105 @@ def test_a_plan_with_a_long_note_still_loads(tmp_path: Path) -> None:
     plan = load_plan(path)
 
     assert shape_problems(plan) != []
+
+
+def chart(kinds: dict[str, str], edges: list[tuple[str, str, str | None]]) -> list[str]:
+    """shape_problems for a flowchart whose nodes n1..n4 have these kinds and these lines."""
+    nodes = [
+        {
+            "id": f"flow:c/{n}",
+            "name": n,
+            "status": "added",
+            **({"kind": kinds[n]} if n in kinds else {}),
+        }
+        for n in ("n1", "n2", "n3", "n4")
+    ]
+    lines = []
+    for i, (a, b, label) in enumerate(edges, 1):
+        line: dict[str, Any] = {
+            "id": f"flow:c/e{i}",
+            "from": f"flow:c/{a}",
+            "to": f"flow:c/{b}",
+            "status": "added",
+        }
+        if label is not None:
+            line["label"] = label
+        lines.append(line)
+    flow = {"id": "flow:c", "title": "C", "kind": "flowchart", "nodes": nodes, "edges": lines}
+    return shape_problems(Plan.model_validate(minimal(flows=[flow])))
+
+
+def test_shape_problems_names_a_decision_with_fewer_than_two_lines() -> None:
+    one = chart({"n1": "decision"}, [("n1", "n2", "yes"), ("n3", "n1", "back")])
+    none = chart({"n1": "decision"}, [("n2", "n1", "in")])
+
+    assert one == ["flow:c/n1: a decision needs at least two lines leaving it; it has 1"]
+    assert none == ["flow:c/n1: a decision needs at least two lines leaving it; it has 0"]
+
+
+def test_shape_problems_checks_a_decision_that_comes_after_other_steps() -> None:
+    late = chart({"n1": "action", "n2": "decision"}, [("n2", "n3", "yes")])
+
+    assert late == ["flow:c/n2: a decision needs at least two lines leaving it; it has 1"]
+
+
+def test_shape_problems_names_each_unlabelled_line_leaving_a_decision() -> None:
+    missing = chart({"n1": "decision"}, [("n1", "n2", "yes"), ("n1", "n3", None)])
+    blank = chart({"n1": "decision"}, [("n1", "n2", "yes"), ("n1", "n3", "  ")])
+    empty = chart({"n1": "decision"}, [("n1", "n2", ""), ("n1", "n3", "no")])
+
+    line = (
+        "flow:c/n1: line flow:c/e{} leaves the decision with no label; "
+        "label it (for example yes / no)"
+    )
+    assert missing == [line.format(2)]
+    assert blank == [line.format(2)]
+    assert empty == [line.format(1)]
+
+
+def test_shape_problems_accepts_labelled_decisions_and_ignores_other_steps() -> None:
+    assert chart({"n1": "decision"}, [("n1", "n2", "yes"), ("n1", "n3", "no")]) == []
+    others = {"n1": "action", "n2": "start", "n3": "end"}
+    assert chart(others, [("n1", "n2", None), ("n2", "n3", None), ("n3", "n4", None)]) == []
+    assert chart({}, [("n1", "n2", None)]) == []
+
+
+DEMO = Path(__file__).parents[2] / "examples" / "demo"
+LEVEL_IDS = [
+    "flow:level",
+    "flow:level/start",
+    "flow:level/check",
+    "flow:level/give",
+    "flow:level/refuse",
+    "flow:level/e1",
+    "flow:level/e2",
+]
+
+
+def level_chart(path: Path) -> Flowchart:
+    flow = next(f for f in load_plan(path).flows if f.id == "flow:level")
+    assert isinstance(flow, Flowchart)
+    return flow
+
+
+@pytest.mark.parametrize(
+    ("path", "ends", "main"),
+    [
+        (DEMO / "plan.json", {"penalty", "refuse"}, {"e1", "e2", "e3"}),
+        (DEMO / "plan-revised.json", {"penalty", "refuse"}, {"e1", "e2", "e3"}),
+        (EXAMPLE, {"give", "refuse"}, {"e1", "e2"}),
+    ],
+)
+def test_example_plans_use_flowchart_kinds_and_a_main_path(
+    path: Path, ends: set[str], main: set[str]
+) -> None:
+    plan = load_plan(path)
+    flow = level_chart(path)
+    kinds = {n.id.split("/")[1]: n.kind for n in flow.nodes}
+
+    assert shape_problems(plan) == []
+    assert set(LEVEL_IDS) <= set(flow.element_ids())
+    assert kinds["start"] == "start"
+    assert kinds["check"] == "decision"
+    assert {k for k, v in kinds.items() if v == "end"} == ends
+    assert {e.id.split("/")[1] for e in flow.edges if e.main} == main

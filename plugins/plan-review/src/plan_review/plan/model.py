@@ -142,12 +142,37 @@ class Link(_Edge):
     label: str | None = None
 
 
+class FlowNode(Node):
+    kind: Literal["start", "end", "action", "decision"] | None = Field(
+        default=None,
+        description=(
+            "start, end, action or decision; left out means action. Use decision for every "
+            "yes/no or either/or step: `plan-review validate` needs a decision to have at "
+            "least two lines leaving it, each with a label."
+        ),
+    )
+
+
+class FlowLink(_Edge):
+    label: str | None = Field(
+        default=None,
+        description=(
+            "The text on the line, shown as written. "
+            "`plan-review validate` needs it on every line leaving a decision."
+        ),
+    )
+    main: bool = Field(
+        default=False,
+        description="True on the lines of the main path; they are drawn thicker and blue.",
+    )
+
+
 class Flowchart(_Strict):
     id: str
     title: str
     kind: Literal["flowchart"]
-    nodes: list[Node]
-    edges: list[Link]
+    nodes: list[FlowNode]
+    edges: list[FlowLink]
 
     def element_ids(self) -> list[str]:
         return [self.id, *(n.id for n in self.nodes), *(e.id for e in self.edges)]
