@@ -4,7 +4,7 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
-### Unreleased
+### 0.8.0
 
 - **Flowcharts with decisions** ([#98](https://github.com/Selimmo/claude-workbench/issues/98)). A flowchart step can have a `kind` (`start`, `end`, `action` or `decision`) and a line can be marked `main: true`. The viewer draws start and end as pills, actions as rounded rectangles and decisions as diamonds, puts each line's text in a small tag, draws the main path thicker and blue, and shows status as a coloured outline with a light tint, in light and dark themes. Only flowcharts get the new look; a step with no `kind` is an action, so old plans still open. `plan-review validate` now fails (exit 1) when a decision has fewer than two lines leaving it or a line with no label, and the architect is told to use decisions, label their lines and mark the main path. The example plans use the new kinds.
 - **Readable comment titles.** The new-comment box and saved comment cards show the element's name (`Choosing the hint level › hints_given < max_hints?`) with the raw id in small grey text underneath; the side panel lists show the name, with the id on hover.
