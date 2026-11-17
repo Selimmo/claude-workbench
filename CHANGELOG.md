@@ -4,7 +4,7 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
-### Unreleased
+### 0.8.1
 
 - Typing fast in a grill answer box no longer loses letters when saved answers reload while you type ([#87](https://github.com/Selimmo/claude-workbench/issues/87)).
 
