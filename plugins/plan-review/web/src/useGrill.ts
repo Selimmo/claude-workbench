@@ -10,6 +10,7 @@ import {
   submitGrill,
 } from './api'
 import type { AnswerDraft, Grill } from './grill'
+import { DraftSync } from './draftSync'
 import { connectUpdates } from './updatesSocket'
 import { useAgent } from './useAgent'
 import { useFileErrors } from './useFileErrors'
@@ -19,6 +20,7 @@ export function useGrill() {
   const [grill, setGrill] = useState<Grill | null>(null)
   const [grillErrors, setGrillErrors] = useState<string[] | null>(null)
   const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>({})
+  const [sync] = useState(() => new DraftSync(saveGrillDraft))
   const { errors: brokenFiles, report } = useFileErrors()
   const agent = useAgent(report)
   const { refreshStatus, refreshLastEvent } = agent
@@ -35,10 +37,12 @@ export function useGrill() {
     setGrillErrors(result && !result.ok ? result.errors : null)
   }, [])
   const refreshDrafts = useCallback(async () => {
+    const mark = sync.mark()
     const part = await fetchGrillDrafts()
     report('grill drafts', part.errors)
-    setDrafts(part.value)
-  }, [report])
+    // Against the newest page copy: questions being typed in keep what is on the page.
+    setDrafts((old) => sync.merge(part.value, old, mark))
+  }, [report, sync])
 
   useEffect(() => {
     // Syncing with an external system (the server) is what effects are for.
@@ -78,13 +82,14 @@ export function useGrill() {
     saveDraft: async (questionId: string, draft: AnswerDraft) => {
       setDrafts((old) => ({ ...old, [questionId]: draft }))
       try {
-        await saveGrillDraft(questionId, draft)
+        await sync.save(questionId, draft)
       } catch (error) {
         await refreshDrafts() // show what the server has, not what it refused
         throw error
       }
     },
     submit: async () => {
+      await sync.settled() // the last letters must reach the server first
       await submitGrill()
       setDrafts({})
       await Promise.all([refreshGrill(), refreshLastEvent()])

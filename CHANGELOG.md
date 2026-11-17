@@ -4,6 +4,10 @@ Notable changes to the plugins in this repo. Versions are plan-review's; each is
 
 ## plan-review
 
+### Unreleased
+
+- Typing fast in a grill answer box no longer loses letters when saved answers reload while you type ([#87](https://github.com/Selimmo/claude-workbench/issues/87)).
+
 ### 0.8.0
 
 - **Flowcharts with decisions** ([#98](https://github.com/Selimmo/claude-workbench/issues/98)). A flowchart step can have a `kind` (`start`, `end`, `action` or `decision`) and a line can be marked `main: true`. The viewer draws start and end as pills, actions as rounded rectangles and decisions as diamonds, puts each line's text in a small tag, draws the main path thicker and blue, and shows status as a coloured outline with a light tint, in light and dark themes. Only flowcharts get the new look; a step with no `kind` is an action, so old plans still open. `plan-review validate` now fails (exit 1) when a decision has fewer than two lines leaving it or a line with no label, and the architect is told to use decisions, label their lines and mark the main path. The example plans use the new kinds.

@@ -26,6 +26,10 @@ export class FakeServer {
   reviewHold: Promise<void> | null = null
   resendHold: Promise<void> | null = null
   approved = false
+  /** When set, a read of the grill's drafts copies them on arrival and answers with that copy once this is released: an older copy on its way. */
+  grillDraftsHold: Promise<void> | null = null
+  /** When set, saving a grill draft waits for this before the server stores it. */
+  grillDraftPutHold: Promise<void> | null = null
   /** When set, the grill's drafts, submit, confirm and reopen are refused with this message (409). */
   grillRefusal: string | null = null
   /** When set, the routes that read grill.json answer 422 with these errors, as for a grill.json that does not parse. */
@@ -57,6 +61,13 @@ export class FakeServer {
       return this.plan === null
         ? json({ errors: ['.plan-review/work/42/plan.json: file not found'] }, 404)
         : json(this.plan)
+    if (url === '/api/grill/drafts' && method === 'GET' && this.grillDraftsHold) {
+      const copy = { ...this.grillDrafts }
+      await this.grillDraftsHold
+      return json({ drafts: copy })
+    }
+    if (url.startsWith('/api/grill/drafts/') && method === 'PUT' && this.grillDraftPutHold)
+      await this.grillDraftPutHold
     const grillReply = this.handleGrill(url, method, body, json)
     if (grillReply) return grillReply
     if (url === '/api/approve' && method === 'GET') return json({ approved: this.approved })

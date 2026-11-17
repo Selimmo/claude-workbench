@@ -986,3 +986,140 @@ test('backticks show as code on the grill page', async () => {
     '`',
   )
 })
+
+// A promise the test releases by hand, to hold the fake server's answer back.
+function hold() {
+  let release = () => {}
+  const promise = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return { promise, release }
+}
+
+// Types one letter at a time, each change carrying the box's current text plus the letter,
+// so a stale overwrite is not repaired by the next keystroke.
+function typeInto(box: HTMLElement, text: string) {
+  for (const letter of text)
+    fireEvent.change(box, { target: { value: (box as HTMLTextAreaElement).value + letter } })
+}
+
+const otherBox = (card: HTMLElement) =>
+  within(card).getByPlaceholderText('Type your own option, a question, or a comment')
+
+test('typing in Other while a reload brings older text keeps every letter', async () => {
+  const server = new FakeServer()
+  server.grill = grill([question('q1')])
+  open(server)
+  const card = await screen.findByRole('group', { name: 'Question q1?' })
+  const puts = () => server.calls.filter((c) => c.method === 'PUT').map((c) => c.body)
+  fireEvent.click(within(card).getByRole('radio', { name: 'Other' }))
+  typeInto(otherBox(card), 'W')
+  await waitFor(() => expect(server.grillDrafts.q1?.text).toBe('W'))
+
+  const first = hold()
+  server.grillDraftsHold = first.promise
+  act(() => server.push({ type: 'grill_drafts_changed' }))
+  typeInto(otherBox(card), 'hat')
+  first.release()
+  const second = hold()
+  server.grillDraftsHold = second.promise
+  act(() => server.push({ type: 'grill_drafts_changed' }))
+  typeInto(otherBox(card), ' I want them kept.')
+  second.release()
+  server.grillDraftsHold = null
+  await act(async () => {})
+  typeInto(otherBox(card), '!')
+
+  const all = 'What I want them kept.!'
+  await waitFor(() => expect(server.grillDrafts.q1?.text).toBe(all))
+  expect(otherBox(card)).toHaveValue(all)
+  expect(puts().at(-1)).toEqual({ kind: 'other', text: all })
+})
+
+test('another question changed elsewhere still shows while you type', async () => {
+  const server = new FakeServer()
+  server.grill = grill([question('q1'), question('q2')])
+  open(server)
+  const first = await screen.findByRole('group', { name: 'Question q1?' })
+  const second = screen.getByRole('group', { name: 'Question q2?' })
+  fireEvent.click(within(first).getByRole('radio', { name: 'Other' }))
+  typeInto(otherBox(first), 'W')
+  await waitFor(() => expect(server.grillDrafts.q1?.text).toBe('W'))
+
+  const gate = hold()
+  server.grillDraftsHold = gate.promise
+  server.grillDrafts = { ...server.grillDrafts, q2: { kind: 'other', text: 'from the other tab' } }
+  act(() => server.push({ type: 'grill_drafts_changed' }))
+  typeInto(otherBox(first), 'hat')
+  gate.release()
+  server.grillDraftsHold = null
+
+  await waitFor(() => expect(otherBox(second)).toHaveValue('from the other tab'))
+  expect(otherBox(first)).toHaveValue('What')
+})
+
+test('once typing has settled, a change or removal from elsewhere shows', async () => {
+  const server = new FakeServer()
+  server.grill = grill([question('q1')])
+  open(server)
+  const card = await screen.findByRole('group', { name: 'Question q1?' })
+  fireEvent.click(within(card).getByRole('radio', { name: 'Other' }))
+  typeInto(otherBox(card), 'mine')
+  await waitFor(() => expect(server.grillDrafts.q1?.text).toBe('mine'))
+  await act(async () => {})
+
+  server.grillDrafts = { q1: { kind: 'other', text: 'theirs' } }
+  act(() => server.push({ type: 'grill_drafts_changed' }))
+  await waitFor(() => expect(otherBox(card)).toHaveValue('theirs'))
+
+  server.grillDrafts = {}
+  act(() => server.push({ type: 'grill_drafts_changed' }))
+  await waitFor(() => expect(within(card).getByRole('radio', { name: 'Other' })).not.toBeChecked())
+})
+
+test('picking a choice during a reload with an older pick keeps the new pick', async () => {
+  const server = new FakeServer()
+  server.grill = grill([question('q1')])
+  open(server)
+  const card = await screen.findByRole('group', { name: 'Question q1?' })
+  const puts = () => server.calls.filter((c) => c.method === 'PUT').map((c) => c.body)
+  fireEvent.click(within(card).getByRole('radio', { name: 'Choice a' }))
+  await waitFor(() => expect(server.grillDrafts.q1?.choice_id).toBe('a'))
+
+  const gate = hold()
+  server.grillDraftsHold = gate.promise
+  act(() => server.push({ type: 'grill_drafts_changed' }))
+  fireEvent.click(within(card).getByRole('radio', { name: 'Choice b' }))
+  gate.release()
+  server.grillDraftsHold = null
+
+  await waitFor(() => expect(server.grillDrafts.q1?.choice_id).toBe('b'))
+  expect(within(card).getByRole('radio', { name: 'Choice b' })).toBeChecked()
+  expect(puts().at(-1)).toEqual({ kind: 'choice', choice_id: 'b' })
+})
+
+test('Submit right after typing sends every letter', async () => {
+  const server = new FakeServer()
+  server.grill = grill([question('q1')])
+  open(server)
+  const card = await screen.findByRole('group', { name: 'Question q1?' })
+  fireEvent.click(within(card).getByRole('radio', { name: 'Other' }))
+  const gate = hold()
+  server.grillDraftPutHold = gate.promise
+  typeInto(otherBox(card), 'abc')
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Submit answers' })).toBeEnabled())
+
+  fireEvent.click(screen.getByRole('button', { name: 'Submit answers' }))
+  await act(async () => {})
+  gate.release()
+
+  await waitFor(() => expect(server.calls.some((c) => c.url === '/api/grill/submit')).toBe(true))
+  const urls = server.calls.map((c) => `${c.method} ${c.url}`)
+  const submitAt = urls.indexOf('POST /api/grill/submit')
+  expect(urls.lastIndexOf('PUT /api/grill/drafts/q1')).toBeLessThan(submitAt)
+  const submitted = server.lastEvent
+  expect(submitted?.type).toBe('grill_submitted')
+  expect(server.grill?.rounds[0]?.questions[0]?.thread.at(-1)?.text).toBe('abc')
+  expect(server.grillDrafts).toEqual({})
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
